@@ -1,4 +1,4 @@
-// data/blog.ts
+// data/blog.typescript
 export interface BlogPost {
   slug: string;
   title: string;
