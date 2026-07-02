@@ -75,8 +75,9 @@ export default function AboutPage() {
             About
           </p>
           <h1 className="max-w-3xl font-heading text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[44px] md:text-[52px]">
-            A studio built around one engineer&apos;s standards, not a growing
-            headcount.
+            {
+              "A studio built around one engineer's standards, not a growing headcount."
+            }
           </h1>
 
           <div className="mt-14 grid grid-cols-1 gap-10 md:grid-cols-[auto_1fr] md:items-start md:gap-12">
@@ -94,8 +95,8 @@ export default function AboutPage() {
                   [Insert 2–3 real, specific sentences here: what he built
                   before this, what kind of engineering background he has, and
                   what led him to start MBR Studio. Keep it concrete — actual
-                  technologies, actual project types, not "years of experience
-                  delivering excellence."]
+                  technologies, actual project types, not &quot;years of
+                  experience delivering excellence.&quot;]
                 </span>
               </p>
               <p

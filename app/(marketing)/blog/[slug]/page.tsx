@@ -39,7 +39,7 @@ export default function BlogPostPage({ params }: BlogPostPageProps) {
           publishedAt: post.publishedAt,
           updatedAt: post.updatedAt,
           authorName: post.authorName,
-          image: post.image,
+          // image: post.image,
         })}
       />
       <main id="main-content">

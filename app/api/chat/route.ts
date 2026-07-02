@@ -1,11 +1,12 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
- import { streamText, tool } from "ai";
+import { streamText, tool } from "ai";
 import { z } from "zod";
 import { SYSTEM_PROMPT } from "@/lib/chat/system-prompt";
 import { calculateEstimate, type EstimateInput } from "@/lib/chat/estimator";
 import { checkRateLimit, getClientIp } from "@/lib/chat/rate-limit";
 import { searchProjects, type ProjectCategory } from "@/data/projects";
 import { getWhatsappLink, siteConfig } from "@/config/site";
+import { NextRequest } from "next/server";
 
 // Node.js runtime (not edge) — required per project decision.
 export const runtime = "nodejs";
@@ -67,7 +68,7 @@ const handoffSchema = z.object({
 // ---------------------------------------------------------------------------
 // POST handler
 // ---------------------------------------------------------------------------
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
   const { allowed, retryAfterSeconds } = checkRateLimit(ip);
 
@@ -86,7 +87,13 @@ export async function POST(req: Request) {
     );
   }
 
-const { messages }: { messages: any[] } = await req.json();
+  // Define a safe type for messages
+  type ChatMessage = {
+    role: "system" | "user" | "assistant";
+    content: string;
+  };
+
+  const { messages }: { messages: ChatMessage[] } = await req.json();
 
   const result = streamText({
     model: chatModel,

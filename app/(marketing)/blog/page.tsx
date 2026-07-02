@@ -1,7 +1,6 @@
 // app/(marketing)/blog/page.tsx
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { formatDate } from "@/lib/formatters";
 import { blogPosts, type BlogPost } from "@/data/blog";
 import { Badge } from "@/components/ui/badge";
