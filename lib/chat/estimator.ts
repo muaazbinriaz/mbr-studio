@@ -86,7 +86,7 @@ export function calculateEstimate(input: EstimateInput): EstimateOutput {
 
   let minTotal = base.min;
   let maxTotal = base.max;
-  let minWeeks = base.weeks[0];
+  const minWeeks = base.weeks[0];
   let maxWeeks = base.weeks[1];
   const recommendedFeatures: string[] = [];
 
