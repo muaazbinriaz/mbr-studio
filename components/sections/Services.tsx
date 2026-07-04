@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { motion, useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "framer-motion";
 import { ArrowRight, HelpCircle, icons as lucideIcons } from "lucide-react";
 
 import { services } from "@/data/services";
 import type { Service } from "@/types";
+import { FadeIn } from "@/components/animations/FadeIn";
 
 /**
  * Services — Prompt 8
@@ -55,9 +56,7 @@ function ServiceCard({ service, index }: { service: Service; index: number }) {
   const ResolvedIcon = Icon ?? HelpCircle;
 
   return (
-    <motion.div
-      initial={shouldReduceMotion ? false : { opacity: 0, y: 16 }}
-      whileInView={{ opacity: 1, y: 0 }}
+    <FadeIn
       viewport={{ once: true, amount: 0.3 }}
       transition={{ duration: 0.4, delay: Math.min(index, 5) * 0.05 }}
       whileHover={shouldReduceMotion ? undefined : { y: -4 }}
@@ -90,6 +89,6 @@ function ServiceCard({ service, index }: { service: Service; index: number }) {
           <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
         </Link>
       </div>
-    </motion.div>
+    </FadeIn>
   );
 }

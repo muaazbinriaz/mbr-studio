@@ -1,3 +1,5 @@
+import { buildWhatsAppLink } from "@/config/contact";
+
 export const siteConfig = {
   name: "MBR Studio",
   title: "MBR Studio — Digital products, built to grow your business.",
@@ -5,16 +7,16 @@ export const siteConfig = {
   tagline: "Digital products, built to grow your business.",
   description:
     "MBR Studio is a premium software agency building websites, AI-powered automation, and digital products for growing businesses.",
-  url: "https://mbrstudio.com",
+  url: "https://mbr-studio.vercel.app",
   ogImage: "/og-images/default.png",
-  email: "hello@mbrstudio.com",
+  email: "mbrstudio.dev@gmail.com",
   // Added fields for the chat route
   consultationUrl: "https://cal.com/mbr-studio/consultation",
   contactEmail: "mbrstudio.dev@gmail.com",
   links: {
     twitter: "https://twitter.com/mbrstudio",
-    linkedin: "https://linkedin.com/company/mbrstudio",
-    github: "https://github.com/mbrstudio",
+    linkedin: "https://www.linkedin.com/in/muaaz-bin-riaz-92b395298/",
+    github: "https://github.com/muaazbinriaz",
   },
 } as const;
 
@@ -31,8 +33,17 @@ export const primaryCta = {
   href: "/contact",
 } as const;
 
-// New helper function for WhatsApp handoff
+/**
+ * Delegates to config/contact.ts's buildWhatsAppLink() — that file is
+ * the single source of truth for the WhatsApp number (WHATSAPP_DIGITS /
+ * WHATSAPP_DISPLAY). This used to hardcode a second literal number here,
+ * which risked the contact page and the AI chatbot handoff pointing at
+ * two different numbers if only one was ever updated.
+ *
+ * Passes an empty message override so the chatbot's handoff link keeps
+ * its previous behavior (no pre-filled WhatsApp message) rather than
+ * picking up buildWhatsAppLink()'s default qualification message.
+ */
 export function getWhatsappLink(): string {
-  // Replace with your actual WhatsApp number (include country code, e.g., "923001234567")
-  return "https://wa.me/923340819120";
+  return buildWhatsAppLink("");
 }

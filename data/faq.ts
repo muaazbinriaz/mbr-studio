@@ -2,53 +2,43 @@ import type { FaqItem } from "@/types";
 
 export const faq: FaqItem[] = [
   {
-    question: "How much does a project typically cost?",
+    question: "How much does a website cost?",
     answer:
-      "It depends on scope. A landing page usually starts around $800, a full website or web app runs $3,000–$12,000, and SaaS builds start at $8,000 and scale with complexity. We'll give you a firm number after a short discovery call, not a vague range.",
+      "A basic business website starts from $300. Professional websites with custom design range from $500–$1000. E-commerce stores start from $800. Final pricing depends on your specific requirements — contact us for a free quote.",
   },
   {
-    question: "How long does a typical project take?",
+    question: "How long does it take to build a website?",
     answer:
-      "A landing page ships in 1–2 weeks. A full website or dashboard build usually takes 4–8 weeks. SaaS products vary more, typically 8–16 weeks for a first production release. We'll map out a timeline before any work starts, and you'll know where things stand every week.",
+      "A basic website takes 1–2 weeks. A professional business website takes 2–3 weeks. E-commerce stores take 3–4 weeks. Timeline depends on how quickly you provide content and feedback.",
   },
   {
-    question: "What does the process look like?",
+    question: "Do you provide hosting?",
     answer:
-      "Discovery call, then a fixed-scope proposal, then design, then build, then a review and launch. You'll see working versions throughout, not just a reveal at the end, so there are no surprises when we ship.",
+      "We help you set up hosting on reliable platforms like Vercel or your preferred provider. Hosting costs are separate and typically $10–20 per month depending on your needs.",
   },
   {
-    question: "Do you require full payment upfront?",
+    question: "Do you redesign existing websites?",
     answer:
-      "No. Most projects are split into milestones: a deposit to begin, a payment at the design or midpoint checkpoint, and a final payment at launch. Larger engagements can move to monthly billing if that fits better.",
+      "Yes! We redesign outdated websites into modern, fast, mobile-friendly experiences. Share your current website and we'll give you a free improvement proposal.",
   },
   {
-    question: "What if my project scope changes partway through?",
+    question: "What is an AI chatbot and do I need one?",
     answer:
-      "That's normal. We'll scope the change, tell you how it affects timeline and cost, and get your sign-off before touching anything. Nothing gets added or billed without your approval first.",
+      "An AI chatbot handles customer questions 24/7 automatically — like having a sales assistant that never sleeps. If your business gets repeated questions about pricing, hours, or services, a chatbot saves you time and captures leads even when you're offline.",
   },
   {
-    question: "Do you work with clients outside Pakistan?",
+    question: "What is WhatsApp Automation?",
     answer:
-      "Yes. We regularly work with clients in the US, UK, and UAE, and coordinate across time zones with async updates and scheduled calls that work for you.",
+      "WhatsApp Automation sends automatic replies, follow-ups, and notifications to your customers on WhatsApp. Perfect for restaurants, clinics, salons, and any business that communicates with customers on WhatsApp.",
   },
   {
-    question: "What happens after the site or product launches?",
+    question: "Do you work with international clients?",
     answer:
-      "We offer ongoing maintenance and support plans covering updates, monitoring, and small changes. You're never required to sign up, but most clients prefer having us on call rather than hiring separately for fixes.",
+      "Yes! We work with clients from Pakistan, UAE, UK, USA, and worldwide. Communication is in English and we work across time zones.",
   },
   {
-    question: "Can you work with our existing brand or codebase?",
+    question: "How do I get started?",
     answer:
-      "Yes. We can design within an existing brand system, or build on top of a codebase you already have. We'll do a short technical review first so any constraints are clear before we quote the work.",
-  },
-  {
-    question: "What do you need from me to get started?",
-    answer:
-      "Just a clear picture of the problem you're solving and any existing brand assets, if you have them. We'll handle the rest during discovery, including asking the right questions if you don't have everything figured out yet.",
-  },
-  {
-    question: "Do you offer a free consultation?",
-    answer:
-      "Yes. Every engagement starts with a free 30-minute consultation to understand your goals and confirm we're a good fit before any proposal or cost estimate is put together.",
+      "Simply click 'Book a Free Consultation' or message us on WhatsApp. We'll discuss your project, give you a quote, and start within days of agreement.",
   },
 ];

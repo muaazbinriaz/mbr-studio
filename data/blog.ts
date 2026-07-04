@@ -1,4 +1,21 @@
 // data/blog.ts
+/**
+ * CONTENT-COMPLETENESS NOTE (for whoever edits this file next, including
+ * a future AI session):
+ *
+ * Every post below currently has PLACEHOLDER `content` (literal developer
+ * notes like "Full markdown/content here...", not real article text) and
+ * is therefore marked `published: false`. The blog index and post-detail
+ * pages both filter on `published`, so unpublished posts are invisible to
+ * visitors and excluded from the sitemap and static params — this is
+ * intentional and is what keeps placeholder text from ever being shown as
+ * if it were a real article.
+ *
+ * Set `published: true` ONLY once `content` contains real, final article
+ * HTML for that post. Do not flip this to true with placeholder content
+ * still in place — that would reintroduce the exact bug this mechanism
+ * exists to prevent.
+ */
 export interface BlogPost {
   slug: string;
   title: string;
@@ -10,6 +27,8 @@ export interface BlogPost {
   category: string;
   tags: string[];
   content: string;
+  /** Only true once `content` holds real, final article copy — see note above. */
+  published: boolean;
 }
 
 export const blogPosts: BlogPost[] = [
@@ -24,6 +43,7 @@ export const blogPosts: BlogPost[] = [
     category: "Pricing & ROI",
     tags: ["website cost", "pricing", "small business"],
     content: `Full markdown/content here... (use a simple HTML string or MDX; we'll use HTML for simplicity)`,
+    published: false,
   },
   {
     slug: "do-i-need-a-chatbot-for-my-business",
@@ -35,6 +55,7 @@ export const blogPosts: BlogPost[] = [
     category: "Automation",
     tags: ["ai chatbot", "customer support", "automation"],
     content: `...`,
+    published: false,
   },
   {
     slug: "website-vs-facebook-page",
@@ -46,5 +67,6 @@ export const blogPosts: BlogPost[] = [
     category: "Digital Presence",
     tags: ["website", "facebook", "online presence"],
     content: `...`,
+    published: false,
   },
 ];

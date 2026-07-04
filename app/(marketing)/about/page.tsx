@@ -34,7 +34,7 @@ import { Button } from "@/components/ui/button";
 export const metadata: Metadata = {
   title: "About",
   description:
-    "MBR Studio is a senior-led digital product studio founded by Muaaz Bin Riaz. Here's how we think, and what working with us actually looks like.",
+    "MBR Studio is a digital product studio founded by Muaaz Bin Riaz (BSCS). He has built modern web apps including a Trello-style productivity app (MERN), a job hunting platform (MERN + Next.js), and a Skin Clinic site (Next.js + TypeScript). MBR Studio helps Pakistani businesses grow online through automation, AI chatbots, and professional websites — with a vision to scale into a full software agency.",
   alternates: {
     canonical: "/about",
   },
@@ -86,19 +86,20 @@ export default function AboutPage() {
             </div>
 
             <div className="max-w-2xl">
-              <p
-                className="font-body text-base leading-relaxed text-secondary-text
- sm:text-lg"
-              >
+              <p className="font-body text-base leading-relaxed text-secondary-text sm:text-lg">
                 MBR Studio is founded and led by Muaaz Bin Riaz.{" "}
                 <span className="text-text">
-                  [Insert 2–3 real, specific sentences here: what he built
-                  before this, what kind of engineering background he has, and
-                  what led him to start MBR Studio. Keep it concrete — actual
-                  technologies, actual project types, not &quot;years of
-                  experience delivering excellence.&quot;]
+                  With a Bachelor&apos;s degree in Computer Science (BSCS), he
+                  has built modern web applications including a Trello-style
+                  productivity app (MERN), a job hunting platform (MERN +
+                  Next.js), and a Skin Clinic website (Next.js + TypeScript).
+                  His focus is on helping Pakistani businesses automate customer
+                  support and grow online through professional digital products.
+                  Muaaz&apos;s long-term vision is to establish a startup and
+                  eventually scale MBR Studio into a full software agency.
                 </span>
               </p>
+
               <p
                 className="mt-5 font-body text-base leading-relaxed text-secondary-text
  sm:text-lg"

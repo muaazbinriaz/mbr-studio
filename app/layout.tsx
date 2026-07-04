@@ -1,4 +1,7 @@
 import { Suspense } from "react";
+import Script from "next/script";
+import { Analytics } from "@vercel/analytics/react";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import { ChatProvider } from "@/components/chatbot/useChat";
 import { ChatWindow } from "@/components/chatbot/ChatWindow";
 import type { Metadata } from "next";
@@ -69,12 +72,40 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * Blocking theme-init script — prevents flash-of-wrong-theme (FOUC).
+ *
+ * ThemeProvider.tsx's own theme detection runs inside a useEffect, which
+ * only fires AFTER the first paint — so a light-mode visitor would
+ * briefly see the dark theme applied before it self-corrects. This
+ * script runs via next/script's `beforeInteractive` strategy, which
+ * Next.js injects into <head> and guarantees executes before hydration,
+ * so the correct .dark class is already on <html> at first paint.
+ *
+ * Logic intentionally mirrors ThemeProvider.tsx exactly (same storage
+ * key "mbr-theme", same matchMedia fallback) so that when
+ * ThemeProvider's useEffect runs after hydration, it reads the same
+ * source and arrives at the same result — no second visible flip.
+ */
+const THEME_INIT_SCRIPT = `
+(function () {
+  try {
+    var stored = localStorage.getItem('mbr-theme');
+    var initial = stored ? stored : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.classList.toggle('dark', initial === 'dark');
+  } catch (e) {}
+})();
+`;
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geist.variable} ${inter.variable} antialiased`}>
+        <Script id="theme-init" strategy="beforeInteractive">
+          {THEME_INIT_SCRIPT}
+        </Script>
         <ThemeProvider>
           <Suspense fallback={null}>
             <RouteLoaderProvider>
@@ -87,6 +118,30 @@ export default function RootLayout({
             </RouteLoaderProvider>
           </Suspense>
         </ThemeProvider>
+
+        {/*
+          Analytics — makes privacy/page.tsx's claim ("Vercel Analytics
+          and Google Analytics") actually true.
+
+          <Analytics /> (Vercel) doesn't need Suspense/provider wrapping —
+          it's a self-contained client component that injects a script
+          and reports Web Vitals / page views on route change internally.
+          Rendered as a top-level sibling in <body>, same as the docs'
+          recommended placement.
+
+          NOTE — cookie consent: this site's Privacy Policy references
+          GDPR/UK compliance, which implies EU/UK visitors may need a
+          consent mechanism before analytics scripts fire. That's a
+          legal/product decision, not something to silently bolt on here
+          — intentionally NOT implemented in this change. Before this
+          goes live for EU/UK traffic, add a consent-gating layer (e.g.
+          only rendering <Analytics />/<GoogleAnalytics /> after consent,
+          or using a CMP) around this block.
+        */}
+        <Analytics />
+        {process.env.NEXT_PUBLIC_GA_ID && (
+          <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
+        )}
       </body>
     </html>
   );

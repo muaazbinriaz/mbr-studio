@@ -127,6 +127,19 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
+  /*
+   * Alias tokens — bridge the gap between the token names declared above
+   * and the class names actually used throughout the codebase
+   * (text-text, text-secondary-text, bg-secondary-background). Without
+   * these, Tailwind v4 silently generates no CSS for those classes since
+   * no matching --color-* custom property exists, making them no-ops
+   * across the entire site. Aliasing here (rather than renaming every
+   * call site) keeps this a minimal, low-risk fix.
+   */
+  --color-text: var(--foreground);
+  --color-secondary-text: var(--muted-foreground);
+  --color-secondary-background: var(--background-secondary);
+
   /* Radius */
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -341,6 +354,10 @@ nav a {
     outline: 2px solid var(--color-ring);
     outline-offset: 2px;
   }
+
+  button:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
 /* Site-wide scrollbar */
@@ -354,21 +371,39 @@ nav a {
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: rgba(148, 163, 184, 0.3); /* secondary-text with opacity */
+  /* Was: hardcoded rgba(148, 163, 184, 0.3), which is dark mode's
+     --muted-foreground value baked in literally — so the scrollbar
+     stayed dark-gray even in light mode. Now correctly theme-reactive. */
+  background-color: color-mix(
+    in srgb,
+    var(--color-secondary-text) 30%,
+    transparent
+  );
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(148, 163, 184, 0.5);
+  background-color: color-mix(
+    in srgb,
+    var(--color-secondary-text) 50%,
+    transparent
+  );
 }
 
 /* Firefox */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+  scrollbar-color: color-mix(
+      in srgb,
+      var(--color-secondary-text) 30%,
+      transparent
+    )
+    transparent;
 }
 
 /* Chatbot panel scrollbar (already covered by site-wide, but can be more specific) */
 #mbr-chat-panel ::-webkit-scrollbar-thumb {
-  background-color: rgba(99, 102, 241, 0.4); /* primary color tint */
+  /* Was: hardcoded rgba(99, 102, 241, 0.4), a literal duplicate of
+     --primary's hex value. Now sourced from the token directly. */
+  background-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
 }

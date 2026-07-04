@@ -1,10 +1,14 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { streamText, tool } from "ai";
+import { streamText, tool, convertToModelMessages, type UIMessage } from "ai";
 import { z } from "zod";
 import { SYSTEM_PROMPT } from "@/lib/chat/system-prompt";
-import { calculateEstimate, type EstimateInput } from "@/lib/chat/estimator";
+import {
+  calculateEstimate,
+  type EstimateInput,
+  type BusinessType,
+} from "@/lib/chat/estimator";
 import { checkRateLimit, getClientIp } from "@/lib/chat/rate-limit";
-import { searchProjects, type ProjectCategory } from "@/data/projects";
+import { searchProjects } from "@/data/projects";
 import { getWhatsappLink, siteConfig } from "@/config/site";
 import { NextRequest } from "next/server";
 
@@ -18,10 +22,12 @@ const openrouter = createOpenRouter({
   apiKey: process.env.OPENROUTER_API_KEY,
 });
 
-const PRIMARY_MODEL = "meta-llama/llama-3.1-8b-instruct:free";
+const PRIMARY_MODEL = "openrouter/free";
+
 const FALLBACK_MODELS = [
-  "mistralai/mistral-7b-instruct:free",
-  "google/gemma-2-9b-it:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "deepseek/deepseek-r1:free",
+  "qwen/qwen-2.5-7b-instruct:free",
 ];
 
 const chatModel = openrouter(PRIMARY_MODEL, {
@@ -87,18 +93,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Define a safe type for messages
-  type ChatMessage = {
-    role: "system" | "user" | "assistant";
-    content: string;
-  };
-
-  const { messages }: { messages: ChatMessage[] } = await req.json();
+  const { messages }: { messages: UIMessage[] } = await req.json();
 
   const result = streamText({
     model: chatModel,
     system: SYSTEM_PROMPT,
-    messages,
+    messages: await convertToModelMessages(messages),
     maxOutputTokens: 600,
     tools: {
       generateEstimate: tool({
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
         inputSchema: portfolioSearchSchema,
         execute: async ({ category, keyword }) => {
           const results = searchProjects(
-            category as ProjectCategory | undefined,
+            category as BusinessType | undefined,
             keyword,
           );
           return {

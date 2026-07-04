@@ -13,16 +13,6 @@ import { siteConfig } from "@/config/site";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { breadcrumbSchema } from "@/lib/seo/schemas";
 
-/**
- * SEO PASS (Prompt 20): title trimmed from "Contact | MBR Studio" to just
- * "Contact" — the root layout's title.template now appends
- * "| MBR Studio — Websites & AI Automation", so the old hardcoded suffix
- * would have duplicated it. Added canonical URL and a BreadcrumbList schema
- * per Blueprint Part 2 Section 13.
- *
- * Also fixed two `text-white` instances below to `text-text` to match the
- * token names this project standardized on.
- */
 export const metadata: Metadata = {
   title: "Contact",
   description:
@@ -87,7 +77,7 @@ export default function ContactPage() {
                   href={whatsappHref}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-lg bg-success px-4 py-2.5 font-body text-sm font-medium text-white transition-colors duration-200 hover:bg-success/90"
+                  className="inline-flex items-center gap-2 rounded-lg bg-success px-4 py-2.5 font-body text-sm font-medium text-primary-foreground transition-colors duration-200 hover:bg-success/90"
                 >
                   <MessageCircle className="h-4 w-4" />
                   Chat on WhatsApp

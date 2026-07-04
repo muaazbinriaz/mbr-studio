@@ -8,22 +8,8 @@ import { projects } from "@/data/projects";
 import type { Project } from "@/types";
 import { Button } from "@/components/ui/button";
 
-/**
- * Case Study Template — Prompt 14 (part 2 of 2, cont.)
- *
- * Blueprint ref: Part 2, Section 8 — 7-section structure:
- * Hero, Problem, Solution, Tech Stack, Outcome, Visuals, CTA.
- *
- * data/projects.ts only guarantees slug/title/client/industry/summary/
- * image/tags/category. The richer fields (problem, solution, outcome,
- * visuals) are optional on the type — any project missing them still
- * renders all 7 sections, with a quiet placeholder in place of the
- * missing content, rather than a blank or broken-looking section.
- * Fill those fields in per-project whenever the write-up is ready.
- */
-
 interface CaseStudyPageProps {
-  params: { slug: string };
+  params: Promise<{ slug: string }>; // ✅ params is async
 }
 
 export function generateStaticParams() {
@@ -32,8 +18,11 @@ export function generateStaticParams() {
   }));
 }
 
-export function generateMetadata({ params }: CaseStudyPageProps): Metadata {
-  const project = (projects as Project[]).find((p) => p.slug === params.slug);
+export async function generateMetadata({
+  params,
+}: CaseStudyPageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const project = (projects as Project[]).find((p) => p.slug === slug);
 
   if (!project) {
     return { title: "Case Study | MBR Studio" };
@@ -45,8 +34,9 @@ export function generateMetadata({ params }: CaseStudyPageProps): Metadata {
   };
 }
 
-export default function CaseStudyPage({ params }: CaseStudyPageProps) {
-  const project = (projects as Project[]).find((p) => p.slug === params.slug);
+export default async function CaseStudyPage({ params }: CaseStudyPageProps) {
+  const { slug } = await params;
+  const project = (projects as Project[]).find((p) => p.slug === slug);
 
   if (!project) {
     notFound();
@@ -73,14 +63,31 @@ export default function CaseStudyPage({ params }: CaseStudyPageProps) {
             {project.summary}
           </p>
 
-          <div className="relative mt-12 aspect-video w-full overflow-hidden rounded-2xl border border-border bg-secondary-background">
+          {/* Live site link only */}
+          {project.link && (
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Button asChild size="sm" className="rounded-lg">
+                <Link
+                  href={project.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Visit Live Site
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
+          )}
+
+          <div className="relative mt-12 w-full overflow-hidden rounded-2xl border border-border bg-secondary-background">
             <Image
               src={project.image}
               alt={project.title}
-              fill
+              width={1920}
+              height={1080}
               sizes="100vw"
               priority
-              className="object-cover"
+              className="w-full h-auto rounded-lg"
             />
           </div>
         </div>
@@ -168,25 +175,26 @@ export default function CaseStudyPage({ params }: CaseStudyPageProps) {
         </div>
       </section>
 
-      {/* 6. Visuals — only rendered if extra gallery images exist */}
-      {project.visuals && project.visuals.length > 0 && (
+      {/* 6. Visuals — multiple screenshots gallery */}
+      {project.images && project.images.length > 0 && (
         <section className="border-t border-border bg-background">
           <div className="mx-auto max-w-5xl px-6 py-20 md:px-10 md:py-28">
             <p className="mb-8 font-body text-sm font-medium tracking-wide text-accent">
-              Visuals
+              Screenshots
             </p>
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-              {project.visuals.map((src, i) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {project.images.map((src, i) => (
                 <div
                   key={src}
-                  className="relative aspect-4/3 w-full overflow-hidden rounded-xl border border-border bg-secondary-background"
+                  className="relative w-full overflow-hidden rounded-xl border border-border bg-secondary-background"
                 >
                   <Image
                     src={src}
-                    alt={`${project.title} — visual ${i + 1}`}
-                    fill
+                    alt={`${project.title} screenshot ${i + 1}`}
+                    width={1920}
+                    height={1080}
                     sizes="(min-width: 768px) 50vw, 100vw"
-                    className="object-cover"
+                    className="w-full h-auto rounded-lg"
                   />
                 </div>
               ))}

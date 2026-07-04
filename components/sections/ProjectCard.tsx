@@ -3,9 +3,10 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { motion, useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import type { Project } from "@/types";
+import { FadeIn } from "@/components/animations/FadeIn";
 
 export function ProjectCard({
   project,
@@ -17,9 +18,7 @@ export function ProjectCard({
   const shouldReduceMotion = useReducedMotion();
 
   return (
-    <motion.div
-      initial={shouldReduceMotion ? false : { opacity: 0, y: 16 }}
-      whileInView={{ opacity: 1, y: 0 }}
+    <FadeIn
       viewport={{ once: true, amount: 0.3 }}
       transition={{ duration: 0.4, delay: index * 0.08 }}
       whileHover={shouldReduceMotion ? undefined : { y: -4 }}
@@ -78,6 +77,6 @@ export function ProjectCard({
           </span>
         </div>
       </Link>
-    </motion.div>
+    </FadeIn>
   );
 }

@@ -8,15 +8,22 @@ import { JsonLd } from "@/components/seo/JsonLd";
 import { Badge } from "@/components/ui/badge";
 
 interface BlogPostPageProps {
-  params: { slug: string };
+  params: Promise<{ slug: string }>; // ✅ params is async, per Next.js 15
 }
 
 export function generateStaticParams() {
-  return blogPosts.map((post) => ({ slug: post.slug }));
+  // Only prerender published posts — unpublished posts (placeholder
+  // content) shouldn't be accessible as static routes at all.
+  return blogPosts
+    .filter((post) => post.published)
+    .map((post) => ({ slug: post.slug }));
 }
 
-export function generateMetadata({ params }: BlogPostPageProps): Metadata {
-  const post = blogPosts.find((p) => p.slug === params.slug);
+export async function generateMetadata({
+  params,
+}: BlogPostPageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const post = blogPosts.find((p) => p.slug === slug && p.published);
   if (!post) return {};
   return {
     title: post.title,
@@ -25,8 +32,12 @@ export function generateMetadata({ params }: BlogPostPageProps): Metadata {
   };
 }
 
-export default function BlogPostPage({ params }: BlogPostPageProps) {
-  const post = blogPosts.find((p) => p.slug === params.slug);
+export default async function BlogPostPage({ params }: BlogPostPageProps) {
+  const { slug } = await params;
+  const post = blogPosts.find((p) => p.slug === slug && p.published);
+
+  // Covers both a genuinely nonexistent slug AND an unpublished post
+  // (placeholder content) — neither should ever render.
   if (!post) notFound();
 
   return (
@@ -39,7 +50,6 @@ export default function BlogPostPage({ params }: BlogPostPageProps) {
           publishedAt: post.publishedAt,
           updatedAt: post.updatedAt,
           authorName: post.authorName,
-          // image: post.image,
         })}
       />
       <main id="main-content">

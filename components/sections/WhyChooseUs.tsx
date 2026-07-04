@@ -1,7 +1,5 @@
-"use client";
-
-import { motion, useReducedMotion } from "framer-motion";
 import { Bot, Code2, UserCheck, Zap, type LucideIcon } from "lucide-react";
+import { FadeIn } from "@/components/animations/FadeIn";
 
 /**
  * WhyChooseUs — Prompt 11 (part 1 of 2)
@@ -50,8 +48,6 @@ const DIFFERENTIATORS: Differentiator[] = [
 ];
 
 export function WhyChooseUs() {
-  const shouldReduceMotion = useReducedMotion();
-
   return (
     <section className="border-t border-border bg-background">
       <div className="mx-auto max-w-6xl px-6 py-24 md:px-10 md:py-32">
@@ -71,10 +67,8 @@ export function WhyChooseUs() {
             {DIFFERENTIATORS.map((item, index) => {
               const Icon = item.icon;
               return (
-                <motion.div
+                <FadeIn
                   key={item.title}
-                  initial={shouldReduceMotion ? false : { opacity: 0, y: 16 }}
-                  whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, amount: 0.4 }}
                   transition={{ duration: 0.4, delay: index * 0.06 }}
                   className="flex gap-5 py-8 first:pt-0 last:pb-0"
@@ -90,7 +84,7 @@ export function WhyChooseUs() {
                       {item.description}
                     </p>
                   </div>
-                </motion.div>
+                </FadeIn>
               );
             })}
           </div>

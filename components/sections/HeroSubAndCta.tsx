@@ -31,7 +31,7 @@ export function HeroSubAndCta() {
         <Button
           asChild
           size="lg"
-          className="group rounded-lg bg-primary px-7 py-6 text-base font-medium text-white hover:bg-primary/90"
+          className="group rounded-lg bg-primary px-7 py-6 text-base font-medium text-primary-foreground hover:bg-primary/90"
         >
           <Link href="/contact">
             Book a Free Consultation

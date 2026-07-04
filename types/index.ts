@@ -14,12 +14,14 @@ export interface Project {
   industry: string;
   summary: string;
   image: string;
+  images?: string[];
   tags: string[];
   category: ProjectCategory;
   problem?: string;
   solution?: string;
   outcome?: { metric: string; label: string }[];
   visuals?: string[];
+  link?: string; // ✅ live site link
 }
 
 export interface Testimonial {

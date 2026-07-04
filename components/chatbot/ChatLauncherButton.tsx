@@ -1,12 +1,12 @@
 "use client";
 
-import { useChat } from "@/components/chatbot/useChat";
+import { useChatPanel } from "@/components/chatbot/useChat";
 
 export function ChatLauncherButton({
   children,
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  const { open } = useChat();
+  const { open } = useChatPanel();
   return (
     <button onClick={open} {...props}>
       {children}

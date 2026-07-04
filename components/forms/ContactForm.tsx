@@ -11,6 +11,9 @@ import {
   type ContactFormValues,
 } from "@/lib/validations/contact";
 import { SERVICE_OPTIONS, BUDGET_OPTIONS } from "@/config/contact";
+import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 type SubmitState = "idle" | "submitting" | "success" | "error";
 
@@ -94,7 +97,9 @@ export function ContactForm() {
       className="flex flex-col gap-5 rounded-2xl border border-border bg-card p-6 sm:p-8"
     >
       {/* Honeypot — hidden from sighted users and screen readers, and
-          removed from tab order. Left empty by humans, filled by bots. */}
+          removed from tab order. Left empty by humans, filled by bots.
+          Kept as a raw <input> intentionally: it's not a user-facing
+          field, so it doesn't belong in the Input/Label refactor below. */}
       <div
         className="absolute left-[-9999px] top-auto h-0 w-0 overflow-hidden"
         aria-hidden="true"
@@ -111,48 +116,48 @@ export function ContactForm() {
 
       <div className="grid gap-5 sm:grid-cols-2">
         <Field label="Full name" htmlFor="name" error={errors.name?.message}>
-          <input
+          <Input
             id="name"
             type="text"
             autoComplete="name"
             placeholder="Jane Doe"
             {...register("name")}
             aria-invalid={!!errors.name}
-            className={inputClass(!!errors.name)}
+            className={textFieldClassName(!!errors.name)}
           />
         </Field>
 
         <Field label="Email" htmlFor="email" error={errors.email?.message}>
-          <input
+          <Input
             id="email"
             type="email"
             autoComplete="email"
             placeholder="jane@company.com"
             {...register("email")}
             aria-invalid={!!errors.email}
-            className={inputClass(!!errors.email)}
+            className={textFieldClassName(!!errors.email)}
           />
         </Field>
 
         <Field label="Company" htmlFor="company" optional>
-          <input
+          <Input
             id="company"
             type="text"
             autoComplete="organization"
             placeholder="Acme Inc."
             {...register("company")}
-            className={inputClass(false)}
+            className={textFieldClassName(false)}
           />
         </Field>
 
         <Field label="Phone" htmlFor="phone" optional>
-          <input
+          <Input
             id="phone"
             type="tel"
             autoComplete="tel"
             placeholder="+1 555 000 0000"
             {...register("phone")}
-            className={inputClass(false)}
+            className={textFieldClassName(false)}
           />
         </Field>
 
@@ -244,6 +249,11 @@ export function ContactForm() {
   );
 }
 
+/**
+ * Styling for the raw <select>/<textarea> fields that weren't converted
+ * to shadcn components in this pass (no Select/Textarea primitive exists
+ * in this repo yet — out of scope to invent one here).
+ */
 function inputClass(hasError: boolean) {
   return [
     "rounded-lg border bg-background px-4 py-2.5 font-body text-sm text-text",
@@ -251,6 +261,21 @@ function inputClass(hasError: boolean) {
     "focus:outline-none focus:ring-2 focus:ring-primary/40",
     hasError ? "border-error" : "border-border",
   ].join(" ");
+}
+
+/**
+ * Override classes merged on top of the shared Input component's
+ * defaults (via cn()/tailwind-merge) so name/email/company/phone keep
+ * their exact pre-refactor appearance (background, padding, ring color)
+ * instead of picking up Input's own default look.
+ */
+function textFieldClassName(hasError: boolean) {
+  return cn(
+    "bg-background px-4 py-2.5",
+    "focus:outline-none focus:ring-2 focus:ring-primary/40",
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+    hasError && "border-error",
+  );
 }
 
 function Field({
@@ -268,13 +293,13 @@ function Field({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label
+      <Label
         htmlFor={htmlFor}
         className="font-body text-sm font-medium text-text"
       >
         {label}{" "}
         {optional && <span className="text-secondary-text">(optional)</span>}
-      </label>
+      </Label>
       {children}
       {error && (
         <p className="font-body text-xs text-error" role="alert">

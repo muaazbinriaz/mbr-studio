@@ -2,16 +2,7 @@ import type { MetadataRoute } from "next";
 
 import { siteConfig } from "@/config/site";
 import { projects } from "@/data/projects";
-import { blogPosts } from "@/data/blog"; // <-- make sure you have this data source
-
-/**
- * Dynamic sitemap.xml — Blueprint Part 2, Section 13 (Technical SEO).
- *
- * GAP: only routes I actually have files for are included as static
- * entries. Blog posts and case-studies detail pages weren't in here
- * before — now blog posts are mapped below. Add case-studies once
- * you have a `data/case-studies.ts` source.
- */
+import { blogPosts } from "@/data/blog";
 
 const STATIC_ROUTES = [
   { path: "", changeFrequency: "weekly" as const, priority: 1 },
@@ -37,15 +28,19 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const projectSlugs = projects.map((p) => p.slug);
   void projectSlugs; // kept for when detail routes exist
 
-  // Blog posts — dynamic entries
-  const blogEntries: MetadataRoute.Sitemap = blogPosts.map((post) => ({
-    url: `${siteConfig.url}/blog/${post.slug}`,
-    lastModified: post.updatedAt
-      ? new Date(post.updatedAt)
-      : new Date(post.publishedAt),
-    changeFrequency: "monthly" as const,
-    priority: 0.6,
-  }));
+  // Only published posts belong in the sitemap — an unpublished post
+  // (still holding placeholder content) should never be submitted to
+  // search engines.
+  const blogEntries: MetadataRoute.Sitemap = blogPosts
+    .filter((post) => post.published)
+    .map((post) => ({
+      url: `${siteConfig.url}/blog/${post.slug}`,
+      lastModified: post.updatedAt
+        ? new Date(post.updatedAt)
+        : new Date(post.publishedAt),
+      changeFrequency: "monthly" as const,
+      priority: 0.6,
+    }));
 
   return [...staticEntries, ...blogEntries];
 }
