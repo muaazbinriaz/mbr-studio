@@ -72,6 +72,12 @@ export async function processInboundMessage(
     }
     conversationId = newConversation.id;
     isNewConversation = true;
+
+    await supabase.from("webhook_events").insert({
+      organization_id: organizationId,
+      event_type: "conversation.started",
+      payload: { conversation_id: conversationId, channel: msg.channel },
+    });
   }
   if (!conversationId) {
     throw new Error(

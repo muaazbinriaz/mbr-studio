@@ -58,6 +58,32 @@ export async function GET(req: NextRequest) {
     ask_message?: boolean;
   };
 
+  // --- Added reseller parent lookup ---
+  let poweredByLabel: string | null = null;
+  let poweredByUrl: string | null = null;
+
+  const { data: orgWithParent } = await supabase
+    .from("organizations")
+    .select("parent_organization_id")
+    .eq("id", embedKey.organization_id)
+    .maybeSingle();
+
+  if (orgWithParent?.parent_organization_id) {
+    const { data: reseller } = await supabase
+      .from("organizations")
+      .select("is_reseller, reseller_brand_name, reseller_domain")
+      .eq("id", orgWithParent.parent_organization_id)
+      .maybeSingle();
+
+    if (reseller?.is_reseller && reseller.reseller_brand_name) {
+      poweredByLabel = `Powered by ${reseller.reseller_brand_name}`;
+      poweredByUrl = reseller.reseller_domain
+        ? `https://${reseller.reseller_domain}`
+        : null;
+    }
+  }
+  // --- End reseller parent lookup ---
+
   return jsonResponse(
     {
       orgName: org.name,
@@ -68,6 +94,8 @@ export async function GET(req: NextRequest) {
       welcomeMessage: org.welcome_message,
       position: org.widget_position,
       greetingChips: agent?.greeting_chips ?? [],
+      poweredByLabel, // ✅ added
+      poweredByUrl, // ✅ added
       leadCapture: {
         enabled: guardrails?.capture_leads ?? true,
         askName: leadSettings.ask_name ?? true,
@@ -75,6 +103,8 @@ export async function GET(req: NextRequest) {
         askPhone: leadSettings.ask_phone ?? false,
         askMessage: leadSettings.ask_message ?? false,
       },
+      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+      supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     },
     200,
     origin,

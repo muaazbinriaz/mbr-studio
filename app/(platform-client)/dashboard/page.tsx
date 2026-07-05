@@ -1,3 +1,4 @@
+import { PlanLimitBanner } from "@/components/platform/PlanLimitBanner";
 import { Building2, MessageSquare, Users, CheckCircle2 } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
@@ -5,6 +6,12 @@ import { StatCard } from "@/components/platform/StatCard";
 import { Badge } from "@/components/ui/badge";
 import { AnalyticsChart } from "@/components/platform/AnalyticsChart";
 import { getOrgAnalyticsSummary } from "@/lib/analytics/queries";
+
+type Organization = {
+  name: string;
+  status: string;
+  monthly_message_limit: number;
+};
 
 export default async function ClientOverviewPage() {
   const supabase = await createClient();
@@ -14,11 +21,30 @@ export default async function ClientOverviewPage() {
 
   const { data: memberships } = await supabase
     .from("organization_members")
-    .select("organization_id, role, organizations(name, status)")
+    .select(
+      "organization_id, role, organizations(name, status, monthly_message_limit)",
+    )
     .eq("user_id", user?.id ?? "");
 
   const orgCount = memberships?.length ?? 0;
   const primaryOrgId = memberships?.[0]?.organization_id as string | undefined;
+  const primaryOrg = memberships?.[0]
+    ?.organizations as unknown as Organization | null;
+
+  const { count: messagesThisMonth } = primaryOrgId
+    ? await supabase
+        .from("messages")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", primaryOrgId)
+        .gte(
+          "created_at",
+          new Date(
+            new Date().getFullYear(),
+            new Date().getMonth(),
+            1,
+          ).toISOString(),
+        )
+    : { count: 0 };
 
   const analytics = primaryOrgId
     ? await getOrgAnalyticsSummary(supabase, primaryOrgId, 30)
@@ -29,6 +55,13 @@ export default async function ClientOverviewPage() {
       <h1 className="font-heading text-2xl font-bold text-foreground">
         Overview
       </h1>
+
+      <PlanLimitBanner
+        status={primaryOrg?.status ?? "trial"}
+        monthlyMessageLimit={primaryOrg?.monthly_message_limit ?? 500}
+        messagesThisMonth={messagesThisMonth ?? 0}
+      />
+
       <p className="mt-2 font-body text-sm text-secondary-text">
         Real-time stats from your AI agent&apos;s conversations.
       </p>

@@ -21,6 +21,9 @@ import {
   ShieldCheck,
   Sparkles,
   Users,
+  KeyRound,
+  Webhook,
+  CreditCard,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -50,12 +53,15 @@ const NAV_ITEMS_BY_VARIANT: Record<
   admin: [
     { label: "Overview", href: "/admin", icon: LayoutDashboard },
     { label: "Organizations", href: "/admin/organizations", icon: Building2 },
+    { label: "Billing", href: "/admin/billing", icon: CreditCard },
     { label: "Settings", href: "/admin/settings", icon: Settings },
   ],
 
   client: [
-    { label: "Get Started", href: "/dashboard/onboarding", icon: Sparkles },
+    // Dashboard home comes first; onboarding is a secondary entry point
+    // for new users, not the landing item.
     { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
+    { label: "Get Started", href: "/dashboard/onboarding", icon: Sparkles },
 
     {
       label: "Knowledge Base",
@@ -69,14 +75,22 @@ const NAV_ITEMS_BY_VARIANT: Record<
     },
     { label: "Templates", href: "/dashboard/agent/templates", icon: Sparkles },
     { label: "Leads", href: "/dashboard/leads", icon: Users },
+    { label: "Clients", href: "/dashboard/clients", icon: Building2 },
     { label: "Channels", href: "/dashboard/channels", icon: Radio },
     {
-      label: "Conversations",
-      href: "/dashboard/conversations",
+      label: "Inbox",
+      href: "/dashboard/inbox",
       icon: MessagesSquare,
     },
     { label: "Appearance", href: "/dashboard/appearance", icon: Palette },
+
+    // Settings family — kept contiguous since Billing, API Keys, and
+    // Webhooks are all sub-routes of /dashboard/settings. Parent link
+    // goes first.
     { label: "Settings", href: "/dashboard/settings", icon: Settings },
+    { label: "Billing", href: "/dashboard/settings/billing", icon: CreditCard },
+    { label: "API Keys", href: "/dashboard/settings/api-keys", icon: KeyRound },
+    { label: "Webhooks", href: "/dashboard/settings/webhooks", icon: Webhook },
   ],
 };
 
@@ -85,13 +99,47 @@ const BRAND_BY_VARIANT: Record<PlatformVariant, string> = {
   client: "MBR Studio",
 };
 
+/**
+ * Picks the single "most active" nav item for a given pathname.
+ *
+ * Doing this per-item (as the old code did, testing each item against
+ * pathname independently with `startsWith`) breaks as soon as one nav
+ * href is a prefix of another — e.g. "/dashboard/settings" is a prefix
+ * of "/dashboard/settings/billing", so both "Settings" and "Billing"
+ * would light up simultaneously on the billing page. Computing the
+ * longest matching href once, up front, guarantees exactly one active
+ * item regardless of how nav routes are nested.
+ */
+function getActiveHref(
+  pathname: string,
+  navItems: { href: string }[],
+): string | null {
+  let best: string | null = null;
+
+  for (const item of navItems) {
+    const isRootRoute = item.href === "/admin" || item.href === "/dashboard";
+    const matches =
+      pathname === item.href ||
+      (!isRootRoute && pathname.startsWith(`${item.href}/`));
+
+    if (matches && (best === null || item.href.length > best.length)) {
+      best = item.href;
+    }
+  }
+
+  return best;
+}
+
 export function PlatformShell({
   variant,
   userEmail,
+  navBadges,
   children,
 }: {
   variant: PlatformVariant;
   userEmail?: string | null;
+  /** Keyed by nav item href, e.g. { "/dashboard/inbox": 3 } */
+  navBadges?: Record<string, number>;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -141,6 +189,7 @@ export function PlatformShell({
 
   const navItems = NAV_ITEMS_BY_VARIANT[variant];
   const brand = BRAND_BY_VARIANT[variant];
+  const activeHref = getActiveHref(pathname, navItems);
 
   return (
     <div className="relative flex min-h-screen bg-background">
@@ -153,16 +202,17 @@ export function PlatformShell({
           // No transition before hydration — prevents a visible width
           // animation on first load if the stored preference was "collapsed".
           hydrated && "transition-[width] duration-200 ease-out",
-          collapsed ? "md:w-[76px]" : "md:w-64",
+          collapsed ? "md:w-19" : "md:w-64",
         )}
       >
         <SidebarContent
           brand={brand}
           navItems={navItems}
-          pathname={pathname}
+          activeHref={activeHref}
           userEmail={userEmail}
           collapsed={collapsed}
           onToggleCollapsed={toggleCollapsed}
+          navBadges={navBadges}
         />
       </aside>
 
@@ -219,11 +269,12 @@ export function PlatformShell({
         <SidebarContent
           brand={brand}
           navItems={navItems}
-          pathname={pathname}
+          activeHref={activeHref}
           userEmail={userEmail}
           onNavigate={() => setMobileOpen(false)}
           hideHeader
           collapsed={false}
+          navBadges={navBadges}
         />
       </aside>
 
@@ -240,21 +291,23 @@ export function PlatformShell({
 function SidebarContent({
   brand,
   navItems,
-  pathname,
+  activeHref,
   userEmail,
   onNavigate,
   hideHeader,
   collapsed,
   onToggleCollapsed,
+  navBadges,
 }: {
   brand: string;
   navItems: { label: string; href: string; icon: typeof LayoutDashboard }[];
-  pathname: string;
+  activeHref: string | null;
   userEmail?: string | null;
   onNavigate?: () => void;
   hideHeader?: boolean;
   collapsed: boolean;
   onToggleCollapsed?: () => void;
+  navBadges?: Record<string, number>;
 }) {
   const { theme, toggleTheme } = useTheme();
   const { start } = useRouteLoader();
@@ -291,11 +344,7 @@ function SidebarContent({
 
       <nav className="flex flex-1 flex-col gap-1 px-3 py-4">
         {navItems.map((item) => {
-          const isActive =
-            pathname === item.href ||
-            (item.href !== "/admin" &&
-              item.href !== "/dashboard" &&
-              pathname.startsWith(item.href));
+          const isActive = item.href === activeHref;
           const Icon = item.icon;
 
           return (
@@ -325,7 +374,22 @@ function SidebarContent({
                 )}
               />
               <Icon className="h-4 w-4 flex-none" strokeWidth={1.75} />
-              {!collapsed && item.label}
+              {!collapsed && (
+                <span className="flex flex-1 items-center justify-between">
+                  {item.label}
+                  {!!navBadges?.[item.href] && (
+                    <span className="ml-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 font-body text-[10px] font-semibold text-primary-foreground">
+                      {navBadges[item.href]}
+                    </span>
+                  )}
+                </span>
+              )}
+              {collapsed && !!navBadges?.[item.href] && (
+                <span
+                  aria-hidden="true"
+                  className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary"
+                />
+              )}
             </Link>
           );
         })}

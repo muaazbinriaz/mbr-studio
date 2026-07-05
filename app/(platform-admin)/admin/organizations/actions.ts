@@ -19,10 +19,6 @@ export async function createOrganization(formData: FormData) {
 
   const supabase = await createClient();
 
-  // Guard against RLS silently no-op'ing this for a non-admin — the
-  // "org members can access their own org" policy's WITH CHECK would
-  // otherwise reject the insert anyway, but failing loudly here gives
-  // a clearer error than a generic Postgres RLS violation message.
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -43,12 +39,6 @@ export async function createOrganization(formData: FormData) {
   if (orgError || !org) {
     return { error: orgError?.message ?? "Failed to create organization." };
   }
-
-  // NOTE: as a non-reseller org with no organization_members row yet,
-  // the creating admin can still manage it because the "admins" RLS
-  // bypass (public.is_admin()) covers every table's policy. A real
-  // client user will be attached via organization_members once
-  // invite flows exist (Prompt 06/07) — out of scope here.
 
   const { data: agent, error: agentError } = await supabase
     .from("agents")
@@ -74,5 +64,44 @@ export async function createOrganization(formData: FormData) {
   }
 
   revalidatePath("/admin/organizations");
+  return { error: null };
+}
+
+export async function toggleReseller(organizationId: string, next: boolean) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("organizations")
+    .update({ is_reseller: next })
+    .eq("id", organizationId);
+
+  if (error) return { error: error.message };
+  revalidatePath(`/admin/organizations/${organizationId}`);
+  return { error: null };
+}
+
+export async function saveResellerBranding(
+  organizationId: string,
+  formData: FormData,
+) {
+  const supabase = await createClient();
+  const brandName = String(formData.get("reseller_brand_name") ?? "").trim();
+  const logoUrl = String(formData.get("reseller_logo_url") ?? "").trim();
+  const domain = String(formData.get("reseller_domain") ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/.*$/, "");
+
+  const { error } = await supabase
+    .from("organizations")
+    .update({
+      reseller_brand_name: brandName || null,
+      reseller_logo_url: logoUrl || null,
+      reseller_domain: domain || null,
+    })
+    .eq("id", organizationId);
+
+  if (error) return { error: error.message };
+  revalidatePath(`/admin/organizations/${organizationId}`);
   return { error: null };
 }

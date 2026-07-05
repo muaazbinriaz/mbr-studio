@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { CreateOrganizationForm } from "./CreateOrganizationForm";
 import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
 
 export default async function AdminOrganizationsPage() {
   const supabase = await createClient();
@@ -69,11 +70,19 @@ export default async function AdminOrganizationsPage() {
                     </p>
                   </div>
 
-                  {publicKey && (
-                    <code className="w-fit rounded-md bg-background px-2.5 py-1 font-mono text-xs text-secondary-text">
-                      {publicKey}
-                    </code>
-                  )}
+                  <div className="flex items-center gap-3">
+                    {publicKey && (
+                      <code className="w-fit rounded-md bg-background px-2.5 py-1 font-mono text-xs text-secondary-text">
+                        {publicKey}
+                      </code>
+                    )}
+                    <Link
+                      href={`/admin/organizations/${org.id}`}
+                      className="font-body text-xs text-primary hover:text-accent"
+                    >
+                      Manage
+                    </Link>
+                  </div>
                 </div>
               );
             })}

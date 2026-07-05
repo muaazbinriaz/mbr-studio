@@ -270,6 +270,11 @@ export async function POST(req: NextRequest) {
     await bumpDailyAnalytics(supabase, agentId, organizationId, {
       total_conversations: 1,
     });
+    await supabase.from("webhook_events").insert({
+      organization_id: organizationId,
+      event_type: "conversation.started",
+      payload: { conversation_id: conversationId, channel: "website" },
+    });
   }
 
   // -- Call the LLM. --------------------------------------------------------

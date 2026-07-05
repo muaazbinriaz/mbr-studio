@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { Sparkles, ShieldCheck, Zap } from "lucide-react";
-
 import { PlatformAmbient } from "./PlatformAmbient";
 
 const HIGHLIGHTS = [
@@ -20,21 +19,16 @@ const HIGHLIGHTS = [
   },
 ] as const;
 
-/**
- * Replaces the old plain centered-card auth layout. Desktop gets a
- * branded left panel (product pitch, matches the Prompt 01 roadmap —
- * multi-tenant, RLS, omnichannel) so /login and /signup read like the
- * SaaS platform they're gating, not an afterthought bolted onto the
- * marketing site. Mobile collapses to a single column — the brand
- * panel disappears entirely rather than stacking above the form, so
- * the form is still the very first thing a mobile visitor sees.
- *
- * Used by app/(platform-auth)/layout.tsx, which wraps both
- * /login/page.tsx and /signup/page.tsx. Neither page needs to know
- * this layout exists — they just render their existing <Card> form
- * into `children` as before.
- */
-export function AuthSplitLayout({ children }: { children: React.ReactNode }) {
+export function AuthSplitLayout({
+  children,
+  resellerBrand,
+}: {
+  children: React.ReactNode;
+  resellerBrand?: { name: string; logoUrl: string | null } | null;
+}) {
+  const brandName = resellerBrand?.name ?? "MBR Studio";
+  const brandLogo = resellerBrand?.logoUrl;
+
   return (
     <div className="relative flex min-h-screen bg-background">
       <PlatformAmbient />
@@ -43,9 +37,17 @@ export function AuthSplitLayout({ children }: { children: React.ReactNode }) {
       <div className="relative hidden w-[44%] max-w-xl flex-col justify-between overflow-hidden border-r border-border bg-card/40 px-12 py-12 lg:flex">
         <Link
           href="/"
-          className="font-heading text-lg font-semibold tracking-tight text-foreground"
+          className="flex items-center gap-2 font-heading text-lg font-semibold tracking-tight text-foreground"
         >
-          MBR Studio{" "}
+          {brandLogo ? (
+            <img
+              src={brandLogo}
+              alt={brandName}
+              className="h-6 w-auto object-contain"
+            />
+          ) : (
+            brandName
+          )}
           <span className="font-normal text-secondary-text">/ Platform</span>
         </Link>
 
@@ -75,7 +77,7 @@ export function AuthSplitLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         <p className="font-body text-xs text-secondary-text">
-          © {new Date().getFullYear()} MBR Studio. All rights reserved.
+          © {new Date().getFullYear()} {brandName}. All rights reserved.
         </p>
       </div>
 
@@ -85,7 +87,15 @@ export function AuthSplitLayout({ children }: { children: React.ReactNode }) {
           href="/"
           className="mb-8 font-heading text-lg font-semibold tracking-tight text-foreground lg:hidden"
         >
-          MBR Studio
+          {brandLogo ? (
+            <img
+              src={brandLogo}
+              alt={brandName}
+              className="h-6 w-auto object-contain"
+            />
+          ) : (
+            brandName
+          )}
         </Link>
         <div className="w-full max-w-sm">{children}</div>
       </div>
