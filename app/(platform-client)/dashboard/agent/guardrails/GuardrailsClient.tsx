@@ -72,7 +72,8 @@ const TOGGLE_DEFS: {
   {
     key: "capture_leads",
     label: "Capture leads",
-    description: "When the AI can't answer, show a quick contact-info form.",
+    description:
+      "When the AI can&apos;t answer, show a quick contact-info form.",
   },
 ];
 
