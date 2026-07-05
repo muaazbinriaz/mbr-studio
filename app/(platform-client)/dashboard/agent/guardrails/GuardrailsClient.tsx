@@ -216,7 +216,7 @@ export function GuardrailsClient({
               Lead capture form fields
             </h2>
             <p className="mb-4 font-body text-xs text-secondary-text">
-              Which fields the widget's quick contact form asks for.
+              Which fields the widget&apos;s quick contact form asks for.
             </p>
             <div className="grid grid-cols-2 gap-3">
               {LEAD_FIELD_DEFS.map((def) => (
