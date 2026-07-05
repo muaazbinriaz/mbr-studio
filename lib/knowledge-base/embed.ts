@@ -5,31 +5,16 @@
  * must call embedText() rather than hitting a model directly, so the
  * model/dimension is only ever defined in one place.
  *
- * MODEL CHOICE: runs fully locally via @xenova/transformers (no
- * external API, no API key, no network dependency at request time).
- * Uses the same all-MiniLM-L6-v2 model (384-dim output) — the model
- * files (~90MB) are downloaded once and cached on disk on first run,
- * then reused for every subsequent call.
+ * MODEL CHOICE: Google's Gemini text-embedding-004 model via HTTP API.
+ * No native binaries, no local model download — works reliably in
+ * Vercel's serverless runtime. This replaces @xenova/transformers,
+ * which failed in production with a missing libonnxruntime.so error.
  */
 
-import { pipeline, type FeatureExtractionPipeline } from "@xenova/transformers";
+export const EMBEDDING_MODEL = "gemini-embedding-001";
+export const EMBEDDING_DIMENSION = 768;
 
-export const EMBEDDING_MODEL = "Xenova/all-MiniLM-L6-v2";
-export const EMBEDDING_DIMENSION = 384;
-
-// Cache the pipeline across calls within the same server process —
-// loading the model on every request would be slow and wasteful.
-let extractorPromise: Promise<FeatureExtractionPipeline> | null = null;
-
-function getExtractor(): Promise<FeatureExtractionPipeline> {
-  if (!extractorPromise) {
-    extractorPromise = pipeline(
-      "feature-extraction",
-      EMBEDDING_MODEL,
-    ) as Promise<FeatureExtractionPipeline>;
-  }
-  return extractorPromise;
-}
+const GEMINI_EMBED_URL = `https://generativelanguage.googleapis.com/v1beta/models/${EMBEDDING_MODEL}:embedContent`;
 
 export async function embedText(text: string): Promise<number[]> {
   const trimmed = text.trim();
@@ -37,17 +22,42 @@ export async function embedText(text: string): Promise<number[]> {
     throw new Error("embedText() called with empty text.");
   }
 
-  const extractor = await getExtractor();
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  if (!apiKey) {
+    throw new Error(
+      "GOOGLE_AI_API_KEY is not set. Get a free key at https://aistudio.google.com/app/apikey",
+    );
+  }
 
-  // mean pooling + normalization gives a single 384-dim sentence
-  // vector, matching how sentence-transformers models are meant to
-  // be used for semantic search.
-  const output = await extractor(trimmed, {
-    pooling: "mean",
-    normalize: true,
+  const res = await fetch(`${GEMINI_EMBED_URL}?key=${apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: `models/${EMBEDDING_MODEL}`,
+      content: {
+        parts: [{ text: trimmed }],
+      },
+      outputDimensionality: 768,
+    }),
   });
 
-  const vector: number[] = Array.from(output.data as Float32Array);
+  if (!res.ok) {
+    const errorBody = await res.text();
+    throw new Error(
+      `Gemini embeddings API request failed (${res.status}): ${errorBody}`,
+    );
+  }
+
+  const data = (await res.json()) as {
+    embedding?: { values?: number[] };
+  };
+
+  const vector = data.embedding?.values;
+  if (!vector) {
+    throw new Error(
+      "Gemini embeddings API returned no embedding values — unexpected response shape.",
+    );
+  }
 
   // Do NOT silently truncate/pad a mismatched vector — that would
   // corrupt vector search results without any visible symptom until

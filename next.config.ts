@@ -12,7 +12,6 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ["lucide-react"],
   },
-  serverExternalPackages: ["@xenova/transformers"],
 };
 
 export default nextConfig;
