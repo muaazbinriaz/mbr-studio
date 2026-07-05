@@ -94,7 +94,9 @@ export async function POST(req: NextRequest) {
       : false;
     const isAllowlisted =
       org.allowed_domains && org.allowed_domains.length > 0 && origin
-        ? org.allowed_domains.some((d) => originMatchesDomain(origin, d))
+        ? org.allowed_domains.some((d: string) =>
+            originMatchesDomain(origin, d),
+          )
         : false;
 
     if (!isVerifiedOrigin && !isAllowlisted) {
@@ -105,7 +107,7 @@ export async function POST(req: NextRequest) {
     }
   } else if (org.allowed_domains && org.allowed_domains.length > 0) {
     const isAllowed = origin
-      ? org.allowed_domains.some((d) => originMatchesDomain(origin, d))
+      ? org.allowed_domains.some((d: string) => originMatchesDomain(origin, d))
       : false;
     if (!isAllowed) {
       return fail(
