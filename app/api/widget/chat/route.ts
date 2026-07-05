@@ -4,7 +4,11 @@ import { streamText } from "ai";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { embedText } from "@/lib/knowledge-base/embed";
-import { buildAgentSystemPrompt } from "@/lib/chat/agent-system-prompt";
+import {
+  buildSystemPrompt,
+  type GuardrailToggles,
+} from "@/lib/agents/build-system-prompt";
+import { withLeadCaptureMarker } from "@/lib/chat/lead-capture";
 import { checkRateLimitFor } from "@/lib/rate-limit";
 import { widgetChatSchema } from "@/lib/validations/widget-chat";
 
@@ -27,10 +31,12 @@ export async function POST(req: NextRequest) {
     "Access-Control-Allow-Origin": origin ?? "*",
     ...extra,
   });
-  const fail = (status: number, message: string, extra?: Record<string, string>) =>
-    NextResponse.json({ error: message }, { status, headers: cors(extra) });
+  const fail = (
+    status: number,
+    message: string,
+    extra?: Record<string, string>,
+  ) => NextResponse.json({ error: message }, { status, headers: cors(extra) });
 
-  // -- Parse + validate body --------------------------------------------
   let rawBody: unknown;
   try {
     rawBody = await req.json();
@@ -46,9 +52,7 @@ export async function POST(req: NextRequest) {
 
   const supabase = createAdminClient();
 
-  // -- Step 1 & 2: resolve + verify the embed key. NEVER trust an
-  //    organization_id/agent_id from the request body directly — always
-  //    re-derive them from this verified lookup. ------------------------
+  // -- Resolve + verify the embed key. -------------------------------------
   const { data: embedKey } = await supabase
     .from("embed_keys")
     .select("agent_id, organization_id, revoked_at")
@@ -63,7 +67,9 @@ export async function POST(req: NextRequest) {
 
   const { data: org } = await supabase
     .from("organizations")
-    .select("name, slug, allowed_domains, monthly_message_limit")
+    .select(
+      "name, slug, allowed_domains, monthly_message_limit, primary_domain, domain_verify_status",
+    )
     .eq("id", organizationId)
     .maybeSingle();
 
@@ -71,30 +77,63 @@ export async function POST(req: NextRequest) {
     return fail(404, "Organization not found.");
   }
 
-  // -- Step 3: origin allowlist. Empty allowed_domains = still in setup,
-  //    allow all origins. Full TXT domain-ownership verification is a
-  //    Prompt 03 feature — this is just the simple allowlist check. -----
-  if (org.allowed_domains && org.allowed_domains.length > 0) {
-    const isAllowed = origin ? org.allowed_domains.some((d) => originMatchesDomain(origin, d)) : false;
+  // -- Domain checks (Prompt 03, Section 6). -------------------------------
+  // Before verification (or no primary_domain set yet): fall back to the
+  // original allowlist-only behavior, so a client can test the widget
+  // before finishing DNS setup.
+  if (org.domain_verify_status === "suspended") {
+    return fail(
+      403,
+      "This domain's verification has lapsed. Please re-verify in your dashboard.",
+    );
+  }
+
+  if (org.domain_verify_status === "verified" && org.primary_domain) {
+    const isVerifiedOrigin = origin
+      ? originMatchesDomain(origin, org.primary_domain)
+      : false;
+    const isAllowlisted =
+      org.allowed_domains && org.allowed_domains.length > 0 && origin
+        ? org.allowed_domains.some((d) => originMatchesDomain(origin, d))
+        : false;
+
+    if (!isVerifiedOrigin && !isAllowlisted) {
+      return fail(
+        403,
+        "This domain is not authorized to use this chat widget.",
+      );
+    }
+  } else if (org.allowed_domains && org.allowed_domains.length > 0) {
+    const isAllowed = origin
+      ? org.allowed_domains.some((d) => originMatchesDomain(origin, d))
+      : false;
     if (!isAllowed) {
-      return fail(403, "This domain is not authorized to use this chat widget.");
+      return fail(
+        403,
+        "This domain is not authorized to use this chat widget.",
+      );
     }
   }
 
-  // -- Step 4: rate-limit per organization, not per IP — many visitors
-  //    share one client's widget. -----------------------------------------
-  const { allowed, retryAfterSeconds } = checkRateLimitFor(`widget-org:${organizationId}`, {
-    windowMs: WIDGET_RATE_WINDOW_MS,
-    maxRequests: WIDGET_MAX_MESSAGES_PER_ORG_PER_MINUTE,
-  });
+  // -- Rate-limit per organization. ----------------------------------------
+  const { allowed, retryAfterSeconds } = checkRateLimitFor(
+    `widget-org:${organizationId}`,
+    {
+      windowMs: WIDGET_RATE_WINDOW_MS,
+      maxRequests: WIDGET_MAX_MESSAGES_PER_ORG_PER_MINUTE,
+    },
+  );
   if (!allowed) {
-    return fail(429, "This chat is receiving a lot of traffic right now — please try again shortly.", {
-      "Retry-After": String(retryAfterSeconds ?? 30),
-    });
+    return fail(
+      429,
+      "This chat is receiving a lot of traffic right now — please try again shortly.",
+      {
+        "Retry-After": String(retryAfterSeconds ?? 30),
+      },
+    );
   }
 
-  // -- Step 5: monthly message limit. Graceful in-widget message, not a
-  //    hard error, and we stop BEFORE calling the LLM. --------------------
+  // -- Monthly message limit. ----------------------------------------------
   const monthStart = new Date();
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
@@ -109,14 +148,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         limitReached: true,
-        reply: "This business has reached its chat limit this month — please use their contact form instead.",
+        reply:
+          "This business has reached its chat limit this month — please use their contact form instead.",
       },
       { headers: cors() },
     );
   }
 
-  // -- Step 6: embed the incoming message + vector search, scoped to the
-  //    VERIFIED agentId only — never a client-supplied one. ---------------
+  // -- Guardrails + industry context. --------------------------------------
+  const { data: guardrails } = await supabase
+    .from("agent_guardrails")
+    .select(
+      "no_competitors, stay_on_topic, no_pricing, always_polite, no_opinions, push_contact, no_refund_promise, capture_leads, custom_rules, tone, reply_language",
+    )
+    .eq("agent_id", agentId)
+    .maybeSingle<GuardrailToggles>();
+
+  const { data: agentRow } = await supabase
+    .from("agents")
+    .select("system_prompt")
+    .eq("id", agentId)
+    .maybeSingle();
+
+  // -- Embed + vector search, scoped to the VERIFIED agentId only. ---------
   let matches: { id: string; content: string; similarity: number }[] = [];
   try {
     const queryEmbedding = await embedText(message);
@@ -131,26 +185,44 @@ export async function POST(req: NextRequest) {
     if (matchError) throw new Error(matchError.message);
     matches = matchRows ?? [];
   } catch (err) {
-    // Degrade gracefully — answer with no retrieved context instead of
-    // 500ing on the visitor if embeddings/search hiccup.
     console.error("[widget/chat] embedding/vector search failed:", err);
   }
 
-  // -- Step 7: build the per-agent system prompt. See
-  //    lib/chat/agent-system-prompt.ts — that's the exact function
-  //    Prompt 03 extends (GUARDRAILS_INJECTION_POINT / LEAD_CAPTURE_TRIGGER_POINT
-  //    are marked inside it). --------------------------------------------
-  const systemPrompt = buildAgentSystemPrompt({
+  const systemPrompt = buildSystemPrompt({
     orgName: org.name,
     retrievedChunks: matches.map((m) => m.content),
+    guardrails: guardrails ?? null,
+    industryContext: agentRow?.system_prompt ?? null,
   });
 
-  // -- Step 9 (part 1): find-or-create the conversation, insert the user
-  //    message now (before calling the LLM), so it's recorded even if the
-  //    LLM call itself fails. ---------------------------------------------
+  // -- Unique-visitor tracking for analytics. ------------------------------
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: visitorLogRows, error: visitorLogError } = await supabase
+    .from("agent_daily_visitors")
+    .upsert(
+      {
+        agent_id: agentId,
+        date: today,
+        visitor_id: visitorId,
+        channel: "website",
+      },
+      {
+        onConflict: "agent_id,date,visitor_id,channel",
+        ignoreDuplicates: true,
+      },
+    )
+    .select();
+
+  if (visitorLogError) {
+    console.error("[widget/chat] visitor log failed:", visitorLogError);
+  }
+  const isNewVisitorToday =
+    !visitorLogError && (visitorLogRows?.length ?? 0) > 0;
+
+  // -- Find-or-create the conversation. ------------------------------------
   const { data: existingConversation } = await supabase
     .from("conversations")
-    .select("id")
+    .select("id, lead_capture_shown")
     .eq("agent_id", agentId)
     .eq("visitor_id", visitorId)
     .eq("channel", "website")
@@ -160,6 +232,8 @@ export async function POST(req: NextRequest) {
 
   let conversationId = existingConversation?.id as string | undefined;
   let isNewConversation = false;
+  const leadCaptureAlreadyShown =
+    existingConversation?.lead_capture_shown ?? false;
 
   if (!conversationId) {
     const { data: newConversation, error: convError } = await supabase
@@ -191,11 +265,15 @@ export async function POST(req: NextRequest) {
   });
 
   if (isNewConversation) {
-    await bumpDailyAnalytics(supabase, agentId, organizationId, { total_conversations: 1 });
+    await bumpDailyAnalytics(supabase, agentId, organizationId, {
+      total_conversations: 1,
+    });
   }
 
-  // -- Step 8: call the LLM. ------------------------------------------------
-  const model = openrouter(WIDGET_MODEL, { extraBody: { models: FALLBACK_MODELS } });
+  // -- Call the LLM. --------------------------------------------------------
+  const model = openrouter(WIDGET_MODEL, {
+    extraBody: { models: FALLBACK_MODELS },
+  });
 
   const result = streamText({
     model,
@@ -203,7 +281,6 @@ export async function POST(req: NextRequest) {
     messages: [{ role: "user", content: message }],
     maxOutputTokens: 500,
     onFinish: async ({ text }) => {
-      // -- Step 9 (part 2): store the assistant reply + bump last_message_at.
       await supabase.from("messages").insert({
         conversation_id: conversationId,
         agent_id: agentId,
@@ -216,19 +293,40 @@ export async function POST(req: NextRequest) {
         .update({ last_message_at: new Date().toISOString() })
         .eq("id", conversationId as string);
 
-      // -- Step 11: analytics, populated now so Prompt 03's dashboard has
-      //    real historical data once it's built. --------------------------
       await bumpDailyAnalytics(supabase, agentId, organizationId, {
-        total_messages: 2, // user + assistant
+        total_messages: 2,
         resolved_by_ai: 1,
+        unique_visitors: isNewVisitorToday ? 1 : 0,
       });
     },
   });
 
-  // -- Step 12: stream the response back to the widget as plain text. ------
-  // (Step 10's LEAD_CAPTURE_TRIGGER_POINT lives inside the system prompt
-  // builder, not here — see lib/chat/agent-system-prompt.ts.)
-  return result.toTextStreamResponse({ headers: cors() });
+  // -- Stream back, wrapped with the lead-capture sentinel marker. ---------
+  const shouldCheckLeadCapture =
+    (guardrails?.capture_leads ?? true) && !leadCaptureAlreadyShown;
+
+  const baseResponse = result.toTextStreamResponse({
+    headers: cors({
+      "X-Conversation-Id": conversationId as string,
+      "Access-Control-Expose-Headers": "X-Conversation-Id",
+    }),
+  });
+
+  const wrappedBody = withLeadCaptureMarker(
+    baseResponse.body as ReadableStream<Uint8Array>,
+    shouldCheckLeadCapture,
+    async () => {
+      await supabase
+        .from("conversations")
+        .update({ lead_capture_shown: true })
+        .eq("id", conversationId as string);
+    },
+  );
+
+  return new Response(wrappedBody, {
+    status: baseResponse.status,
+    headers: baseResponse.headers,
+  });
 }
 
 export async function OPTIONS(req: NextRequest) {
@@ -247,39 +345,38 @@ export async function OPTIONS(req: NextRequest) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function originMatchesDomain(origin: string, domain: string): boolean {
+function originMatchesDomain(originUrl: string, domain: string): boolean {
   try {
-    const { hostname } = new URL(origin);
+    const { hostname } = new URL(originUrl);
     const cleanDomain = domain.trim().toLowerCase();
     if (cleanDomain.startsWith("*.")) {
       const base = cleanDomain.slice(2);
       return hostname === base || hostname.endsWith(`.${base}`);
     }
-    return hostname === cleanDomain;
+    return hostname === cleanDomain || hostname.endsWith(`.${cleanDomain}`);
   } catch {
     return false;
   }
 }
 
-/**
- * Read-then-write daily analytics bump. Not perfectly atomic under
- * heavy concurrent traffic (two simultaneous requests could both read
- * the same starting count) — acceptable for MVP volumes. If this ever
- * matters, replace with a Postgres function that does the increment
- * atomically (e.g. `on conflict do update set total_messages =
- * agent_daily_analytics.total_messages + excluded.total_messages`).
- */
 async function bumpDailyAnalytics(
   supabase: ReturnType<typeof createAdminClient>,
   agentId: string,
   organizationId: string,
-  fields: Partial<{ total_conversations: number; total_messages: number; resolved_by_ai: number }>,
+  fields: Partial<{
+    total_conversations: number;
+    total_messages: number;
+    resolved_by_ai: number;
+    unique_visitors: number;
+  }>,
 ) {
   const today = new Date().toISOString().slice(0, 10);
 
   const { data: existing } = await supabase
     .from("agent_daily_analytics")
-    .select("id, total_conversations, total_messages, resolved_by_ai")
+    .select(
+      "id, total_conversations, total_messages, resolved_by_ai, unique_visitors",
+    )
     .eq("agent_id", agentId)
     .eq("date", today)
     .eq("channel", "website")
@@ -294,6 +391,7 @@ async function bumpDailyAnalytics(
       total_conversations: fields.total_conversations ?? 0,
       total_messages: fields.total_messages ?? 0,
       resolved_by_ai: fields.resolved_by_ai ?? 0,
+      unique_visitors: fields.unique_visitors ?? 0,
     });
     return;
   }
@@ -301,9 +399,11 @@ async function bumpDailyAnalytics(
   await supabase
     .from("agent_daily_analytics")
     .update({
-      total_conversations: existing.total_conversations + (fields.total_conversations ?? 0),
+      total_conversations:
+        existing.total_conversations + (fields.total_conversations ?? 0),
       total_messages: existing.total_messages + (fields.total_messages ?? 0),
       resolved_by_ai: existing.resolved_by_ai + (fields.resolved_by_ai ?? 0),
+      unique_visitors: existing.unique_visitors + (fields.unique_visitors ?? 0),
     })
     .eq("id", existing.id);
 }

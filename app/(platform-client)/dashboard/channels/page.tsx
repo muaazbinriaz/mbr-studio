@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
-import { KnowledgeBaseClient } from "./KnowledgeBaseClient";
+import { ChannelsClient } from "./ChannelsClient";
+import { maskToken, decryptToken } from "@/lib/channels/encryption";
 
-export default async function KnowledgeBasePage() {
+export default async function ChannelsPage() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -15,14 +16,13 @@ export default async function KnowledgeBasePage() {
     .maybeSingle();
 
   let agentId: string | null = null;
-  let documents: {
+  let connections: {
     id: string;
-    title: string;
+    channel: string;
+    external_account_id: string;
+    phone_number_id: string | null;
     status: string;
-    source_type: string;
-    created_at: string;
-    error_message: string | null;
-    raw_content: string | null;
+    maskedToken: string;
   }[] = [];
 
   if (membership) {
@@ -37,27 +37,41 @@ export default async function KnowledgeBasePage() {
     agentId = agent?.id ?? null;
 
     if (agentId) {
-      const { data: docs } = await supabase
-        .from("knowledge_base_documents")
+      const { data: rows } = await supabase
+        .from("channel_connections")
         .select(
-          "id, title, status, source_type, created_at, error_message, raw_content",
+          "id, channel, external_account_id, phone_number_id, status, access_token",
         )
-        .eq("agent_id", agentId)
-        .order("created_at", { ascending: false });
+        .eq("agent_id", agentId);
 
-      documents = docs ?? [];
+      connections = (rows ?? []).map((row) => {
+        let maskedToken = "••••";
+        try {
+          const decrypted = decryptToken(row.access_token);
+          maskedToken = maskToken(decrypted);
+        } catch {
+          // If decryption fails (bad/legacy value), just show generic mask.
+        }
+        return {
+          id: row.id,
+          channel: row.channel,
+          external_account_id: row.external_account_id,
+          phone_number_id: row.phone_number_id,
+          status: row.status,
+          maskedToken,
+        };
+      });
     }
   }
 
   return (
     <div>
       <h1 className="font-heading text-2xl font-bold text-foreground">
-        Knowledge Base
+        Channels
       </h1>
       <p className="mt-2 font-body text-sm text-secondary-text">
-        Add the facts your AI agent should answer from — FAQs, policies,
-        pricing, hours. The embedded widget only ever answers from what&apos;s
-        here.
+        Connect WhatsApp, Instagram, and Messenger so your AI agent answers
+        consistently everywhere your customers reach out.
       </p>
 
       {!agentId ? (
@@ -68,7 +82,7 @@ export default async function KnowledgeBasePage() {
         </div>
       ) : (
         <div className="mt-8">
-          <KnowledgeBaseClient documents={documents} />
+          <ChannelsClient connections={connections} />
         </div>
       )}
     </div>

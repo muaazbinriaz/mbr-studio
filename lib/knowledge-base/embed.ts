@@ -1,84 +1,53 @@
 /**
  * Single entry point for turning text into an embedding vector.
  *
- * Every caller — ingestion (this prompt), Prompt 03's re-indexing, and
- * Prompt 04's multi-channel ingestion — must call embedText() rather
- * than hitting an embeddings API directly, so the model/dimension is
- * only ever defined in one place.
+ * Every caller — ingestion, re-indexing, and multi-channel ingestion —
+ * must call embedText() rather than hitting a model directly, so the
+ * model/dimension is only ever defined in one place.
  *
- * MODEL CHOICE (documented in docs/platform-setup.md Section 6):
- * OpenRouter (already used for chat completions in this project) does
- * not expose a free embeddings endpoint — it only routes LLM chat
- * completions. So this uses Option B from Prompt 02 Section 3: the
- * Hugging Face Inference API's free tier, calling the open-weight
- * `sentence-transformers/all-MiniLM-L6-v2` model (384-dim output).
- *
- * Requires HF_API_KEY (a free Hugging Face access token) in the
- * environment. See docs/platform-setup.md for how to generate one.
+ * MODEL CHOICE: runs fully locally via @xenova/transformers (no
+ * external API, no API key, no network dependency at request time).
+ * Uses the same all-MiniLM-L6-v2 model (384-dim output) — the model
+ * files (~90MB) are downloaded once and cached on disk on first run,
+ * then reused for every subsequent call.
  */
 
-export const EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2";
+import { pipeline, type FeatureExtractionPipeline } from "@xenova/transformers";
+
+export const EMBEDDING_MODEL = "Xenova/all-MiniLM-L6-v2";
 export const EMBEDDING_DIMENSION = 384;
 
-const HF_API_URL = `https://api-inference.huggingface.co/models/${EMBEDDING_MODEL}`;
+// Cache the pipeline across calls within the same server process —
+// loading the model on every request would be slow and wasteful.
+let extractorPromise: Promise<FeatureExtractionPipeline> | null = null;
 
-/**
- * The feature-extraction pipeline for sentence-transformers models can
- * return either an already-pooled sentence vector (number[]) or raw
- * per-token vectors (number[][]), depending on how the model's pipeline
- * tag is registered. Mean-pool defensively so both shapes work.
- */
-function meanPool(tokenVectors: number[][]): number[] {
-  const dim = tokenVectors[0]?.length ?? 0;
-  const sums = new Array(dim).fill(0);
-  for (const vec of tokenVectors) {
-    for (let i = 0; i < dim; i++) sums[i] += vec[i];
+function getExtractor(): Promise<FeatureExtractionPipeline> {
+  if (!extractorPromise) {
+    extractorPromise = pipeline(
+      "feature-extraction",
+      EMBEDDING_MODEL,
+    ) as Promise<FeatureExtractionPipeline>;
   }
-  return sums.map((s) => s / tokenVectors.length);
+  return extractorPromise;
 }
 
 export async function embedText(text: string): Promise<number[]> {
-  const apiKey = process.env.HF_API_KEY;
-  if (!apiKey) {
-    throw new Error(
-      "HF_API_KEY is not set. Generate a free access token at https://huggingface.co/settings/tokens and add it to your environment.",
-    );
-  }
-
   const trimmed = text.trim();
   if (!trimmed) {
     throw new Error("embedText() called with empty text.");
   }
 
-  const res = await fetch(HF_API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      inputs: trimmed,
-      options: { wait_for_model: true },
-    }),
+  const extractor = await getExtractor();
+
+  // mean pooling + normalization gives a single 384-dim sentence
+  // vector, matching how sentence-transformers models are meant to
+  // be used for semantic search.
+  const output = await extractor(trimmed, {
+    pooling: "mean",
+    normalize: true,
   });
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(
-      `Hugging Face embeddings request failed (${res.status}): ${body || res.statusText}`,
-    );
-  }
-
-  const data = (await res.json()) as unknown;
-
-  let vector: number[];
-  if (Array.isArray(data) && Array.isArray(data[0])) {
-    vector = meanPool(data as number[][]);
-  } else if (Array.isArray(data)) {
-    vector = data as number[];
-  } else {
-    throw new Error("Unexpected response shape from Hugging Face embeddings API.");
-  }
+  const vector: number[] = Array.from(output.data as Float32Array);
 
   // Do NOT silently truncate/pad a mismatched vector — that would
   // corrupt vector search results without any visible symptom until

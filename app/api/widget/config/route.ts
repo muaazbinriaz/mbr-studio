@@ -3,14 +3,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
-/**
- * GET /api/widget/config?client=<public_key>
- *
- * Public, unauthenticated — called directly from chatbot.js on
- * whatever third-party site it's embedded on. Returns ONLY
- * non-sensitive branding data. Never return anything else here
- * (no internal ids beyond what's needed, no tokens, no raw_content).
- */
 export async function GET(req: NextRequest) {
   const origin = req.headers.get("origin");
   const publicKey = req.nextUrl.searchParams.get("client");
@@ -28,18 +20,43 @@ export async function GET(req: NextRequest) {
     .maybeSingle();
 
   if (!embedKey || embedKey.revoked_at) {
-    return jsonResponse({ error: "Invalid or revoked client key." }, 404, origin);
+    return jsonResponse(
+      { error: "Invalid or revoked client key." },
+      404,
+      origin,
+    );
   }
 
   const { data: org } = await supabase
     .from("organizations")
-    .select("name, slug, primary_color, accent_color, logo_url, welcome_message, widget_position")
+    .select(
+      "name, slug, primary_color, accent_color, logo_url, welcome_message, widget_position",
+    )
     .eq("id", embedKey.organization_id)
     .maybeSingle();
 
   if (!org) {
     return jsonResponse({ error: "Organization not found." }, 404, origin);
   }
+
+  const { data: guardrails } = await supabase
+    .from("agent_guardrails")
+    .select("capture_leads, lead_capture_settings")
+    .eq("agent_id", embedKey.agent_id)
+    .maybeSingle();
+
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("greeting_chips")
+    .eq("id", embedKey.agent_id)
+    .maybeSingle();
+
+  const leadSettings = (guardrails?.lead_capture_settings ?? {}) as {
+    ask_name?: boolean;
+    ask_email?: boolean;
+    ask_phone?: boolean;
+    ask_message?: boolean;
+  };
 
   return jsonResponse(
     {
@@ -50,6 +67,14 @@ export async function GET(req: NextRequest) {
       logoUrl: org.logo_url,
       welcomeMessage: org.welcome_message,
       position: org.widget_position,
+      greetingChips: agent?.greeting_chips ?? [],
+      leadCapture: {
+        enabled: guardrails?.capture_leads ?? true,
+        askName: leadSettings.ask_name ?? true,
+        askEmail: leadSettings.ask_email ?? true,
+        askPhone: leadSettings.ask_phone ?? false,
+        askMessage: leadSettings.ask_message ?? false,
+      },
     },
     200,
     origin,

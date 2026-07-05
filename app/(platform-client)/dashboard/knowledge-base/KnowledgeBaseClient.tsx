@@ -1,7 +1,14 @@
 "use client";
 
 import { useRef, useState, useTransition, type FormEvent } from "react";
-import { Loader2, Plus, Trash2, RotateCw, Upload, Link as LinkIcon } from "lucide-react";
+import {
+  Loader2,
+  Plus,
+  Trash2,
+  RotateCw,
+  Upload,
+  Link as LinkIcon,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +25,7 @@ type DocumentRow = {
   source_type: string;
   created_at: string;
   error_message?: string | null;
+  raw_content?: string | null;
 };
 
 const STATUS_VARIANT: Record<string, "success" | "warning" | "outline"> = {
@@ -36,11 +44,16 @@ A: Yes, free delivery within 5km, small fee beyond that.
 
 Write in whatever format makes sense — FAQs, a plain description of your business, policies, pricing. The AI only ever answers from what you put here.`;
 
-export function KnowledgeBaseClient({ documents }: { documents: DocumentRow[] }) {
+export function KnowledgeBaseClient({
+  documents,
+}: {
+  documents: DocumentRow[];
+}) {
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const handleAdd = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -82,7 +95,10 @@ export function KnowledgeBaseClient({ documents }: { documents: DocumentRow[] })
         </h2>
 
         <div className="mt-4 flex flex-col gap-1.5">
-          <label htmlFor="title" className="font-body text-sm font-medium text-foreground">
+          <label
+            htmlFor="title"
+            className="font-body text-sm font-medium text-foreground"
+          >
             Title
           </label>
           <input
@@ -138,7 +154,11 @@ export function KnowledgeBaseClient({ documents }: { documents: DocumentRow[] })
         )}
 
         <Button type="submit" disabled={isPending} className="mt-5">
-          {isPending ? <Loader2 className="animate-spin" /> : <Plus className="h-4 w-4" />}
+          {isPending ? (
+            <Loader2 className="animate-spin" />
+          ) : (
+            <Plus className="h-4 w-4" />
+          )}
           Add to knowledge base
         </Button>
       </form>
@@ -158,47 +178,65 @@ export function KnowledgeBaseClient({ documents }: { documents: DocumentRow[] })
           <div className="flex flex-col divide-y divide-border rounded-2xl border border-border bg-card">
             {documents.map((doc) => {
               const isRowPending = isPending && pendingId === doc.id;
+              const isExpanded = expandedId === doc.id;
               return (
-                <div
-                  key={doc.id}
-                  className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate font-body text-sm font-medium text-foreground">
-                        {doc.title}
-                      </p>
-                      <Badge
-                        variant={STATUS_VARIANT[doc.status] ?? "outline"}
-                        className="text-xs capitalize"
-                      >
-                        {doc.status}
-                      </Badge>
+                <div key={doc.id}>
+                  <div
+                    onClick={() => setExpandedId(isExpanded ? null : doc.id)}
+                    className="flex cursor-pointer flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate font-body text-sm font-medium text-foreground">
+                          {doc.title}
+                        </p>
+                        <Badge
+                          variant={STATUS_VARIANT[doc.status] ?? "outline"}
+                          className="text-xs capitalize"
+                        >
+                          {doc.status}
+                        </Badge>
+                      </div>
+                      {doc.status === "error" && doc.error_message && (
+                        <p className="mt-1 font-body text-xs text-error">
+                          {doc.error_message}
+                        </p>
+                      )}
                     </div>
-                    {doc.status === "error" && doc.error_message && (
-                      <p className="mt-1 font-body text-xs text-error">{doc.error_message}</p>
-                    )}
+                    <div className="flex flex-none gap-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleReindex(doc.id);
+                        }}
+                        disabled={isRowPending}
+                        className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-body text-xs text-foreground transition-colors hover:bg-background disabled:opacity-50"
+                      >
+                        <RotateCw className="h-3.5 w-3.5" />
+                        Re-index
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(doc.id);
+                        }}
+                        disabled={isRowPending}
+                        className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-body text-xs text-error transition-colors hover:bg-error/10 disabled:opacity-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex flex-none gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleReindex(doc.id)}
-                      disabled={isRowPending}
-                      className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-body text-xs text-foreground transition-colors hover:bg-background disabled:opacity-50"
-                    >
-                      <RotateCw className="h-3.5 w-3.5" />
-                      Re-index
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(doc.id)}
-                      disabled={isRowPending}
-                      className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-body text-xs text-error transition-colors hover:bg-error/10 disabled:opacity-50"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Delete
-                    </button>
-                  </div>
+                  {isExpanded && (
+                    <div className="border-t border-border bg-background px-4 py-3">
+                      <p className="whitespace-pre-wrap font-body text-xs leading-relaxed text-secondary-text">
+                        {doc.raw_content || "No content available."}
+                      </p>
+                    </div>
+                  )}
                 </div>
               );
             })}

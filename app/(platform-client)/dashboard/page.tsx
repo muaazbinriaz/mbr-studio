@@ -1,8 +1,10 @@
-import { Building2 } from "lucide-react";
+import { Building2, MessageSquare, Users, CheckCircle2 } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
 import { StatCard } from "@/components/platform/StatCard";
 import { Badge } from "@/components/ui/badge";
+import { AnalyticsChart } from "@/components/platform/AnalyticsChart";
+import { getOrgAnalyticsSummary } from "@/lib/analytics/queries";
 
 export default async function ClientOverviewPage() {
   const supabase = await createClient();
@@ -12,10 +14,15 @@ export default async function ClientOverviewPage() {
 
   const { data: memberships } = await supabase
     .from("organization_members")
-    .select("role, organizations(name, status)")
+    .select("organization_id, role, organizations(name, status)")
     .eq("user_id", user?.id ?? "");
 
   const orgCount = memberships?.length ?? 0;
+  const primaryOrgId = memberships?.[0]?.organization_id as string | undefined;
+
+  const analytics = primaryOrgId
+    ? await getOrgAnalyticsSummary(supabase, primaryOrgId, 30)
+    : null;
 
   return (
     <div>
@@ -23,8 +30,43 @@ export default async function ClientOverviewPage() {
         Overview
       </h1>
       <p className="mt-2 font-body text-sm text-secondary-text">
-        Conversation volume, leads, and AI resolution rate will show up here.
+        Real-time stats from your AI agent&apos;s conversations.
       </p>
+
+      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          icon={MessageSquare}
+          label="Conversations (30d)"
+          value={analytics?.totalConversations ?? 0}
+          accent="primary"
+        />
+        <StatCard
+          icon={MessageSquare}
+          label="Messages (30d)"
+          value={analytics?.totalMessages ?? 0}
+          accent="accent"
+        />
+        <StatCard
+          icon={CheckCircle2}
+          label="Resolved by AI"
+          value={
+            analytics ? `${Math.round(analytics.resolutionRate * 100)}%` : "0%"
+          }
+          accent="primary"
+        />
+        <StatCard
+          icon={Users}
+          label="Unique visitors (30d)"
+          value={analytics?.uniqueVisitors ?? 0}
+          accent="accent"
+        />
+      </div>
+
+      {analytics && (
+        <div className="mt-6">
+          <AnalyticsChart data={analytics.daily} />
+        </div>
+      )}
 
       <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard

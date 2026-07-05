@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Radio } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -17,6 +18,9 @@ import {
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
+  ShieldCheck,
+  Sparkles,
+  Users,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -48,13 +52,24 @@ const NAV_ITEMS_BY_VARIANT: Record<
     { label: "Organizations", href: "/admin/organizations", icon: Building2 },
     { label: "Settings", href: "/admin/settings", icon: Settings },
   ],
+
   client: [
+    { label: "Get Started", href: "/dashboard/onboarding", icon: Sparkles },
     { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
+
     {
       label: "Knowledge Base",
       href: "/dashboard/knowledge-base",
       icon: BookOpen,
     },
+    {
+      label: "Guardrails",
+      href: "/dashboard/agent/guardrails",
+      icon: ShieldCheck,
+    },
+    { label: "Templates", href: "/dashboard/agent/templates", icon: Sparkles },
+    { label: "Leads", href: "/dashboard/leads", icon: Users },
+    { label: "Channels", href: "/dashboard/channels", icon: Radio },
     {
       label: "Conversations",
       href: "/dashboard/conversations",
