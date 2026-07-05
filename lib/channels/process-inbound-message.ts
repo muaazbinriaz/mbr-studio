@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { triggerWebhookDispatch } from "@/lib/webhooks/trigger";
 import { embedText } from "@/lib/knowledge-base/embed";
 import {
   buildSystemPrompt,
@@ -78,6 +79,7 @@ export async function processInboundMessage(
       event_type: "conversation.started",
       payload: { conversation_id: conversationId, channel: msg.channel },
     });
+    triggerWebhookDispatch();
   }
   if (!conversationId) {
     throw new Error(

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-
+import { triggerWebhookDispatch } from "@/lib/webhooks/trigger";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
     event_type: "lead.captured",
     payload: { name: name || null, email: email || null, phone: phone || null },
   });
+  triggerWebhookDispatch();
 
   return NextResponse.json({ success: true }, { headers: cors() });
 }

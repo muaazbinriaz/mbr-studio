@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { decryptToken } from "@/lib/channels/encryption";
+
+import { triggerWebhookDispatch } from "@/lib/webhooks/trigger";
 import {
   sendWhatsAppMessage,
   sendMessengerMessage,
@@ -112,7 +114,7 @@ export async function resolveConversation(
     event_type: "conversation.resolved",
     payload: { conversation_id: conversationId },
   });
-
+  triggerWebhookDispatch();
   revalidatePath("/dashboard/inbox");
   return { error: null };
 }

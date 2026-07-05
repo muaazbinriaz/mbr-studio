@@ -3,6 +3,7 @@ import { verifyMetaSignature } from "@/lib/channels/verify-signature";
 import { parseInboundPayload } from "@/lib/channels/parse-inbound";
 import { resolveChannelConnection } from "@/lib/channels/resolve-connection";
 import { processInboundMessage } from "@/lib/channels/process-inbound-message";
+import { triggerWebhookDispatch } from "@/lib/channels/../webhooks/trigger";
 import { after } from "next/server";
 import {
   sendWhatsAppMessage,
@@ -127,6 +128,7 @@ async function handleMessagesAsync(messages: NormalizedInboundMessage[]) {
             thread_id: msg.externalThreadId,
           },
         });
+        triggerWebhookDispatch();
       } else {
         console.error(
           `[channels/webhook] Failed to send reply on ${msg.channel} to ${msg.externalThreadId} after retries.`,
