@@ -41,7 +41,7 @@ export default async function AdminBillingPage() {
       </h1>
       <p className="mt-2 font-body text-sm text-secondary-text">
         Review and confirm manual payment claims — approving one immediately
-        activates the client's plan.
+        activates the client&apos;s plan.
       </p>
       <div className="mt-8">
         <BillingRequestsClient requests={rows} />

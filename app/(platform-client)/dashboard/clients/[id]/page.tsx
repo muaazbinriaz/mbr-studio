@@ -92,9 +92,9 @@ export default async function ClientDetailPage({
       <p className="mt-6 font-body text-xs text-secondary-text">
         Note: full knowledge-base editing, guardrails, and the live inbox for
         this client aren&apos;t wired into this view yet — those pages currently
-        resolve "your org" from your own membership rather than an org-id param.
-        That&apos;s a follow-up routing change, not a data/RLS change; the
-        security model here already fully supports it.
+        resolve &quot;your org&quot; from your own membership rather than an
+        org-id param. That&apos;s a follow-up routing change, not a data/RLS
+        change; the security model here already fully supports it.
       </p>
     </div>
   );

@@ -149,7 +149,7 @@ export function BillingClient({
           </div>
           {usageRatio >= 1 && (
             <p className="mt-2 font-body text-xs text-error">
-              You've hit your monthly limit — upgrade to keep your chatbot
+              You&apos;ve hit your monthly limit — upgrade to keep your chatbot
               responding.
             </p>
           )}

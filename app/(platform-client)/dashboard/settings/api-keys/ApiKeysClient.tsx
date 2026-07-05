@@ -58,7 +58,7 @@ export function ApiKeysClient({ keys }: { keys: ApiKeyRow[] }) {
           <div className="mb-2 flex items-center gap-2 text-warning">
             <AlertTriangle className="h-4 w-4" />
             <p className="font-body text-sm font-semibold">
-              Copy this key now — you won't see it again.
+              Copy this key now — you won&apos;t see it again.
             </p>
           </div>
           <div className="flex items-center justify-between gap-2 rounded-lg bg-background px-3 py-2.5">

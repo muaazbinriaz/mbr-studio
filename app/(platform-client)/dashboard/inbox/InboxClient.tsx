@@ -110,9 +110,7 @@ export function InboxClient({
 
   // ---- Realtime subscription — scoped to this organization only. -------
   useEffect(() => {
-    let channel: RealtimeChannel;
-
-    channel = supabase
+    const channel = supabase
       .channel(`inbox-${organizationId}`)
       .on(
         "postgres_changes",

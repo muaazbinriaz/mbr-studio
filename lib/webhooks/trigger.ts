@@ -1,16 +1,16 @@
+import { after } from "next/server";
 import { dispatchPendingWebhooks } from "./dispatch";
 
 /**
- * Fire-and-forget trigger — call this right after inserting a row into
- * webhook_events. Runs the dispatcher immediately in the background so
- * most webhooks deliver in real time, instead of waiting for the daily
- * safety-net cron (see vercel.json + app/api/internal/dispatch-webhooks).
- *
- * Never awaited by callers — a slow/failed dispatch attempt here must
- * never block or fail the request that triggered it.
+ * Call this right after inserting a row into webhook_events.
+ * Uses Next.js's after() so the dispatch actually completes even
+ * after the response has been sent — plain fire-and-forget promises
+ * can get killed mid-flight when the serverless function freezes.
  */
 export function triggerWebhookDispatch(): void {
-  dispatchPendingWebhooks().catch((err) => {
-    console.error("[webhooks] background dispatch trigger failed:", err);
+  after(() => {
+    dispatchPendingWebhooks().catch((err) => {
+      console.error("[webhooks] background dispatch trigger failed:", err);
+    });
   });
 }
