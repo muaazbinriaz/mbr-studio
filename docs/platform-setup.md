@@ -358,3 +358,16 @@ if (!isChannelAllowedForPlan(org?.plan ?? "starter", "whatsapp")) {
 - No automated renewal reminders — `subscriptions.current_period_end` is set on approval but nothing currently checks it. Add a cron job later if you want auto-expiry/renewal nudges.
 - `maxAgents` gating isn't wired in — the current codebase always creates exactly one agent per organization at signup/client-creation time, so there's no "add another agent to the same org" flow yet to gate.
 - This flow and a future Stripe flow (Prompt 08) can coexist: Stripe's webhook would just be another writer to the same three `organizations` columns, for clients who _can_ pay via card.
+
+## Realtime security model (permanent rule)
+
+- Anonymous/public visitors (widget) → **only** Supabase Realtime **Broadcast**, on topic `conversation:${conversationId}`. Never grant `anon` a `postgres_changes` subscription or direct table SELECT policy on `conversations`/`messages` — RLS `using` clauses filter rows, not queries, so any such policy leaks the whole table.
+- Authenticated staff inbox → existing `postgres_changes`, scoped by `is_org_accessible()` RLS. This is fine and unaffected.
+- Any future change to Realtime code must re-run the cross-session leak test: two different orgs' widgets open in two browsers, confirm org A's human reply never reaches org B's browser, and confirm `supabase.from('messages').select('*')` from an anon-key client returns zero rows.
+
+## Knowledge Base — URL scraping & PDF upload (Prompt 11)
+
+- **PDF text extraction:** `unpdf` — pure WASM, wraps pdf.js's core, no native binary. Chosen specifically because `@xenova/transformers` previously broke in production on Vercel's serverless runtime due to its native dependency; `unpdf` has no such requirement.
+- **Storage bucket:** `knowledge-base-pdfs` (private). Path convention `<organization_id>/<timestamp>-<filename>.pdf`. RLS via `storage.objects` policies reusing `is_org_accessible()` on the first path segment — see migration `0017_kb_scraping_pdf.sql`.
+- **URL scraping:** plain `fetch` + `cheerio`, no headless browser. Respects `robots.txt`, identifies as `MBRStudioBot/1.0`, tries `/sitemap.xml` first before link-crawling. Known limitation: heavy client-side-rendered (SPA) sites won't scrape meaningfully since there's no JS execution — documented, not silently failing (partial/empty content still shows the normal ingestion pipeline's status).
+- Scanned/image-only PDFs are detected (extracted text too short relative to page count) and marked `status: 'error'` with a clear message — OCR is out of scope by design.

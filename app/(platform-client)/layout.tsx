@@ -14,10 +14,14 @@ export default async function ClientDashboardLayout({
 
   const { data: membership } = await supabase
     .from("organization_members")
-    .select("organization_id")
+    .select("organization_id, organizations(is_reseller)")
     .eq("user_id", user?.id ?? "")
     .limit(1)
     .maybeSingle();
+
+  const org = membership?.organizations as unknown as {
+    is_reseller: boolean;
+  } | null;
 
   const unreadCount = membership
     ? await getUnreadInboxCount(supabase, membership.organization_id)
@@ -28,6 +32,7 @@ export default async function ClientDashboardLayout({
       variant="client"
       userEmail={user?.email}
       navBadges={{ "/dashboard/inbox": unreadCount }}
+      isReseller={!!org?.is_reseller}
     >
       {children}
     </PlatformShell>

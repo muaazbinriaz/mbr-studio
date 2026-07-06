@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptToken } from "@/lib/channels/encryption";
 
 import { triggerWebhookDispatch } from "@/lib/webhooks/trigger";
@@ -55,6 +56,14 @@ export async function takeoverConversation(
     };
   }
 
+  await createAdminClient()
+    .channel(`conversation:${conversationId}`)
+    .send({
+      type: "broadcast",
+      event: "status_changed",
+      payload: { status: "human_handling" },
+    });
+
   revalidatePath("/dashboard/inbox");
   return { error: null };
 }
@@ -80,6 +89,14 @@ export async function handBackToAI(
   if (!data) {
     return { error: "You're no longer assigned to this conversation." };
   }
+
+  await createAdminClient()
+    .channel(`conversation:${conversationId}`)
+    .send({
+      type: "broadcast",
+      event: "status_changed",
+      payload: { status: "ai_handling" },
+    });
 
   revalidatePath("/dashboard/inbox");
   return { error: null };
@@ -173,8 +190,15 @@ export async function sendHumanReply(
     .update({ last_message_at: new Date().toISOString() })
     .eq("id", conversationId);
 
-  // Website: nothing further to do — Realtime delivers it.
+  // Website: broadcast it — the widget listens on this topic directly.
   if (conversation.channel === "website") {
+    await createAdminClient()
+      .channel(`conversation:${conversationId}`)
+      .send({
+        type: "broadcast",
+        event: "human_message",
+        payload: { content: trimmed, role: "human_agent" },
+      });
     revalidatePath("/dashboard/inbox");
     return { error: null };
   }
