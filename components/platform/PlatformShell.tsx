@@ -88,6 +88,11 @@ const NAV_GROUPS_BY_VARIANT: Record<
       type: "dropdown",
       label: "Account",
       items: [
+        {
+          label: "Setup Wizard",
+          href: "/dashboard/onboarding",
+          icon: Sparkles,
+        },
         { label: "Settings", href: "/dashboard/settings", icon: Settings },
         {
           label: "Billing",

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { X, Send, Sparkles, AlertTriangle } from "lucide-react";
+import { X, Send, Sparkles, AlertTriangle, MessageCircle } from "lucide-react";
 
 import { useChatPanel } from "@/components/chatbot/useChat";
 import { useAIChat } from "@/hooks/useChat";
@@ -13,7 +13,7 @@ import { OPENING_OPTIONS } from "./chatbot";
 import { buildWhatsAppLink } from "@/config/contact";
 
 export function ChatWindow() {
-  const { isOpen, close } = useChatPanel();
+  const { isOpen, open, close } = useChatPanel();
   const { messages, sendMessage, status, error, regenerate } = useAIChat();
 
   const panelRef = useRef<HTMLDivElement>(null);
@@ -29,7 +29,20 @@ export function ChatWindow() {
     });
   }, [messages, status]);
 
-  if (!isOpen) return null;
+  // Panel band hai -> persistent floating launcher bubble render karo.
+  // Yehi missing tha poore project mein.
+  if (!isOpen) {
+    return (
+      <button
+        type="button"
+        onClick={open}
+        aria-label="Open chat with MBR Studio"
+        className="fixed bottom-4 right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl shadow-black/30 transition-transform duration-200 hover:scale-105 sm:bottom-6 sm:right-6"
+      >
+        <MessageCircle className="h-6 w-6" strokeWidth={1.75} />
+      </button>
+    );
+  }
 
   const lastMessage = messages[messages.length - 1];
   const lastMessageHasVisibleContent =
@@ -66,7 +79,6 @@ export function ChatWindow() {
       aria-label="MBR Studio AI Assistant"
       className="fixed bottom-24 right-4 z-50 flex h-[min(680px,calc(100vh-120px))] w-[min(420px,calc(100vw-32px))] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl shadow-black/40 sm:bottom-28 sm:right-6 animate-in fade-in slide-in-from-bottom-4 duration-200"
     >
-      {/* Header */}
       <div className="flex items-center justify-between border-b border-border bg-background px-4 py-3.5">
         <div className="flex items-center gap-2.5">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/15 text-primary">
@@ -91,7 +103,6 @@ export function ChatWindow() {
         </button>
       </div>
 
-      {/* Messages */}
       <div
         ref={scrollRef}
         aria-live="polite"

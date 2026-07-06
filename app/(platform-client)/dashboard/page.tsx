@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { PlanLimitBanner } from "@/components/platform/PlanLimitBanner";
 import { Building2, MessageSquare, Users, CheckCircle2 } from "lucide-react";
 
@@ -30,6 +31,22 @@ export default async function ClientOverviewPage() {
   const primaryOrgId = memberships?.[0]?.organization_id as string | undefined;
   const primaryOrg = memberships?.[0]
     ?.organizations as unknown as Organization | null;
+
+  // Naye users ko wizard tak bhejo jab tak setup complete na ho.
+  // markOnboardingComplete() wizard ke last step pe ye flag true karta hai.
+  if (primaryOrgId) {
+    const { data: activeAgent } = await supabase
+      .from("agents")
+      .select("setup_complete")
+      .eq("organization_id", primaryOrgId)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+
+    if (activeAgent && activeAgent.setup_complete === false) {
+      redirect("/dashboard/onboarding");
+    }
+  }
 
   const { count: messagesThisMonth } = primaryOrgId
     ? await supabase

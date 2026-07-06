@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, Copy, Loader2, ArrowRight, ArrowLeft } from "lucide-react";
 
 import type { AgentTemplate } from "@/lib/agents/templates";
 import { applyTemplate } from "@/app/(platform-client)/dashboard/agent/templates/actions";
 import { addKnowledgeBaseDocument } from "@/app/(platform-client)/dashboard/knowledge-base/actions";
-import { saveOrgBasics, saveBranding } from "./actions";
+import { saveOrgBasics, saveBranding, markOnboardingComplete } from "./actions";
 import { Button } from "@/components/ui/button";
 
 type OrgInfo = {
@@ -36,6 +37,7 @@ export function OnboardingWizard({
   publicKey: string | null;
   templates: AgentTemplate[];
 }) {
+  const router = useRouter();
   const [step, setStep] = useState(0);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -133,6 +135,19 @@ export function OnboardingWizard({
         return;
       }
       goNext();
+    });
+  };
+
+  const handleFinish = () => {
+    setError(null);
+    startTransition(async () => {
+      const result = await markOnboardingComplete();
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      router.push("/dashboard");
+      router.refresh();
     });
   };
 
@@ -251,8 +266,8 @@ export function OnboardingWizard({
                 className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2.5 font-body text-sm text-foreground placeholder:text-secondary-text/70 focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
               <p className="mt-2 font-body text-xs text-secondary-text">
-                PDF upload and URL scraping are coming soon — for now, paste
-                text directly.
+                You can add PDFs or scrape a website too — from the Knowledge
+                Base page later.
               </p>
             </div>
           )}
@@ -478,8 +493,9 @@ export function OnboardingWizard({
             <ArrowRight className="h-4 w-4" />
           </Button>
         ) : (
-          <Button asChild>
-            <a href="/dashboard">Go to dashboard</a>
+          <Button onClick={handleFinish} disabled={isPending}>
+            {isPending ? <Loader2 className="animate-spin" /> : null}
+            Go to dashboard
           </Button>
         )}
       </div>

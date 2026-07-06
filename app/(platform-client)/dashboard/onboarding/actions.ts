@@ -63,3 +63,25 @@ export async function saveBranding(formData: FormData) {
   revalidatePath("/dashboard/onboarding");
   return { error: null };
 }
+
+/**
+ * Wizard ke last step pe call hota hai. dashboard/page.tsx isi flag ko
+ * check karke naye user ko onboarding pe redirect karta hai jab tak
+ * ye true na ho jaye.
+ */
+export async function markOnboardingComplete() {
+  const organizationId = await getCurrentOrgId();
+  if (!organizationId) return { error: "No organization found." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("agents")
+    .update({ setup_complete: true })
+    .eq("organization_id", organizationId)
+    .eq("is_active", true);
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/dashboard");
+  return { error: null };
+}

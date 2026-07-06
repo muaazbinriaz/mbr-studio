@@ -29,10 +29,12 @@ export const metadata: Metadata = {
   },
 };
 
-// TODO: replace with the real public_key from the "MBR Studio Demo"
-// organization (Section 3 of the plan) once it's created — see
-// embed_keys.public_key in the admin/onboarding flow.
-const DEMO_WIDGET_PUBLIC_KEY = "REPLACE_WITH_REAL_DEMO_PUBLIC_KEY";
+/**
+ * .env.local mein NEXT_PUBLIC_DEMO_WIDGET_KEY set karo (neeche steps
+ * dekho) — jab tak set na ho, widget script load hi nahi hoga (silently
+ * broken dikhne ke bajaye).
+ */
+const DEMO_WIDGET_PUBLIC_KEY = process.env.NEXT_PUBLIC_DEMO_WIDGET_KEY || null;
 
 const HOW_IT_WORKS = [
   {
@@ -110,13 +112,13 @@ export default function AiAgentPage() {
         ])}
       />
 
-      {/* Real, live embeddable widget — scoped to this page only via
-          next/script, not the root layout. */}
-      <Script
-        src="/chatbot.js"
-        data-client={DEMO_WIDGET_PUBLIC_KEY}
-        strategy="lazyOnload"
-      />
+      {DEMO_WIDGET_PUBLIC_KEY && (
+        <Script
+          src="/chatbot.js"
+          data-client={DEMO_WIDGET_PUBLIC_KEY}
+          strategy="lazyOnload"
+        />
+      )}
 
       {/* Hero */}
       <section className="bg-background">
@@ -134,9 +136,24 @@ export default function AiAgentPage() {
             own demo agent. Open it and ask it anything about pricing, setup, or
             how it works.
           </p>
-          <p className="mt-8 font-body text-sm text-secondary-text">
-            Look for the chat bubble in the bottom-left corner of this page 👇
-          </p>
+
+          {DEMO_WIDGET_PUBLIC_KEY ? (
+            <p className="mt-8 font-body text-sm text-secondary-text">
+              Look for the chat bubble in the bottom-right corner of this page
+              👇
+            </p>
+          ) : (
+            <p className="mt-8 font-body text-sm text-secondary-text">
+              Want to try it live?{" "}
+              <Link
+                href="/contact"
+                className="text-primary underline underline-offset-2 hover:text-accent"
+              >
+                Book a free consultation
+              </Link>{" "}
+              and we&apos;ll walk you through a live demo.
+            </p>
+          )}
         </div>
       </section>
 

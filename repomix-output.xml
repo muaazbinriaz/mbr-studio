@@ -43,6 +43,7 @@ The content is organized as follows:
 .env.example
 .gitignore
 app/(marketing)/about/page.tsx
+app/(marketing)/ai-agent/page.tsx
 app/(marketing)/blog/[slug]/opengraph-image.tsx
 app/(marketing)/blog/[slug]/page.tsx
 app/(marketing)/blog/page.tsx
@@ -324,6 +325,301 @@ next-env.d.ts
 
 # dependencies
 /node_modules
+</file>
+
+<file path="app/(marketing)/ai-agent/page.tsx">
+import type { Metadata } from "next";
+import Link from "next/link";
+import Script from "next/script";
+import {
+  ArrowRight,
+  BarChart3,
+  Bot,
+  Check,
+  Inbox,
+  MessageCircle,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { breadcrumbSchema } from "@/lib/seo/schemas";
+import { siteConfig } from "@/config/site";
+import { PLANS } from "@/lib/billing/plans";
+import { formatCurrency } from "@/lib/formatters";
+
+export const metadata: Metadata = {
+  title: "AI Agent",
+  description:
+    "Try the exact AI agent MBR Studio builds for businesses — a live, working chatbot demo covering pricing, guardrails, lead capture, and setup.",
+  alternates: {
+    canonical: "/ai-agent",
+  },
+};
+
+// TODO: replace with the real public_key from the "MBR Studio Demo"
+// organization (Section 3 of the plan) once it's created — see
+// embed_keys.public_key in the admin/onboarding flow.
+const DEMO_WIDGET_PUBLIC_KEY = "REPLACE_WITH_REAL_DEMO_PUBLIC_KEY";
+
+const HOW_IT_WORKS = [
+  {
+    number: "01",
+    title: "Knowledge base",
+    description:
+      "Upload your docs, FAQs, or website content — the agent learns your business, not a generic script.",
+  },
+  {
+    number: "02",
+    title: "Guardrails",
+    description:
+      "Set rules for tone, topics to avoid, and when to hand off — so it only says what you'd approve.",
+  },
+  {
+    number: "03",
+    title: "Embed on your site",
+    description:
+      "One script tag. Works on any website, no developer required beyond pasting a line of code.",
+  },
+  {
+    number: "04",
+    title: "Conversations flow into your inbox",
+    description:
+      "Every chat lands in your dashboard — reply directly, or let the agent keep handling it.",
+  },
+] as const;
+
+const FEATURES = [
+  {
+    icon: ShieldCheck,
+    title: "Guardrails & safety rules",
+    description:
+      "Define what the agent can and can't say, and when it should stop and hand off to a human.",
+  },
+  {
+    icon: Sparkles,
+    title: "Lead capture",
+    description:
+      "Collects name, email, and intent mid-conversation — leads land in your dashboard automatically.",
+  },
+  {
+    icon: MessageCircle,
+    title: "Multi-channel",
+    description:
+      "Website live now, with WhatsApp, Instagram, and Messenger available depending on your plan.",
+  },
+  {
+    icon: Inbox,
+    title: "Human handoff & live inbox",
+    description:
+      "Jump into any conversation in real time when the agent needs a human, no context lost.",
+  },
+  {
+    icon: BarChart3,
+    title: "Analytics dashboard",
+    description:
+      "Track conversations, leads, and channel performance in one place.",
+  },
+  {
+    icon: Bot,
+    title: "Industry templates",
+    description:
+      "Start from a template tuned for your industry instead of a blank knowledge base.",
+  },
+] as const;
+
+export default function AiAgentPage() {
+  return (
+    <>
+      <JsonLd
+        data={breadcrumbSchema([
+          { name: "Home", url: siteConfig.url },
+          { name: "AI Agent", url: `${siteConfig.url}/ai-agent` },
+        ])}
+      />
+
+      {/* Real, live embeddable widget — scoped to this page only via
+          next/script, not the root layout. */}
+      <Script
+        src="/chatbot.js"
+        data-client={DEMO_WIDGET_PUBLIC_KEY}
+        strategy="lazyOnload"
+      />
+
+      {/* Hero */}
+      <section className="bg-background">
+        <div className="mx-auto max-w-4xl px-6 py-24 text-center md:px-10 md:py-32">
+          <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+            AI Agent Platform
+          </p>
+          <h1 className="font-heading text-[36px] font-bold leading-tight tracking-tight text-text sm:text-[48px] md:text-[56px]">
+            Give your business a 24/7 AI agent — try the exact one your
+            customers would talk to, right now.
+          </h1>
+          <p className="mx-auto mt-5 max-w-2xl font-body text-base text-secondary-text sm:text-lg">
+            This isn&apos;t a mockup. The chat bubble on this page is the same
+            widget technology we ship to real clients — configured here as our
+            own demo agent. Open it and ask it anything about pricing, setup, or
+            how it works.
+          </p>
+          <p className="mt-8 font-body text-sm text-secondary-text">
+            Look for the chat bubble in the bottom-left corner of this page 👇
+          </p>
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section className="border-t border-border bg-secondary-background">
+        <div className="mx-auto max-w-6xl px-6 py-24 md:px-10 md:py-32">
+          <div className="mb-14 max-w-2xl">
+            <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+              How it works
+            </p>
+            <h2 className="font-heading text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[40px]">
+              From knowledge base to live conversations, in four steps.
+            </h2>
+          </div>
+          <ol className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
+            {HOW_IT_WORKS.map((step) => (
+              <li key={step.number}>
+                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card font-heading text-xs font-semibold text-text">
+                  {step.number}
+                </div>
+                <h3 className="mb-2 font-heading text-lg font-semibold text-text">
+                  {step.title}
+                </h3>
+                <p className="font-body text-sm leading-relaxed text-secondary-text">
+                  {step.description}
+                </p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      {/* Features grid */}
+      <section className="bg-background">
+        <div className="mx-auto max-w-6xl px-6 py-24 md:px-10 md:py-32">
+          <div className="mb-14 max-w-2xl">
+            <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+              What&apos;s included
+            </p>
+            <h2 className="font-heading text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[40px]">
+              Everything a real client&apos;s agent ships with.
+            </h2>
+          </div>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {FEATURES.map((feature) => {
+              const Icon = feature.icon;
+              return (
+                <Card key={feature.title} className="p-8">
+                  <div className="mb-6 flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Icon className="h-5 w-5" strokeWidth={1.75} />
+                  </div>
+                  <h3 className="mb-2 font-heading text-lg font-semibold text-text">
+                    {feature.title}
+                  </h3>
+                  <p className="font-body text-sm leading-relaxed text-secondary-text">
+                    {feature.description}
+                  </p>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing */}
+      <section className="border-t border-border bg-secondary-background">
+        <div className="mx-auto max-w-6xl px-6 py-24 md:px-10 md:py-32">
+          <div className="mb-14 max-w-2xl">
+            <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+              Pricing
+            </p>
+            <h2 className="font-heading text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[40px]">
+              Simple, transparent plans as your business grows.
+            </h2>
+          </div>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+            {(Object.keys(PLANS) as (keyof typeof PLANS)[]).map((planId) => {
+              const plan = PLANS[planId];
+              return (
+                <Card
+                  key={planId}
+                  className={`p-8 ${planId === "growth" ? "border-primary" : ""}`}
+                >
+                  <h3 className="mb-1 font-heading text-lg font-semibold text-text">
+                    {plan.label}
+                  </h3>
+                  <p className="mb-6 font-heading text-3xl font-bold text-text">
+                    {formatCurrency(plan.priceMonthlyPKR, "PKR")}
+                    <span className="ml-1 font-body text-sm font-normal text-secondary-text">
+                      /month
+                    </span>
+                  </p>
+                  <ul className="space-y-3">
+                    <li className="flex items-start gap-3">
+                      <Check
+                        className="mt-0.5 h-4 w-4 flex-none text-accent"
+                        strokeWidth={2.5}
+                      />
+                      <span className="font-body text-sm text-text">
+                        {plan.monthlyMessageLimit.toLocaleString()} messages /
+                        month
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <Check
+                        className="mt-0.5 h-4 w-4 flex-none text-accent"
+                        strokeWidth={2.5}
+                      />
+                      <span className="font-body text-sm text-text">
+                        Up to {plan.maxAgents} agent
+                        {plan.maxAgents > 1 ? "s" : ""}
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <Check
+                        className="mt-0.5 h-4 w-4 flex-none text-accent"
+                        strokeWidth={2.5}
+                      />
+                      <span className="font-body text-sm text-text capitalize">
+                        {plan.channels.join(", ")}
+                      </span>
+                    </li>
+                  </ul>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* Closing CTA */}
+      <section className="border-t border-border bg-background">
+        <div className="mx-auto max-w-3xl px-6 py-24 text-center md:px-10 md:py-32">
+          <h2 className="font-heading text-[28px] font-bold leading-tight tracking-tight text-text sm:text-[36px]">
+            Want this for your business?
+          </h2>
+          <p className="mx-auto mt-4 max-w-xl font-body text-base text-secondary-text">
+            Tell us about your business and we&apos;ll set up an agent trained
+            on your knowledge base, ready to embed on your site.
+          </p>
+          <div className="mt-8">
+            <Button asChild size="lg" className="rounded-lg px-7 py-6">
+              <Link href="/contact">
+                Book a Free Consultation
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}
 </file>
 
 <file path="app/(marketing)/blog/[slug]/opengraph-image.tsx">
@@ -994,285 +1290,6 @@ function PolicySection({
         {children}
       </div>
     </div>
-  );
-}
-</file>
-
-<file path="app/(marketing)/services/page.tsx">
-import { ChatLauncherButton } from "@/components/chatbot/ChatLauncherButton";
-import type { Metadata } from "next";
-import Link from "next/link";
-import {
-  Check,
-  icons as lucideIcons,
-  HelpCircle,
-  MessageCircle,
-} from "lucide-react";
-
-import { services } from "@/data/services";
-import type { Service } from "@/types";
-import { Button } from "@/components/ui/button";
-import { siteConfig } from "@/config/site";
-import { JsonLd } from "@/components/seo/JsonLd";
-import { serviceSchema } from "@/lib/seo/schemas";
-
-/**
- * Services Page — Prompt 13, SEO pass in Prompt 20.
- *
- * Blueprint ref: Part 1, Section 1 (Services list) + Section 4
- * (Information Architecture: Services page, "Explain offerings in
- * depth", primary CTA "Get a quote", SEO intent: service-specific
- * keywords).
- *
- * data/services.ts only carries { slug, title, description, icon } —
- * enough for the home page cards, not enough for a full page that
- * needs to explain "what it includes" and "who it's for" per service.
- * Rather than invent new fields on the shared Service type (which
- * would ripple into the home page cards too), the extra copy for this
- * page lives in SERVICE_DETAILS below, keyed by slug, and is merged
- * with the base data at render time. If you'd rather these fields
- * live in data/services.ts directly, say so and I'll move them.
- *
- * SEO PASS: title trimmed to just the topic — the root layout's title
- * template now appends "| MBR Studio — Websites & AI Automation", so
- * hardcoding the suffix here would have duplicated it (see layout.tsx
- * comment for the bug this fixes). Added canonical URL and a Service
- * JSON-LD block per service, per Blueprint Part 2 Section 13.
- */
-
-export const metadata: Metadata = {
-  title: "Services",
-  description:
-    "Digital product development, AI automation, and design services engineered to grow your business — from websites to full SaaS builds.",
-  alternates: {
-    canonical: "/services",
-  },
-};
-
-interface ServiceDetail {
-  includes: string[];
-  whoItsFor: string;
-  ctaLabel: string;
-}
-
-const SERVICE_DETAILS: Record<string, ServiceDetail> = {
-  "digital-product-development": {
-    includes: [
-      "Custom marketing sites and web apps",
-      "Responsive design across every device",
-      "CMS or headless content setup",
-      "Performance and Core Web Vitals optimization",
-      "Deployment and hosting on Vercel",
-    ],
-    whoItsFor:
-      "Businesses that need a fast, credible web presence built to convert — not a template site with your logo swapped in.",
-    ctaLabel: "Start a project",
-  },
-  "ai-business-automation": {
-    includes: [
-      "Custom chatbot trained on your business",
-      "Lead qualification and FAQ handling",
-      "Integration with your CRM or inbox",
-      "24/7 automated support coverage",
-    ],
-    whoItsFor:
-      "Teams getting repetitive inbound questions that pull focus and time away from higher-value work.",
-    ctaLabel: "Automate my inbox",
-  },
-  "whatsapp-automation": {
-    includes: [
-      "Automated booking and appointment flows",
-      "Order status and support replies",
-      "Broadcast and follow-up sequences",
-      "Smooth handoff to a human when needed",
-    ],
-    whoItsFor:
-      "Restaurants, clinics, salons, and local businesses whose customers already live on WhatsApp.",
-    ctaLabel: "Set up WhatsApp automation",
-  },
-  "landing-pages": {
-    includes: [
-      "Single-purpose, conversion-focused design",
-      "A/B-testable layout structure",
-      "Fast turnaround — days, not weeks",
-      "Built-in analytics and tracking setup",
-    ],
-    whoItsFor:
-      "Campaigns, product launches, and paid traffic that need a page built to convert, not a full site.",
-    ctaLabel: "Build a landing page",
-  },
-  "saas-development": {
-    includes: [
-      "Product discovery and technical scoping",
-      "Full-stack build from prototype to production",
-      "Authentication, billing, and dashboards",
-      "Scalable architecture from day one",
-    ],
-    whoItsFor:
-      "Founders turning an idea or working prototype into a real, production-ready product.",
-    ctaLabel: "Scope my build",
-  },
-  "ui-ux-design": {
-    includes: [
-      "User research and usability testing",
-      "Wireframes and high-fidelity prototypes",
-      "Design systems built for handoff",
-      "Accessibility built in from the start",
-    ],
-    whoItsFor:
-      "Teams that need interfaces people trust and can actually use, backed by research rather than guesswork.",
-    ctaLabel: "Start with design",
-  },
-};
-
-export default function ServicesPage() {
-  return (
-    <>
-      {/* One Service JSON-LD block per service, matching Blueprint
-          Part 2 Section 13 ("Service schema on the Services page"). */}
-      {services.map((service) => (
-        <JsonLd
-          key={service.slug}
-          data={serviceSchema(
-            service,
-            `${siteConfig.url}/services#${service.slug}`,
-          )}
-        />
-      ))}
-
-      {/* Page header */}
-      <section className="bg-background">
-        <div className="mx-auto max-w-4xl px-6 py-24 text-center md:px-10 md:py-32">
-          <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
-            Services
-          </p>
-          <h1 className="font-heading text-[36px] font-bold leading-tight tracking-tight text-text sm:text-[48px] md:text-[56px]">
-            Everything you need to build, automate, and grow.
-          </h1>
-          <p
-            className="mx-auto mt-5 max-w-2xl font-body text-base text-secondary-text
- sm:text-lg"
-          >
-            Every engagement is senior-led, built on a modern stack, and scoped
-            to your business — not sold off a fixed package.
-          </p>
-        </div>
-      </section>
-
-      {/* Service sections */}
-      {services.map((service, index) => (
-        <ServiceSection key={service.slug} service={service} index={index} />
-      ))}
-
-      {/* Closing CTA */}
-      <section className="border-t border-border bg-secondary-background">
-        <div className="mx-auto max-w-3xl px-6 py-24 text-center md:px-10 md:py-32">
-          <HelpCircle className="mx-auto mb-5 h-8 w-8 text-primary" />
-          <h2 className="font-heading text-[28px] font-bold leading-tight tracking-tight text-text sm:text-[36px]">
-            Not sure what you need?
-          </h2>
-          <p className="mx-auto mt-4 max-w-xl font-body text-base text-secondary-text">
-            Tell our AI assistant what you&apos;re trying to build and
-            we&apos;ll point you to the right service — or skip straight to a
-            real conversation with the team.
-          </p>
-          <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <Button asChild size="lg" className="rounded-lg px-7 py-6">
-              <ChatLauncherButton aria-describedby="chat-cta-hint">
-                <MessageCircle className="mr-2 h-4 w-4" />
-                Chat with our AI assistant
-              </ChatLauncherButton>
-            </Button>
-            <Button
-              asChild
-              variant="outline"
-              size="lg"
-              className="rounded-lg px-7 py-6"
-            >
-              <Link href="/contact">Contact us directly</Link>
-            </Button>
-          </div>
-          <span id="chat-cta-hint" className="sr-only">
-            Opens the AI assistant to help identify the right service for your
-            project
-          </span>
-        </div>
-      </section>
-    </>
-  );
-}
-
-function ServiceSection({
-  service,
-  index,
-}: {
-  service: Service;
-  index: number;
-}) {
-  const detail = SERVICE_DETAILS[service.slug];
-  const Icon =
-    lucideIcons[service.icon as keyof typeof lucideIcons] ?? HelpCircle;
-  const isEven = index % 2 === 0;
-
-  return (
-    <section
-      id={service.slug}
-      className={`border-t border-border ${
-        isEven ? "bg-background" : "bg-secondary-background"
-      }`}
-    >
-      <div className="mx-auto max-w-6xl px-6 py-20 md:px-10 md:py-24">
-        <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:gap-20">
-          {/* Left: identity + description + CTA */}
-          <div>
-            <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Icon className="h-6 w-6" strokeWidth={1.75} />
-            </div>
-            <h2 className="mb-4 font-heading text-2xl font-bold leading-tight tracking-tight text-text sm:text-3xl">
-              {service.title}
-            </h2>
-            <p className="mb-6 max-w-md font-body text-base leading-relaxed text-secondary-text">
-              {service.description}
-            </p>
-
-            {detail && (
-              <p className="mb-8 max-w-md rounded-lg border border-border bg-card/60 px-4 py-3 font-body text-sm leading-relaxed text-secondary-text">
-                <span className="font-semibold text-text">
-                  Who it&apos;s for:{" "}
-                </span>
-                {detail.whoItsFor}
-              </p>
-            )}
-
-            <Button asChild className="rounded-lg px-6">
-              <Link href="/contact">{detail?.ctaLabel ?? "Get a quote"}</Link>
-            </Button>
-          </div>
-
-          {/* Right: what's included */}
-          {detail && (
-            <div className="rounded-2xl border border-border bg-card p-8">
-              <p className="mb-5 font-body text-sm font-semibold uppercase tracking-wide text-secondary-text">
-                What&apos;s included
-              </p>
-              <ul className="space-y-4">
-                {detail.includes.map((item) => (
-                  <li key={item} className="flex items-start gap-3">
-                    <Check
-                      className="mt-0.5 h-4 w-4 flex-none text-accent"
-                      strokeWidth={2.5}
-                    />
-                    <span className="font-body text-sm leading-relaxed text-text">
-                      {item}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      </div>
-    </section>
   );
 }
 </file>
@@ -6529,153 +6546,6 @@ export function useFocusTrap(
       previouslyFocused?.focus();
     };
   }, [isActive, containerRef, onClose]);
-}
-</file>
-
-<file path="components/layout/Footer.tsx">
-import Link from "next/link";
-
-import { services } from "@/data/services";
-import { siteConfig } from "@/config/site";
-
-const sitemapLinks = [
-  { label: "Home", href: "/" },
-  { label: "About", href: "/about" },
-  { label: "Services", href: "/services" },
-  { label: "Portfolio", href: "/portfolio" },
-  { label: "Case Studies", href: "/case-studies" },
-  { label: "Blog", href: "/blog" },
-  { label: "Contact", href: "/contact" },
-] as const;
-
-const socialLinks = [
-  { label: "X", href: siteConfig.links.twitter },
-  { label: "LinkedIn", href: siteConfig.links.linkedin },
-  { label: "GitHub", href: siteConfig.links.github },
-] as const;
-
-const legalLinks = [
-  { label: "Privacy", href: "/privacy" },
-  { label: "Terms", href: "/terms" },
-] as const;
-
-const footerLinkClass =
-  "text-sm text-secondary-text transition-colors hover:text-foreground";
-
-export function Footer() {
-  return (
-    <footer className="border-t border-border">
-      <div className="mx-auto max-w-6xl px-6 py-16">
-        <div className="grid grid-cols-2 gap-x-8 gap-y-12 md:grid-cols-4 md:gap-x-6">
-          {/* Column 1 — Brand + socials */}
-          <div className="col-span-2 md:col-span-1">
-            <Link
-              href="/"
-              className="font-heading text-lg font-semibold tracking-tight"
-            >
-              {siteConfig.name}
-            </Link>
-            <p className="mt-3 max-w-[26ch] text-sm text-secondary-text">
-              {siteConfig.tagline}
-            </p>
-            <nav aria-label="Social" className="mt-6 flex gap-5">
-              {socialLinks.map((social) => (
-                <a
-                  key={social.label}
-                  href={social.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={footerLinkClass}
-                >
-                  {social.label}
-                </a>
-              ))}
-            </nav>
-          </div>
-
-          {/* Column 2 — Sitemap */}
-          <div>
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-secondary-text">
-              Sitemap
-            </h3>
-            <nav
-              aria-label="Sitemap"
-              className="mt-4 flex flex-col items-start gap-3"
-            >
-              {sitemapLinks.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={footerLinkClass}
-                >
-                  {link.label}
-                </Link>
-              ))}
-            </nav>
-          </div>
-
-          {/* Column 3 — Services */}
-          <div>
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-secondary-text">
-              Services
-            </h3>
-            <nav
-              aria-label="Services"
-              className="mt-4 flex flex-col items-start gap-3"
-            >
-              {services.map((service) => (
-                <Link
-                  key={service.slug}
-                  href={`/services#${service.slug}`}
-                  className={footerLinkClass}
-                >
-                  {service.title}
-                </Link>
-              ))}
-            </nav>
-          </div>
-
-          {/* Column 4 — Contact */}
-          <div>
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-secondary-text">
-              Contact
-            </h3>
-            <div className="mt-4 flex flex-col items-start gap-3">
-              <a
-                href={`mailto:${siteConfig.email}`}
-                className={footerLinkClass}
-              >
-                {siteConfig.email}
-              </a>
-              <Link href="/contact" className={footerLinkClass}>
-                Book a Consultation
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom bar — copyright + legal */}
-      <div className="border-t border-border">
-        <div className="mx-auto flex max-w-6xl flex-col-reverse items-center gap-4 px-6 py-6 text-xs text-secondary-text sm:flex-row sm:justify-between">
-          <p>
-            © {new Date().getFullYear()} {siteConfig.name}. All rights reserved.
-          </p>
-          <nav aria-label="Legal" className="flex gap-6">
-            {legalLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="transition-colors hover:text-foreground"
-              >
-                {link.label}
-              </Link>
-            ))}
-          </nav>
-        </div>
-      </div>
-    </footer>
-  );
 }
 </file>
 
@@ -14389,6 +14259,297 @@ export default function Loading() {
 }
 </file>
 
+<file path="app/(marketing)/services/page.tsx">
+import { ChatLauncherButton } from "@/components/chatbot/ChatLauncherButton";
+import type { Metadata } from "next";
+import Link from "next/link";
+import {
+  Check,
+  icons as lucideIcons,
+  HelpCircle,
+  MessageCircle,
+} from "lucide-react";
+
+import { services } from "@/data/services";
+import type { Service } from "@/types";
+import { Button } from "@/components/ui/button";
+import { siteConfig } from "@/config/site";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { serviceSchema } from "@/lib/seo/schemas";
+
+/**
+ * Services Page — Prompt 13, SEO pass in Prompt 20.
+ *
+ * Blueprint ref: Part 1, Section 1 (Services list) + Section 4
+ * (Information Architecture: Services page, "Explain offerings in
+ * depth", primary CTA "Get a quote", SEO intent: service-specific
+ * keywords).
+ *
+ * data/services.ts only carries { slug, title, description, icon } —
+ * enough for the home page cards, not enough for a full page that
+ * needs to explain "what it includes" and "who it's for" per service.
+ * Rather than invent new fields on the shared Service type (which
+ * would ripple into the home page cards too), the extra copy for this
+ * page lives in SERVICE_DETAILS below, keyed by slug, and is merged
+ * with the base data at render time. If you'd rather these fields
+ * live in data/services.ts directly, say so and I'll move them.
+ *
+ * SEO PASS: title trimmed to just the topic — the root layout's title
+ * template now appends "| MBR Studio — Websites & AI Automation", so
+ * hardcoding the suffix here would have duplicated it (see layout.tsx
+ * comment for the bug this fixes). Added canonical URL and a Service
+ * JSON-LD block per service, per Blueprint Part 2 Section 13.
+ */
+
+export const metadata: Metadata = {
+  title: "Services",
+  description:
+    "Digital product development, AI automation, and design services engineered to grow your business — from websites to full SaaS builds.",
+  alternates: {
+    canonical: "/services",
+  },
+};
+
+interface ServiceDetail {
+  includes: string[];
+  whoItsFor: string;
+  ctaLabel: string;
+  demoHref?: string;
+}
+
+const SERVICE_DETAILS: Record<string, ServiceDetail> = {
+  "digital-product-development": {
+    includes: [
+      "Custom marketing sites and web apps",
+      "Responsive design across every device",
+      "CMS or headless content setup",
+      "Performance and Core Web Vitals optimization",
+      "Deployment and hosting on Vercel",
+    ],
+    whoItsFor:
+      "Businesses that need a fast, credible web presence built to convert — not a template site with your logo swapped in.",
+    ctaLabel: "Start a project",
+  },
+  "ai-business-automation": {
+    includes: [
+      "Custom chatbot trained on your business",
+      "Lead qualification and FAQ handling",
+      "Integration with your CRM or inbox",
+      "24/7 automated support coverage",
+    ],
+    whoItsFor:
+      "Teams getting repetitive inbound questions that pull focus and time away from higher-value work.",
+    ctaLabel: "Automate my inbox",
+    demoHref: "/ai-agent",
+  },
+  "whatsapp-automation": {
+    includes: [
+      "Automated booking and appointment flows",
+      "Order status and support replies",
+      "Broadcast and follow-up sequences",
+      "Smooth handoff to a human when needed",
+    ],
+    whoItsFor:
+      "Restaurants, clinics, salons, and local businesses whose customers already live on WhatsApp.",
+    ctaLabel: "Set up WhatsApp automation",
+  },
+  "landing-pages": {
+    includes: [
+      "Single-purpose, conversion-focused design",
+      "A/B-testable layout structure",
+      "Fast turnaround — days, not weeks",
+      "Built-in analytics and tracking setup",
+    ],
+    whoItsFor:
+      "Campaigns, product launches, and paid traffic that need a page built to convert, not a full site.",
+    ctaLabel: "Build a landing page",
+  },
+  "saas-development": {
+    includes: [
+      "Product discovery and technical scoping",
+      "Full-stack build from prototype to production",
+      "Authentication, billing, and dashboards",
+      "Scalable architecture from day one",
+    ],
+    whoItsFor:
+      "Founders turning an idea or working prototype into a real, production-ready product.",
+    ctaLabel: "Scope my build",
+  },
+  "ui-ux-design": {
+    includes: [
+      "User research and usability testing",
+      "Wireframes and high-fidelity prototypes",
+      "Design systems built for handoff",
+      "Accessibility built in from the start",
+    ],
+    whoItsFor:
+      "Teams that need interfaces people trust and can actually use, backed by research rather than guesswork.",
+    ctaLabel: "Start with design",
+  },
+};
+
+export default function ServicesPage() {
+  return (
+    <>
+      {/* One Service JSON-LD block per service, matching Blueprint
+          Part 2 Section 13 ("Service schema on the Services page"). */}
+      {services.map((service) => (
+        <JsonLd
+          key={service.slug}
+          data={serviceSchema(
+            service,
+            `${siteConfig.url}/services#${service.slug}`,
+          )}
+        />
+      ))}
+
+      {/* Page header */}
+      <section className="bg-background">
+        <div className="mx-auto max-w-4xl px-6 py-24 text-center md:px-10 md:py-32">
+          <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+            Services
+          </p>
+          <h1 className="font-heading text-[36px] font-bold leading-tight tracking-tight text-text sm:text-[48px] md:text-[56px]">
+            Everything you need to build, automate, and grow.
+          </h1>
+          <p
+            className="mx-auto mt-5 max-w-2xl font-body text-base text-secondary-text
+ sm:text-lg"
+          >
+            Every engagement is senior-led, built on a modern stack, and scoped
+            to your business — not sold off a fixed package.
+          </p>
+        </div>
+      </section>
+
+      {/* Service sections */}
+      {services.map((service, index) => (
+        <ServiceSection key={service.slug} service={service} index={index} />
+      ))}
+
+      {/* Closing CTA */}
+      <section className="border-t border-border bg-secondary-background">
+        <div className="mx-auto max-w-3xl px-6 py-24 text-center md:px-10 md:py-32">
+          <HelpCircle className="mx-auto mb-5 h-8 w-8 text-primary" />
+          <h2 className="font-heading text-[28px] font-bold leading-tight tracking-tight text-text sm:text-[36px]">
+            Not sure what you need?
+          </h2>
+          <p className="mx-auto mt-4 max-w-xl font-body text-base text-secondary-text">
+            Tell our AI assistant what you&apos;re trying to build and
+            we&apos;ll point you to the right service — or skip straight to a
+            real conversation with the team.
+          </p>
+          <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
+            <Button asChild size="lg" className="rounded-lg px-7 py-6">
+              <ChatLauncherButton aria-describedby="chat-cta-hint">
+                <MessageCircle className="mr-2 h-4 w-4" />
+                Chat with our AI assistant
+              </ChatLauncherButton>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              size="lg"
+              className="rounded-lg px-7 py-6"
+            >
+              <Link href="/contact">Contact us directly</Link>
+            </Button>
+          </div>
+          <span id="chat-cta-hint" className="sr-only">
+            Opens the AI assistant to help identify the right service for your
+            project
+          </span>
+        </div>
+      </section>
+    </>
+  );
+}
+
+function ServiceSection({
+  service,
+  index,
+}: {
+  service: Service;
+  index: number;
+}) {
+  const detail = SERVICE_DETAILS[service.slug];
+  const Icon =
+    lucideIcons[service.icon as keyof typeof lucideIcons] ?? HelpCircle;
+  const isEven = index % 2 === 0;
+
+  return (
+    <section
+      id={service.slug}
+      className={`border-t border-border ${
+        isEven ? "bg-background" : "bg-secondary-background"
+      }`}
+    >
+      <div className="mx-auto max-w-6xl px-6 py-20 md:px-10 md:py-24">
+        <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:gap-20">
+          {/* Left: identity + description + CTA */}
+          <div>
+            <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Icon className="h-6 w-6" strokeWidth={1.75} />
+            </div>
+            <h2 className="mb-4 font-heading text-2xl font-bold leading-tight tracking-tight text-text sm:text-3xl">
+              {service.title}
+            </h2>
+            <p className="mb-6 max-w-md font-body text-base leading-relaxed text-secondary-text">
+              {service.description}
+            </p>
+
+            {detail && (
+              <p className="mb-8 max-w-md rounded-lg border border-border bg-card/60 px-4 py-3 font-body text-sm leading-relaxed text-secondary-text">
+                <span className="font-semibold text-text">
+                  Who it&apos;s for:{" "}
+                </span>
+                {detail.whoItsFor}
+              </p>
+            )}
+
+            <div className="flex flex-wrap items-center gap-4">
+              <Button asChild className="rounded-lg px-6">
+                <Link href="/contact">{detail?.ctaLabel ?? "Get a quote"}</Link>
+              </Button>
+              {detail?.demoHref && (
+                <Link
+                  href={detail.demoHref}
+                  className="font-body text-sm font-medium text-primary hover:text-accent"
+                >
+                  Try the live demo →
+                </Link>
+              )}
+            </div>
+          </div>
+
+          {/* Right: what's included */}
+          {detail && (
+            <div className="rounded-2xl border border-border bg-card p-8">
+              <p className="mb-5 font-body text-sm font-semibold uppercase tracking-wide text-secondary-text">
+                What&apos;s included
+              </p>
+              <ul className="space-y-4">
+                {detail.includes.map((item) => (
+                  <li key={item} className="flex items-start gap-3">
+                    <Check
+                      className="mt-0.5 h-4 w-4 flex-none text-accent"
+                      strokeWidth={2.5}
+                    />
+                    <span className="font-body text-sm leading-relaxed text-text">
+                      {item}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+</file>
+
 <file path="app/(platform-admin)/admin/billing/page.tsx">
 import { createClient } from "@/lib/supabase/server";
 import { BillingRequestsClient } from "./BillingRequestsClient";
@@ -18780,6 +18941,154 @@ function Field({
 }
 </file>
 
+<file path="components/layout/Footer.tsx">
+import Link from "next/link";
+
+import { services } from "@/data/services";
+import { siteConfig } from "@/config/site";
+
+const sitemapLinks = [
+  { label: "Home", href: "/" },
+  { label: "About", href: "/about" },
+  { label: "Services", href: "/services" },
+  { label: "AI Agent", href: "/ai-agent" },
+  { label: "Portfolio", href: "/portfolio" },
+  { label: "Case Studies", href: "/case-studies" },
+  { label: "Blog", href: "/blog" },
+  { label: "Contact", href: "/contact" },
+] as const;
+
+const socialLinks = [
+  { label: "X", href: siteConfig.links.twitter },
+  { label: "LinkedIn", href: siteConfig.links.linkedin },
+  { label: "GitHub", href: siteConfig.links.github },
+] as const;
+
+const legalLinks = [
+  { label: "Privacy", href: "/privacy" },
+  { label: "Terms", href: "/terms" },
+] as const;
+
+const footerLinkClass =
+  "text-sm text-secondary-text transition-colors hover:text-foreground";
+
+export function Footer() {
+  return (
+    <footer className="border-t border-border">
+      <div className="mx-auto max-w-6xl px-6 py-16">
+        <div className="grid grid-cols-2 gap-x-8 gap-y-12 md:grid-cols-4 md:gap-x-6">
+          {/* Column 1 — Brand + socials */}
+          <div className="col-span-2 md:col-span-1">
+            <Link
+              href="/"
+              className="font-heading text-lg font-semibold tracking-tight"
+            >
+              {siteConfig.name}
+            </Link>
+            <p className="mt-3 max-w-[26ch] text-sm text-secondary-text">
+              {siteConfig.tagline}
+            </p>
+            <nav aria-label="Social" className="mt-6 flex gap-5">
+              {socialLinks.map((social) => (
+                <a
+                  key={social.label}
+                  href={social.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={footerLinkClass}
+                >
+                  {social.label}
+                </a>
+              ))}
+            </nav>
+          </div>
+
+          {/* Column 2 — Sitemap */}
+          <div>
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-secondary-text">
+              Sitemap
+            </h3>
+            <nav
+              aria-label="Sitemap"
+              className="mt-4 flex flex-col items-start gap-3"
+            >
+              {sitemapLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={footerLinkClass}
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
+          </div>
+
+          {/* Column 3 — Services */}
+          <div>
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-secondary-text">
+              Services
+            </h3>
+            <nav
+              aria-label="Services"
+              className="mt-4 flex flex-col items-start gap-3"
+            >
+              {services.map((service) => (
+                <Link
+                  key={service.slug}
+                  href={`/services#${service.slug}`}
+                  className={footerLinkClass}
+                >
+                  {service.title}
+                </Link>
+              ))}
+            </nav>
+          </div>
+
+          {/* Column 4 — Contact */}
+          <div>
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-secondary-text">
+              Contact
+            </h3>
+            <div className="mt-4 flex flex-col items-start gap-3">
+              <a
+                href={`mailto:${siteConfig.email}`}
+                className={footerLinkClass}
+              >
+                {siteConfig.email}
+              </a>
+              <Link href="/contact" className={footerLinkClass}>
+                Book a Consultation
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom bar — copyright + legal */}
+      <div className="border-t border-border">
+        <div className="mx-auto flex max-w-6xl flex-col-reverse items-center gap-4 px-6 py-6 text-xs text-secondary-text sm:flex-row sm:justify-between">
+          <p>
+            © {new Date().getFullYear()} {siteConfig.name}. All rights reserved.
+          </p>
+          <nav aria-label="Legal" className="flex gap-6">
+            {legalLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="transition-colors hover:text-foreground"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
+      </div>
+    </footer>
+  );
+}
+</file>
+
 <file path="components/platform/AuthSplitLayout.tsx">
 "use client";
 
@@ -19089,103 +19398,6 @@ export function ProjectCard({
 }
 </file>
 
-<file path="components/sections/Services.tsx">
-"use client";
-
-import Link from "next/link";
-import { useReducedMotion } from "framer-motion";
-import { ArrowRight, HelpCircle, icons as lucideIcons } from "lucide-react";
-
-import { services } from "@/data/services";
-import type { Service } from "@/types";
-import { FadeIn } from "@/components/animations/FadeIn";
-
-/**
- * Services — Prompt 8
- *
- * Blueprint ref: Part 1, Section 7 (Services spec)
- *
- * data/services.ts stores `icon` as a string (e.g. "LayoutTemplate")
- * matching lucide-react's PascalCase export names. `lucide-react`
- * ships an `icons` map keyed exactly this way, so we look the
- * component up at render time instead of importing every icon by name.
- * Falls back to HelpCircle + a console warning if a slug is ever
- * typo'd, so a bad string degrades gracefully instead of crashing.
- */
-
-export function Services() {
-  return (
-    <section id="services" className="bg-background">
-      <div className="mx-auto max-w-6xl px-6 py-24 md:px-10 md:py-32">
-        <div className="mb-14 max-w-2xl">
-          <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
-            What we do
-          </p>
-          <h2 className="font-heading text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[40px] md:text-[48px]">
-            Everything you need to grow online, under one roof.
-          </h2>
-        </div>
-
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {services.map((service, index) => (
-            <ServiceCard key={service.slug} service={service} index={index} />
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ServiceCard({ service, index }: { service: Service; index: number }) {
-  const shouldReduceMotion = useReducedMotion();
-
-  const Icon = lucideIcons[service.icon as keyof typeof lucideIcons];
-  if (!Icon && process.env.NODE_ENV !== "production") {
-    console.warn(
-      `[Services] "${service.icon}" is not a valid lucide-react icon name (service: ${service.slug}). Falling back to HelpCircle.`,
-    );
-  }
-  const ResolvedIcon = Icon ?? HelpCircle;
-
-  return (
-    <FadeIn
-      viewport={{ once: true, amount: 0.3 }}
-      transition={{ duration: 0.4, delay: Math.min(index, 5) * 0.05 }}
-      whileHover={shouldReduceMotion ? undefined : { y: -4 }}
-      className="group relative rounded-2xl border border-border bg-card p-8 transition-colors duration-200 hover:border-primary/50"
-    >
-      {/* Border glow — soft ring that fades in on hover, doesn't affect layout */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 shadow-[0_0_0_1px_rgba(99,102,241,0.15),0_8px_30px_-8px_rgba(99,102,241,0.35)] transition-opacity duration-300 group-hover:opacity-100"
-      />
-
-      <div className="relative">
-        <div className="mb-6 flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <ResolvedIcon className="h-5 w-5" strokeWidth={1.75} />
-        </div>
-
-        <h3 className="mb-2 font-heading text-lg font-semibold text-text">
-          {service.title}
-        </h3>
-
-        <p className="mb-6 font-body text-sm leading-relaxed text-secondary-text">
-          {service.description}
-        </p>
-
-        <Link
-          href={`/services#${service.slug}`}
-          className="inline-flex items-center gap-1.5 font-body text-sm font-medium text-primary transition-colors duration-200 hover:text-accent"
-        >
-          Learn more
-          <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
-        </Link>
-      </div>
-    </FadeIn>
-  );
-}
-</file>
-
 <file path="components/sections/WhyChooseUs.tsx">
 import { Bot, Code2, UserCheck, Zap, type LucideIcon } from "lucide-react";
 import { FadeIn } from "@/components/animations/FadeIn";
@@ -19304,58 +19516,6 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
 }
 
 export { Input };
-</file>
-
-<file path="config/site.ts">
-import { buildWhatsAppLink } from "@/config/contact";
-
-export const siteConfig = {
-  name: "MBR Studio",
-  title: "MBR Studio — Digital products, built to grow your business.",
-  founder: "Muaaz Bin Riaz",
-  tagline: "Digital products, built to grow your business.",
-  description:
-    "MBR Studio is a premium software agency building websites, AI-powered automation, and digital products for growing businesses.",
-  url: "https://mbr-studio.vercel.app",
-  ogImage: "/og-images/default.png",
-  email: "mbrstudio.dev@gmail.com",
-  // Added fields for the chat route
-  consultationUrl: "https://cal.com/mbr-studio/consultation",
-  contactEmail: "mbrstudio.dev@gmail.com",
-  links: {
-    twitter: "https://twitter.com/mbrstudio",
-    linkedin: "https://www.linkedin.com/in/muaaz-bin-riaz-92b395298/",
-    github: "https://github.com/muaazbinriaz",
-  },
-} as const;
-
-export const navLinks = [
-  { label: "Services", href: "/services" },
-  { label: "Portfolio", href: "/portfolio" },
-  { label: "About", href: "/about" },
-  { label: "Blog", href: "/blog" },
-  { label: "Contact", href: "/contact" },
-] as const;
-
-export const primaryCta = {
-  label: "Book a Consultation",
-  href: "/contact",
-} as const;
-
-/**
- * Delegates to config/contact.ts's buildWhatsAppLink() — that file is
- * the single source of truth for the WhatsApp number (WHATSAPP_DIGITS /
- * WHATSAPP_DISPLAY). This used to hardcode a second literal number here,
- * which risked the contact page and the AI chatbot handoff pointing at
- * two different numbers if only one was ever updated.
- *
- * Passes an empty message override so the chatbot's handoff link keeps
- * its previous behavior (no pre-filled WhatsApp message) rather than
- * picking up buildWhatsAppLink()'s default qualification message.
- */
-export function getWhatsappLink(): string {
-  return buildWhatsAppLink("");
-}
 </file>
 
 <file path="data/faq.ts">
@@ -22034,6 +22194,160 @@ function jsonResponse(
       ...extraHeaders,
     },
   });
+}
+</file>
+
+<file path="components/sections/Services.tsx">
+"use client";
+
+import Link from "next/link";
+import { useReducedMotion } from "framer-motion";
+import { ArrowRight, HelpCircle, icons as lucideIcons } from "lucide-react";
+
+import { services } from "@/data/services";
+import type { Service } from "@/types";
+import { FadeIn } from "@/components/animations/FadeIn";
+
+/**
+ * Services — Prompt 8
+ *
+ * Blueprint ref: Part 1, Section 7 (Services spec)
+ *
+ * data/services.ts stores `icon` as a string (e.g. "LayoutTemplate")
+ * matching lucide-react's PascalCase export names. `lucide-react`
+ * ships an `icons` map keyed exactly this way, so we look the
+ * component up at render time instead of importing every icon by name.
+ * Falls back to HelpCircle + a console warning if a slug is ever
+ * typo'd, so a bad string degrades gracefully instead of crashing.
+ */
+
+export function Services() {
+  return (
+    <section id="services" className="bg-background">
+      <div className="mx-auto max-w-6xl px-6 py-24 md:px-10 md:py-32">
+        <div className="mb-14 max-w-2xl">
+          <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+            What we do
+          </p>
+          <h2 className="font-heading text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[40px] md:text-[48px]">
+            Everything you need to grow online, under one roof.
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {services.map((service, index) => (
+            <ServiceCard key={service.slug} service={service} index={index} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ServiceCard({ service, index }: { service: Service; index: number }) {
+  const shouldReduceMotion = useReducedMotion();
+
+  const Icon = lucideIcons[service.icon as keyof typeof lucideIcons];
+  if (!Icon && process.env.NODE_ENV !== "production") {
+    console.warn(
+      `[Services] "${service.icon}" is not a valid lucide-react icon name (service: ${service.slug}). Falling back to HelpCircle.`,
+    );
+  }
+  const ResolvedIcon = Icon ?? HelpCircle;
+
+  return (
+    <FadeIn
+      viewport={{ once: true, amount: 0.3 }}
+      transition={{ duration: 0.4, delay: Math.min(index, 5) * 0.05 }}
+      whileHover={shouldReduceMotion ? undefined : { y: -4 }}
+      className="group relative rounded-2xl border border-border bg-card p-8 transition-colors duration-200 hover:border-primary/50"
+    >
+      {/* Border glow — soft ring that fades in on hover, doesn't affect layout */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 shadow-[0_0_0_1px_rgba(99,102,241,0.15),0_8px_30px_-8px_rgba(99,102,241,0.35)] transition-opacity duration-300 group-hover:opacity-100"
+      />
+
+      <div className="relative">
+        <div className="mb-6 flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <ResolvedIcon className="h-5 w-5" strokeWidth={1.75} />
+        </div>
+
+        <h3 className="mb-2 font-heading text-lg font-semibold text-text">
+          {service.title}
+        </h3>
+
+        <p className="mb-6 font-body text-sm leading-relaxed text-secondary-text">
+          {service.description}
+        </p>
+
+        <Link
+          href={
+            service.slug === "ai-business-automation"
+              ? "/ai-agent"
+              : `/services#${service.slug}`
+          }
+          className="inline-flex items-center gap-1.5 font-body text-sm font-medium text-primary transition-colors duration-200 hover:text-accent"
+        >
+          Learn more
+          <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
+        </Link>
+      </div>
+    </FadeIn>
+  );
+}
+</file>
+
+<file path="config/site.ts">
+import { buildWhatsAppLink } from "@/config/contact";
+
+export const siteConfig = {
+  name: "MBR Studio",
+  title: "MBR Studio — Digital products, built to grow your business.",
+  founder: "Muaaz Bin Riaz",
+  tagline: "Digital products, built to grow your business.",
+  description:
+    "MBR Studio is a premium software agency building websites, AI-powered automation, and digital products for growing businesses.",
+  url: "https://mbr-studio.vercel.app",
+  ogImage: "/og-images/default.png",
+  email: "mbrstudio.dev@gmail.com",
+  // Added fields for the chat route
+  consultationUrl: "https://cal.com/mbr-studio/consultation",
+  contactEmail: "mbrstudio.dev@gmail.com",
+  links: {
+    twitter: "https://twitter.com/mbrstudio",
+    linkedin: "https://www.linkedin.com/in/muaaz-bin-riaz-92b395298/",
+    github: "https://github.com/muaazbinriaz",
+  },
+} as const;
+
+export const navLinks = [
+  { label: "Services", href: "/services" },
+  { label: "AI Agent", href: "/ai-agent" },
+  { label: "Portfolio", href: "/portfolio" },
+  { label: "About", href: "/about" },
+  { label: "Blog", href: "/blog" },
+  { label: "Contact", href: "/contact" },
+] as const;
+
+export const primaryCta = {
+  label: "Book a Consultation",
+  href: "/contact",
+} as const;
+
+/**
+ * Delegates to config/contact.ts's buildWhatsAppLink() — that file is
+ * the single source of truth for the WhatsApp number (WHATSAPP_DIGITS /
+ * WHATSAPP_DISPLAY). This used to hardcode a second literal number here,
+ * which risked the contact page and the AI chatbot handoff pointing at
+ * two different numbers if only one was ever updated.
+ *
+ * Passes an empty message override so the chatbot's handoff link keeps
+ * its previous behavior (no pre-filled WhatsApp message) rather than
+ * picking up buildWhatsAppLink()'s default qualification message.
+ */
+export function getWhatsappLink(): string {
+  return buildWhatsAppLink("");
 }
 </file>
 
