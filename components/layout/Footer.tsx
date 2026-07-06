@@ -7,6 +7,7 @@ const sitemapLinks = [
   { label: "Home", href: "/" },
   { label: "About", href: "/about" },
   { label: "Services", href: "/services" },
+  { label: "AI Agent", href: "/ai-agent" },
   { label: "Portfolio", href: "/portfolio" },
   { label: "Case Studies", href: "/case-studies" },
   { label: "Blog", href: "/blog" },

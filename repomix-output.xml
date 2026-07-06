@@ -156,6 +156,9 @@ components/layout/PageWrapper.tsx
 components/loader/RouteLoader.tsx
 components/platform/AnalyticsChart.tsx
 components/platform/AuthSplitLayout.tsx
+components/platform/DesktopNav.tsx
+components/platform/MobileNav.tsx
+components/platform/NavDropdown.tsx
 components/platform/PlanLimitBanner.tsx
 components/platform/PlatformAmbient.tsx
 components/platform/PlatformShell.tsx
@@ -229,6 +232,8 @@ lib/inbox/queries.ts
 lib/knowledge-base/chunk.ts
 lib/knowledge-base/embed.ts
 lib/knowledge-base/ingest.ts
+lib/knowledge-base/pdf.ts
+lib/knowledge-base/scrape.ts
 lib/rate-limit.ts
 lib/seo/schemas.ts
 lib/supabase/admin.ts
@@ -278,6 +283,8 @@ supabase/migrations/0011_widget_realtime_anon_access.sql
 supabase/migrations/0012_reseller_branding.sql
 supabase/migrations/0013_webhook_delivery_tracking.sql
 supabase/migrations/0014_manual_billing.sql
+supabase/migrations/0015_fix_realtime_leak.sql
+supabase/migrations/0017_kb_scraping_pdf.sql
 test/widget-test.html
 tsconfig.json
 types/index.ts
@@ -286,91 +293,6 @@ vercel.json
 
 <files>
 This section contains the contents of the repository's files.
-
-<file path="supabase/migrations/0010_inbox_rpc.sql">
--- 0010_inbox_rpc.sql
--- Prompt 05 — Human Handoff: Live Inbox & Takeover
-
--- ============================================================
--- get_inbox_conversations
---
--- Returns one row per conversation for an organization, along with
--- its most recent message and a "user_streak" count (how many
--- consecutive user messages have arrived since the last assistant
--- reply — used by the "needs attention" heuristic in
--- lib/inbox/queries.ts, kept simple/adjustable per Section 3.2).
---
--- NOT security definer — runs as the calling role, so the existing
--- RLS policies on `conversations` and `messages` (Prompt 01/02) apply
--- exactly as if this were a plain SELECT. This is what keeps a
--- reseller-scoped or single-org caller from seeing another org's rows
--- through this RPC, without needing a redundant org_id check inside
--- the function body.
--- ============================================================
-
-create or replace function get_inbox_conversations(
-  target_organization_id uuid,
-  channel_filter text default null,
-  status_filter text default null
-)
-returns table (
-  id uuid,
-  channel text,
-  channel_thread_id text,
-  visitor_id text,
-  visitor_display_name text,
-  status text,
-  assigned_user_id uuid,
-  started_at timestamptz,
-  last_message_at timestamptz,
-  last_message_content text,
-  last_message_role text,
-  user_streak int
-)
-language sql stable
-as $$
-  select
-    c.id,
-    c.channel,
-    c.channel_thread_id,
-    c.visitor_id,
-    c.visitor_display_name,
-    c.status,
-    c.assigned_user_id,
-    c.started_at,
-    c.last_message_at,
-    lm.content as last_message_content,
-    lm.role as last_message_role,
-    coalesce(streak.user_streak, 0) as user_streak
-  from conversations c
-  left join lateral (
-    select m.content, m.role
-    from messages m
-    where m.conversation_id = c.id
-    order by m.created_at desc
-    limit 1
-  ) lm on true
-  left join lateral (
-    select count(*)::int as user_streak
-    from messages m3
-    where m3.conversation_id = c.id
-      and m3.role = 'user'
-      and m3.created_at > coalesce(
-        (select max(m4.created_at) from messages m4
-         where m4.conversation_id = c.id and m4.role = 'assistant'),
-        '-infinity'::timestamptz
-      )
-  ) streak on true
-  where c.organization_id = target_organization_id
-    and (channel_filter is null or c.channel = channel_filter)
-    and (status_filter is null or c.status = status_filter)
-  order by c.last_message_at desc
-  limit 100;
-$$;
-
-grant execute on function get_inbox_conversations(uuid, text, text)
-  to authenticated;
-</file>
 
 <file path=".gitignore">
 # next.js
@@ -4073,140 +3995,6 @@ export default async function InboxPage() {
 }
 </file>
 
-<file path="app/(platform-client)/dashboard/knowledge-base/actions.ts">
-"use server";
-
-import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
-import { ingestDocument } from "@/lib/knowledge-base/ingest";
-
-/**
- * Resolves the current user's active agent using the RLS-scoped
- * server client — this is what makes ownership checks below actually
- * safe. ingestDocument() itself uses the service-role client and
- * bypasses RLS entirely, so every call site in this file must verify
- * ownership via a plain (non-admin) select/update BEFORE calling it.
- */
-async function getActiveAgentForCurrentUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("organization_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle();
-
-  if (!membership) return null;
-
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("id, organization_id")
-    .eq("organization_id", membership.organization_id)
-    .eq("is_active", true)
-    .limit(1)
-    .maybeSingle();
-
-  return agent;
-}
-
-export async function addKnowledgeBaseDocument(formData: FormData) {
-  const title = String(formData.get("title") ?? "").trim();
-  const rawContent = String(formData.get("rawContent") ?? "").trim();
-
-  if (!title) return { error: "Give this document a short title." };
-  if (!rawContent || rawContent.length < 20) {
-    return { error: "Add a bit more detail — at least a few sentences." };
-  }
-
-  const agent = await getActiveAgentForCurrentUser();
-  if (!agent) return { error: "No active agent found for your organization." };
-
-  const supabase = await createClient();
-  const { data: doc, error } = await supabase
-    .from("knowledge_base_documents")
-    .insert({
-      agent_id: agent.id,
-      organization_id: agent.organization_id,
-      source_type: "manual_text",
-      title,
-      raw_content: rawContent,
-      status: "processing",
-    })
-    .select("id")
-    .single();
-
-  if (error || !doc) {
-    return { error: error?.message ?? "Failed to save document." };
-  }
-
-  try {
-    // Ran synchronously per Prompt 02 Section 4.2 — manual-text FAQ
-    // documents are short enough that this won't time out. ingestDocument
-    // itself doesn't touch request/response objects, so it can move to a
-    // background queue later without changing its internals.
-    await ingestDocument(doc.id);
-  } catch (err) {
-    console.error("[knowledge-base] ingestion failed:", err);
-    revalidatePath("/dashboard/knowledge-base");
-    return { error: "Saved, but processing failed — see the status badge below." };
-  }
-
-  revalidatePath("/dashboard/knowledge-base");
-  return { error: null };
-}
-
-export async function deleteKnowledgeBaseDocument(documentId: string) {
-  // RLS-scoped client — a delete on a document outside the caller's org
-  // simply matches zero rows, no explicit ownership check needed.
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("knowledge_base_documents")
-    .delete()
-    .eq("id", documentId);
-
-  revalidatePath("/dashboard/knowledge-base");
-  return { error: error?.message ?? null };
-}
-
-export async function reindexKnowledgeBaseDocument(documentId: string) {
-  const supabase = await createClient();
-
-  // Ownership check via the RLS-scoped client — required here because
-  // ingestDocument() below uses the service-role client, which would
-  // happily process ANY document id regardless of who's calling.
-  const { data: doc } = await supabase
-    .from("knowledge_base_documents")
-    .select("id")
-    .eq("id", documentId)
-    .maybeSingle();
-
-  if (!doc) {
-    return { error: "Document not found." };
-  }
-
-  await supabase
-    .from("knowledge_base_documents")
-    .update({ status: "processing", error_message: null })
-    .eq("id", documentId);
-
-  try {
-    await ingestDocument(documentId);
-  } catch (err) {
-    console.error("[knowledge-base] re-index failed:", err);
-    revalidatePath("/dashboard/knowledge-base");
-    return { error: "Re-index failed — see the status badge below." };
-  }
-
-  revalidatePath("/dashboard/knowledge-base");
-  return { error: null };
-}
-</file>
-
 <file path="app/(platform-client)/dashboard/leads/LeadsClient.tsx">
 "use client";
 
@@ -7310,6 +7098,451 @@ export function AnalyticsChart({ data }: { data: DailyAnalyticsPoint[] }) {
         <span>{data[0]?.date}</span>
         <span>{data[data.length - 1]?.date}</span>
       </div>
+    </div>
+  );
+}
+</file>
+
+<file path="components/platform/DesktopNav.tsx">
+"use client";
+
+import Link from "next/link";
+import { useState } from "react";
+import type { LucideIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useRouteLoader } from "@/components/loader/RouteLoader";
+import { NavDropdown } from "./NavDropdown";
+
+export type NavLeaf = { label: string; href: string; icon: LucideIcon };
+export type NavGroup =
+  | { type: "link"; label: string; href: string }
+  | { type: "dropdown"; label: string; items: NavLeaf[] };
+
+export function DesktopNav({
+  groups,
+  activeHref,
+  navBadges,
+}: {
+  groups: NavGroup[];
+  activeHref: string | null;
+  navBadges?: Record<string, number>;
+}) {
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const { start } = useRouteLoader();
+
+  return (
+    <nav aria-label="Primary" className="hidden items-center gap-1 md:flex">
+      {groups.map((group) => {
+        if (group.type === "link") {
+          const isActive = group.href === activeHref;
+          return (
+            <Link
+              key={group.label}
+              href={group.href}
+              onClick={() => start()}
+              className={cn(
+                "rounded-lg px-3 py-2 font-body text-sm font-medium transition-colors duration-150",
+                isActive
+                  ? "bg-primary/10 text-primary"
+                  : "text-secondary-text hover:bg-card hover:text-foreground",
+              )}
+            >
+              {group.label}
+            </Link>
+          );
+        }
+
+        const isGroupActive = group.items.some(
+          (item) => item.href === activeHref,
+        );
+        const isOpen = openGroup === group.label;
+
+        return (
+          <NavDropdown
+            key={group.label}
+            label={group.label}
+            isActive={isGroupActive}
+            isOpen={isOpen}
+            onToggle={() => setOpenGroup(isOpen ? null : group.label)}
+            onClose={() => setOpenGroup(null)}
+          >
+            {group.items.map((item) => {
+              const Icon = item.icon;
+              const isActive = item.href === activeHref;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  role="menuitem"
+                  onClick={() => {
+                    start();
+                    setOpenGroup(null);
+                  }}
+                  className={cn(
+                    "flex items-center gap-2.5 rounded-lg px-3 py-2 font-body text-sm font-medium transition-colors duration-150",
+                    isActive
+                      ? "bg-primary/10 text-primary"
+                      : "text-foreground hover:bg-background",
+                  )}
+                >
+                  <Icon className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                  <span className="flex flex-1 items-center justify-between">
+                    {item.label}
+                    {!!navBadges?.[item.href] && (
+                      <span className="ml-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 font-body text-[10px] font-semibold text-primary-foreground">
+                        {navBadges[item.href]}
+                      </span>
+                    )}
+                  </span>
+                </Link>
+              );
+            })}
+          </NavDropdown>
+        );
+      })}
+    </nav>
+  );
+}
+</file>
+
+<file path="components/platform/MobileNav.tsx">
+"use client";
+
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { ChevronDown, LogOut, Sun, Moon, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { signOut } from "@/lib/auth/actions";
+import { useTheme } from "@/components/theme/ThemeProvider";
+import { useRouteLoader } from "@/components/loader/RouteLoader";
+import { useFocusTrap } from "@/components/chatbot/useFocusTrap";
+import type { NavGroup } from "./DesktopNav";
+
+export function MobileNav({
+  open,
+  onClose,
+  groups,
+  activeHref,
+  navBadges,
+  userEmail,
+}: {
+  open: boolean;
+  onClose: () => void;
+  groups: NavGroup[];
+  activeHref: string | null;
+  navBadges?: Record<string, number>;
+  userEmail?: string | null;
+}) {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const { theme, toggleTheme } = useTheme();
+  const { start } = useRouteLoader();
+  const shouldReduceMotion = useReducedMotion();
+
+  useFocusTrap(sheetRef, open, onClose);
+
+  useEffect(() => {
+    if (!open) return;
+    const scrollbarWidth =
+      window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = "hidden";
+    document.body.style.paddingRight = `${scrollbarWidth}px`;
+    return () => {
+      document.body.style.overflow = "";
+      document.body.style.paddingRight = "";
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (open) setExpanded(null);
+  }, [open]);
+
+  const handleNavigate = () => {
+    start();
+    onClose();
+  };
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            aria-hidden="true"
+            onClick={onClose}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: shouldReduceMotion ? 0 : 0.2 }}
+            className="fixed inset-0 z-40 bg-black/60 md:hidden"
+          />
+          <motion.div
+            ref={sheetRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation menu"
+            initial={shouldReduceMotion ? false : { y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={
+              shouldReduceMotion
+                ? { duration: 0 }
+                : { type: "spring", damping: 28, stiffness: 320 }
+            }
+            className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-border bg-card px-4 pb-6 pt-3 md:hidden"
+          >
+            <div
+              className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-border"
+              aria-hidden="true"
+            />
+            <div className="mb-2 flex items-center justify-between">
+              <span className="font-heading text-sm font-semibold text-foreground">
+                Menu
+              </span>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close menu"
+                className="rounded-lg p-2 text-foreground hover:bg-background"
+              >
+                <X className="h-5 w-5" strokeWidth={1.75} />
+              </button>
+            </div>
+
+            <nav aria-label="Mobile" className="flex flex-col gap-1">
+              {groups.map((group) => {
+                if (group.type === "link") {
+                  const isActive = group.href === activeHref;
+                  return (
+                    <Link
+                      key={group.label}
+                      href={group.href}
+                      onClick={handleNavigate}
+                      className={cn(
+                        "rounded-lg px-3 py-3 font-body text-base font-medium transition-colors duration-150",
+                        isActive
+                          ? "bg-primary/10 text-primary"
+                          : "text-foreground hover:bg-background",
+                      )}
+                    >
+                      {group.label}
+                    </Link>
+                  );
+                }
+
+                const isSectionOpen = expanded === group.label;
+                const isGroupActive = group.items.some(
+                  (item) => item.href === activeHref,
+                );
+
+                return (
+                  <div
+                    key={group.label}
+                    className="border-b border-border/60 pb-1 last:border-none"
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpanded(isSectionOpen ? null : group.label)
+                      }
+                      aria-expanded={isSectionOpen}
+                      className={cn(
+                        "flex w-full items-center justify-between rounded-lg px-3 py-3 font-body text-xs font-semibold uppercase tracking-wide transition-colors duration-150",
+                        isGroupActive ? "text-primary" : "text-secondary-text",
+                      )}
+                    >
+                      {group.label}
+                      <ChevronDown
+                        className={cn(
+                          "h-4 w-4 transition-transform duration-150",
+                          isSectionOpen && "rotate-180",
+                        )}
+                        strokeWidth={1.75}
+                      />
+                    </button>
+
+                    <AnimatePresence initial={false}>
+                      {isSectionOpen && (
+                        <motion.div
+                          initial={
+                            shouldReduceMotion
+                              ? false
+                              : { height: 0, opacity: 0 }
+                          }
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{
+                            duration: shouldReduceMotion ? 0 : 0.18,
+                            ease: "easeOut",
+                          }}
+                          className="overflow-hidden"
+                        >
+                          <div className="flex flex-col gap-1 pb-2 pl-2 pt-1">
+                            {group.items.map((item) => {
+                              const Icon = item.icon;
+                              const isActive = item.href === activeHref;
+                              return (
+                                <Link
+                                  key={item.href}
+                                  href={item.href}
+                                  onClick={handleNavigate}
+                                  className={cn(
+                                    "flex items-center gap-2.5 rounded-lg px-3 py-2.5 font-body text-sm font-medium transition-colors duration-150",
+                                    isActive
+                                      ? "bg-primary/10 text-primary"
+                                      : "text-foreground hover:bg-background",
+                                  )}
+                                >
+                                  <Icon
+                                    className="h-4 w-4 flex-none"
+                                    strokeWidth={1.75}
+                                  />
+                                  <span className="flex flex-1 items-center justify-between">
+                                    {item.label}
+                                    {!!navBadges?.[item.href] && (
+                                      <span className="ml-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 font-body text-[10px] font-semibold text-primary-foreground">
+                                        {navBadges[item.href]}
+                                      </span>
+                                    )}
+                                  </span>
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              })}
+            </nav>
+
+            <div className="mt-3 border-t border-border pt-3">
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-3 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground"
+              >
+                {theme === "dark" ? (
+                  <Sun className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                ) : (
+                  <Moon className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                )}
+                {theme === "dark" ? "Light mode" : "Dark mode"}
+              </button>
+
+              {userEmail && (
+                <p className="truncate px-3 pb-1 pt-2 font-body text-xs text-secondary-text">
+                  {userEmail}
+                </p>
+              )}
+
+              <form action={signOut} onSubmit={() => start()}>
+                <button
+                  type="submit"
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-3 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground"
+                >
+                  <LogOut className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                  Log out
+                </button>
+              </form>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
+</file>
+
+<file path="components/platform/NavDropdown.tsx">
+"use client";
+
+import { useEffect, useRef } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useFocusTrap } from "@/components/chatbot/useFocusTrap";
+
+export function NavDropdown({
+  label,
+  isActive,
+  isOpen,
+  onToggle,
+  onClose,
+  children,
+}: {
+  label: string;
+  isActive: boolean;
+  isOpen: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const shouldReduceMotion = useReducedMotion();
+
+  useFocusTrap(panelRef, isOpen, onClose);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    function onPointerDown(e: MouseEvent) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
+        onClose();
+      }
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [isOpen, onClose]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={isOpen}
+        aria-haspopup="true"
+        className={cn(
+          "flex items-center gap-1 rounded-lg px-3 py-2 font-body text-sm font-medium transition-colors duration-150",
+          isActive
+            ? "bg-primary/10 text-primary"
+            : "text-secondary-text hover:bg-card hover:text-foreground",
+        )}
+      >
+        {label}
+        <ChevronDown
+          className={cn(
+            "h-3.5 w-3.5 transition-transform duration-150",
+            isOpen && "rotate-180",
+          )}
+          strokeWidth={1.75}
+        />
+      </button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            ref={panelRef}
+            role="menu"
+            aria-label={label}
+            initial={shouldReduceMotion ? false : { opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={
+              shouldReduceMotion
+                ? { duration: 0 }
+                : { duration: 0.18, ease: "easeOut" }
+            }
+            className="absolute left-0 top-full z-50 mt-2 w-56 rounded-xl border border-border bg-card p-1.5 shadow-xl shadow-black/[0.06] dark:shadow-black/30"
+          >
+            {children}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -11443,6 +11676,252 @@ export async function ingestDocument(documentId: string): Promise<void> {
 }
 </file>
 
+<file path="lib/knowledge-base/pdf.ts">
+import { extractText, getDocumentProxy } from "unpdf";
+
+const MIN_CHARS_PER_PAGE = 20;
+
+export interface PdfExtractionResult {
+  text: string;
+  pageCount: number;
+  looksScanned: boolean;
+}
+
+/**
+ * Pure WASM PDF text extraction via `unpdf` — no native binary, chosen
+ * specifically because this project already had a production incident
+ * with @xenova/transformers' native dependencies breaking on Vercel's
+ * serverless runtime.
+ */
+export async function extractPdfText(
+  buffer: ArrayBuffer,
+): Promise<PdfExtractionResult> {
+  const pdf = await getDocumentProxy(new Uint8Array(buffer));
+  const { text, totalPages } = await extractText(pdf, { mergePages: true });
+
+  const trimmed = (text ?? "").replace(/\s+/g, " ").trim();
+  const looksScanned =
+    trimmed.length < MIN_CHARS_PER_PAGE * Math.max(totalPages, 1);
+
+  return { text: trimmed, pageCount: totalPages, looksScanned };
+}
+</file>
+
+<file path="lib/knowledge-base/scrape.ts">
+import * as cheerio from "cheerio";
+
+const USER_AGENT = "MBRStudioBot/1.0 (+https://mbrstudio.dev)";
+const REQUEST_TIMEOUT_MS = 8000;
+const MAX_DISCOVERED_PAGES = 18;
+const PRIORITY_PATH_HINTS = [
+  "/about",
+  "/services",
+  "/pricing",
+  "/faq",
+  "/contact",
+];
+
+export interface DiscoveredPage {
+  url: string;
+  title: string;
+}
+
+interface RobotsRules {
+  disallowedPaths: string[];
+}
+
+async function fetchWithTimeout(url: string, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      signal: controller.signal,
+      headers: { "User-Agent": USER_AGENT },
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Minimal robots.txt parser — good enough for the small-business sites
+ * this feature targets. Reads the block matching our bot's user-agent
+ * if present, otherwise the `*` block, and collects every Disallow
+ * path from that block. Doesn't handle every edge case of the spec
+ * (e.g. multiple User-agent lines sharing one rule block) but that's
+ * rare in practice and failing open (treating unparseable robots.txt
+ * as "nothing disallowed") is the safer default than blocking a crawl
+ * over a parsing gap.
+ */
+async function fetchRobotsRules(origin: string): Promise<RobotsRules> {
+  try {
+    const res = await fetchWithTimeout(`${origin}/robots.txt`, 5000);
+    if (!res.ok) return { disallowedPaths: [] };
+    const body = await res.text();
+
+    const lines = body.split("\n").map((l) => l.trim());
+    let matchesUs = false;
+    let matchesWildcard = false;
+    const wildcardDisallows: string[] = [];
+    const usDisallows: string[] = [];
+
+    for (const rawLine of lines) {
+      const line = rawLine.split("#")[0].trim();
+      if (!line) continue;
+
+      const [rawKey, ...rest] = line.split(":");
+      const key = rawKey.trim().toLowerCase();
+      const value = rest.join(":").trim();
+
+      if (key === "user-agent") {
+        const agent = value.toLowerCase();
+        matchesWildcard = agent === "*";
+        matchesUs = agent.includes("mbrstudiobot");
+        continue;
+      }
+
+      if (key === "disallow" && value) {
+        if (matchesUs) usDisallows.push(value);
+        else if (matchesWildcard) wildcardDisallows.push(value);
+      }
+    }
+
+    return {
+      disallowedPaths: usDisallows.length > 0 ? usDisallows : wildcardDisallows,
+    };
+  } catch {
+    return { disallowedPaths: [] };
+  }
+}
+
+function isDisallowed(pathname: string, rules: RobotsRules): boolean {
+  return rules.disallowedPaths.some(
+    (disallowed) => disallowed !== "" && pathname.startsWith(disallowed),
+  );
+}
+
+function isContentLink(href: string): boolean {
+  if (!href) return false;
+  const lower = href.toLowerCase();
+  if (lower.startsWith("mailto:") || lower.startsWith("tel:")) return false;
+  if (lower.startsWith("#")) return false;
+  if (/\.(pdf|jpe?g|png|gif|svg|zip|docx?|xlsx?|mp4|mp3)$/.test(lower))
+    return false;
+  return true;
+}
+
+async function tryDiscoverViaSitemap(
+  origin: string,
+  rules: RobotsRules,
+): Promise<DiscoveredPage[] | null> {
+  try {
+    const res = await fetchWithTimeout(`${origin}/sitemap.xml`, 6000);
+    if (!res.ok) return null;
+    const xml = await res.text();
+    const $ = cheerio.load(xml, { xmlMode: true });
+
+    const urls: string[] = [];
+    $("url > loc").each((_, el) => {
+      const loc = $(el).text().trim();
+      if (loc) urls.push(loc);
+    });
+    if (urls.length === 0) return null;
+
+    const filtered = urls
+      .filter((url) => {
+        try {
+          const parsed = new URL(url);
+          return (
+            parsed.origin === origin && !isDisallowed(parsed.pathname, rules)
+          );
+        } catch {
+          return false;
+        }
+      })
+      .slice(0, MAX_DISCOVERED_PAGES);
+
+    return filtered.map((url) => ({ url, title: url }));
+  } catch {
+    return null;
+  }
+}
+
+export async function discoverPages(
+  rootUrl: string,
+): Promise<DiscoveredPage[]> {
+  const root = new URL(rootUrl);
+  const origin = root.origin;
+  const rules = await fetchRobotsRules(origin);
+
+  const viaSitemap = await tryDiscoverViaSitemap(origin, rules);
+  if (viaSitemap && viaSitemap.length > 0) return viaSitemap;
+
+  if (isDisallowed(root.pathname, rules)) return [];
+
+  const res = await fetchWithTimeout(rootUrl);
+  if (!res.ok)
+    throw new Error(`Could not fetch ${rootUrl} (status ${res.status}).`);
+
+  const html = await res.text();
+  const $ = cheerio.load(html);
+
+  const seen = new Set<string>([root.href]);
+  const candidates: DiscoveredPage[] = [
+    { url: root.href, title: $("title").first().text().trim() || root.href },
+  ];
+
+  $("a[href]").each((_, el) => {
+    const href = $(el).attr("href");
+    if (!href || !isContentLink(href)) return;
+
+    let resolved: URL;
+    try {
+      resolved = new URL(href, origin);
+    } catch {
+      return;
+    }
+
+    if (resolved.origin !== origin) return;
+    if (isDisallowed(resolved.pathname, rules)) return;
+
+    const normalized = resolved.href.split("#")[0];
+    if (seen.has(normalized)) return;
+    seen.add(normalized);
+
+    candidates.push({
+      url: normalized,
+      title: $(el).text().trim() || normalized,
+    });
+  });
+
+  const prioritized = candidates.filter((page) =>
+    PRIORITY_PATH_HINTS.some((hint) =>
+      new URL(page.url).pathname.toLowerCase().includes(hint),
+    ),
+  );
+  const rest = candidates.filter((page) => !prioritized.includes(page));
+
+  return [...prioritized, ...rest].slice(0, MAX_DISCOVERED_PAGES);
+}
+
+export async function scrapePage(
+  url: string,
+): Promise<{ title: string; text: string }> {
+  const res = await fetchWithTimeout(url);
+  if (!res.ok)
+    throw new Error(`Could not fetch ${url} (status ${res.status}).`);
+
+  const html = await res.text();
+  const $ = cheerio.load(html);
+  $("script, style, nav, footer, noscript").remove();
+
+  const title = $("title").first().text().trim() || url;
+  const text = $("body").text().replace(/\s+/g, " ").trim();
+
+  return { title, text };
+}
+</file>
+
 <file path="lib/rate-limit.ts">
 /**
  * Generic in-memory rate limiter, keyed by an arbitrary string.
@@ -13002,6 +13481,91 @@ create index if not exists idx_conversations_org_last_message
   on conversations (organization_id, last_message_at desc);
 </file>
 
+<file path="supabase/migrations/0010_inbox_rpc.sql">
+-- 0010_inbox_rpc.sql
+-- Prompt 05 — Human Handoff: Live Inbox & Takeover
+
+-- ============================================================
+-- get_inbox_conversations
+--
+-- Returns one row per conversation for an organization, along with
+-- its most recent message and a "user_streak" count (how many
+-- consecutive user messages have arrived since the last assistant
+-- reply — used by the "needs attention" heuristic in
+-- lib/inbox/queries.ts, kept simple/adjustable per Section 3.2).
+--
+-- NOT security definer — runs as the calling role, so the existing
+-- RLS policies on `conversations` and `messages` (Prompt 01/02) apply
+-- exactly as if this were a plain SELECT. This is what keeps a
+-- reseller-scoped or single-org caller from seeing another org's rows
+-- through this RPC, without needing a redundant org_id check inside
+-- the function body.
+-- ============================================================
+
+create or replace function get_inbox_conversations(
+  target_organization_id uuid,
+  channel_filter text default null,
+  status_filter text default null
+)
+returns table (
+  id uuid,
+  channel text,
+  channel_thread_id text,
+  visitor_id text,
+  visitor_display_name text,
+  status text,
+  assigned_user_id uuid,
+  started_at timestamptz,
+  last_message_at timestamptz,
+  last_message_content text,
+  last_message_role text,
+  user_streak int
+)
+language sql stable
+as $$
+  select
+    c.id,
+    c.channel,
+    c.channel_thread_id,
+    c.visitor_id,
+    c.visitor_display_name,
+    c.status,
+    c.assigned_user_id,
+    c.started_at,
+    c.last_message_at,
+    lm.content as last_message_content,
+    lm.role as last_message_role,
+    coalesce(streak.user_streak, 0) as user_streak
+  from conversations c
+  left join lateral (
+    select m.content, m.role
+    from messages m
+    where m.conversation_id = c.id
+    order by m.created_at desc
+    limit 1
+  ) lm on true
+  left join lateral (
+    select count(*)::int as user_streak
+    from messages m3
+    where m3.conversation_id = c.id
+      and m3.role = 'user'
+      and m3.created_at > coalesce(
+        (select max(m4.created_at) from messages m4
+         where m4.conversation_id = c.id and m4.role = 'assistant'),
+        '-infinity'::timestamptz
+      )
+  ) streak on true
+  where c.organization_id = target_organization_id
+    and (channel_filter is null or c.channel = channel_filter)
+    and (status_filter is null or c.status = status_filter)
+  order by c.last_message_at desc
+  limit 100;
+$$;
+
+grant execute on function get_inbox_conversations(uuid, text, text)
+  to authenticated;
+</file>
+
 <file path="supabase/migrations/0011_widget_realtime_anon_access.sql">
 -- 0011_widget_realtime_anon_access.sql
 -- Prompt 05, Section 3.3 / 4 — website widget needs to receive
@@ -13334,6 +13898,73 @@ create policy "admins can review billing requests"
 on billing_requests for update
 using ( public.is_admin() )
 with check ( public.is_admin() );
+</file>
+
+<file path="supabase/migrations/0015_fix_realtime_leak.sql">
+-- 0015_fix_realtime_leak.sql
+-- SECURITY FIX: removes anon-role table-wide SELECT access on
+-- conversations/messages (was leaking every client's chats), and
+-- adds the missing unique constraint that channel_connections'
+-- upsert(onConflict: "agent_id,channel") requires to function.
+
+-- Issue A: remove the broken anon SELECT policies from 0011 — these
+-- granted table-wide read access to any anonymous caller holding the
+-- anon key, not per-conversation access as their comment claimed.
+drop policy if exists "anon can read website conversations by known id" on conversations;
+drop policy if exists "anon can read website messages for a known conversation id" on messages;
+
+-- NOTE: do NOT remove conversations/messages from the
+-- supabase_realtime publication — the authenticated staff inbox still
+-- legitimately uses postgres_changes there, scoped by is_org_accessible().
+-- Only the anon-role policies above are removed. The widget will use
+-- Broadcast instead (no table access needed at all).
+
+-- Issue B: add the missing constraint the upsert() calls need
+alter table channel_connections
+  add constraint channel_connections_agent_channel_unique
+  unique (agent_id, channel);
+</file>
+
+<file path="supabase/migrations/0017_kb_scraping_pdf.sql">
+-- 0017_kb_scraping_pdf.sql
+-- Storage bucket for PDF knowledge-base uploads (private, scoped by
+-- organization_id path prefix), plus a last_refreshed_at column for
+-- URL-sourced documents' "Refresh from source" action.
+
+insert into storage.buckets (id, name, public)
+values ('knowledge-base-pdfs', 'knowledge-base-pdfs', false)
+on conflict (id) do nothing;
+
+-- Path convention: knowledge-base-pdfs/<organization_id>/<filename>.pdf
+-- storage.foldername(name) splits the object path into folder segments;
+-- [1] is the first one, i.e. the organization_id — reuses the same
+-- is_org_accessible() function every other table's RLS already relies on.
+create policy "org members can read their own kb pdfs"
+on storage.objects for select
+to authenticated
+using (
+  bucket_id = 'knowledge-base-pdfs'
+  and public.is_org_accessible((storage.foldername(name))[1]::uuid)
+);
+
+create policy "org members can upload their own kb pdfs"
+on storage.objects for insert
+to authenticated
+with check (
+  bucket_id = 'knowledge-base-pdfs'
+  and public.is_org_accessible((storage.foldername(name))[1]::uuid)
+);
+
+create policy "org members can delete their own kb pdfs"
+on storage.objects for delete
+to authenticated
+using (
+  bucket_id = 'knowledge-base-pdfs'
+  and public.is_org_accessible((storage.foldername(name))[1]::uuid)
+);
+
+alter table knowledge_base_documents
+  add column if not exists last_refreshed_at timestamptz;
 </file>
 
 <file path="tsconfig.json">
@@ -14494,274 +15125,6 @@ export default async function ClientDetailPage({
 }
 </file>
 
-<file path="app/(platform-client)/dashboard/inbox/actions.ts">
-"use server";
-
-import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
-import { decryptToken } from "@/lib/channels/encryption";
-
-import { triggerWebhookDispatch } from "@/lib/webhooks/trigger";
-import {
-  sendWhatsAppMessage,
-  sendMessengerMessage,
-  sendInstagramMessage,
-} from "@/lib/channels/send";
-
-type ActionResult = { error: string | null };
-
-async function getCurrentUserId(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user?.id ?? null;
-}
-
-/**
- * Takeover (Section 3.3 + 3.4). The `.eq("assigned_user_id", null)` OR
- * "already mine" check is the optimistic lock: the UPDATE only
- * matches a row if nobody else has claimed it yet (or the caller
- * already owns it), so two staff clicking "Take over" at the same
- * moment can't both silently win — whoever's UPDATE lands second
- * matches zero rows and gets a clear "already taken" error instead of
- * overwriting the first staff member's assignment.
- */
-export async function takeoverConversation(
-  conversationId: string,
-): Promise<ActionResult> {
-  const supabase = await createClient();
-  const userId = await getCurrentUserId(supabase);
-  if (!userId) return { error: "Not authenticated." };
-
-  const { data, error } = await supabase
-    .from("conversations")
-    .update({ status: "human_handling", assigned_user_id: userId })
-    .eq("id", conversationId)
-    .neq("status", "resolved")
-    .or(`assigned_user_id.is.null,assigned_user_id.eq.${userId}`)
-    .select("id")
-    .maybeSingle();
-
-  if (error) return { error: error.message };
-  if (!data) {
-    return {
-      error:
-        "This conversation was just taken over by someone else — refresh to see who.",
-    };
-  }
-
-  revalidatePath("/dashboard/inbox");
-  return { error: null };
-}
-
-export async function handBackToAI(
-  conversationId: string,
-): Promise<ActionResult> {
-  const supabase = await createClient();
-  const userId = await getCurrentUserId(supabase);
-  if (!userId) return { error: "Not authenticated." };
-
-  // Same optimistic-lock shape as takeover — only the currently
-  // assigned staff member (or an admin, covered by RLS) can hand back.
-  const { data, error } = await supabase
-    .from("conversations")
-    .update({ status: "ai_handling", assigned_user_id: null })
-    .eq("id", conversationId)
-    .eq("assigned_user_id", userId)
-    .select("id")
-    .maybeSingle();
-
-  if (error) return { error: error.message };
-  if (!data) {
-    return { error: "You're no longer assigned to this conversation." };
-  }
-
-  revalidatePath("/dashboard/inbox");
-  return { error: null };
-}
-
-export async function resolveConversation(
-  conversationId: string,
-): Promise<ActionResult> {
-  const supabase = await createClient();
-
-  const { data: conversation, error: fetchError } = await supabase
-    .from("conversations")
-    .select("id, organization_id")
-    .eq("id", conversationId)
-    .maybeSingle();
-
-  if (fetchError || !conversation) {
-    return { error: fetchError?.message ?? "Conversation not found." };
-  }
-
-  const { error } = await supabase
-    .from("conversations")
-    .update({ status: "resolved", assigned_user_id: null })
-    .eq("id", conversationId);
-
-  if (error) return { error: error.message };
-
-  // Forward-looking per Prompt 01's webhook design — Prompt 07 will
-  // add a real dispatcher; this just makes sure the event exists.
-  await supabase.from("webhook_events").insert({
-    organization_id: conversation.organization_id,
-    event_type: "conversation.resolved",
-    payload: { conversation_id: conversationId },
-  });
-  triggerWebhookDispatch();
-  revalidatePath("/dashboard/inbox");
-  return { error: null };
-}
-
-/**
- * Sends a human agent's reply and routes it out on the right channel.
- *
- * For `channel: 'website'` there is no outbound API call — inserting
- * the `messages` row is the entire delivery mechanism, since the
- * open widget is subscribed to Realtime for its own conversation_id
- * (see Section 3.3 / the widget update) and will receive it directly.
- */
-export async function sendHumanReply(
-  conversationId: string,
-  content: string,
-): Promise<ActionResult> {
-  const trimmed = content.trim();
-  if (!trimmed) return { error: "Message can't be empty." };
-
-  const supabase = await createClient();
-  const userId = await getCurrentUserId(supabase);
-  if (!userId) return { error: "Not authenticated." };
-
-  const { data: conversation, error: fetchError } = await supabase
-    .from("conversations")
-    .select(
-      "id, agent_id, organization_id, channel, channel_thread_id, status, assigned_user_id",
-    )
-    .eq("id", conversationId)
-    .maybeSingle();
-
-  if (fetchError || !conversation) {
-    return { error: fetchError?.message ?? "Conversation not found." };
-  }
-
-  if (
-    conversation.status !== "human_handling" ||
-    conversation.assigned_user_id !== userId
-  ) {
-    return {
-      error: "You need to take over this conversation before replying.",
-    };
-  }
-
-  const { error: insertError } = await supabase.from("messages").insert({
-    conversation_id: conversationId,
-    agent_id: conversation.agent_id,
-    organization_id: conversation.organization_id,
-    role: "human_agent",
-    content: trimmed,
-  });
-  if (insertError) return { error: insertError.message };
-
-  await supabase
-    .from("conversations")
-    .update({ last_message_at: new Date().toISOString() })
-    .eq("id", conversationId);
-
-  // Website: nothing further to do — Realtime delivers it.
-  if (conversation.channel === "website") {
-    revalidatePath("/dashboard/inbox");
-    return { error: null };
-  }
-
-  // WhatsApp / Messenger / Instagram: fetch the connection and send
-  // through the matching Prompt 04 function.
-  if (!conversation.channel_thread_id) {
-    return {
-      error:
-        "Message saved, but this conversation has no channel thread id to reply to.",
-    };
-  }
-
-  const { data: connection } = await supabase
-    .from("channel_connections")
-    .select("access_token, phone_number_id")
-    .eq("agent_id", conversation.agent_id)
-    .eq("channel", conversation.channel)
-    .eq("status", "connected")
-    .maybeSingle();
-
-  if (!connection) {
-    return {
-      error:
-        "Message saved, but no connected channel was found to send it through.",
-    };
-  }
-
-  let accessToken: string;
-  try {
-    accessToken = decryptToken(connection.access_token);
-  } catch {
-    return {
-      error:
-        "Message saved, but the channel's access token could not be decrypted.",
-    };
-  }
-
-  let sent = false;
-  if (conversation.channel === "whatsapp" && connection.phone_number_id) {
-    sent = await sendWhatsAppMessage(
-      connection.phone_number_id,
-      accessToken,
-      conversation.channel_thread_id,
-      trimmed,
-    );
-  } else if (conversation.channel === "messenger") {
-    sent = await sendMessengerMessage(
-      accessToken,
-      conversation.channel_thread_id,
-      trimmed,
-    );
-  } else if (conversation.channel === "instagram") {
-    sent = await sendInstagramMessage(
-      accessToken,
-      conversation.channel_thread_id,
-      trimmed,
-    );
-  }
-
-  revalidatePath("/dashboard/inbox");
-
-  if (!sent) {
-    return {
-      error: "Message saved, but delivery to the channel failed — see logs.",
-    };
-  }
-  return { error: null };
-}
-
-/**
- * Marks the inbox "seen" for the calling user in this org — clears
- * the unread badge. Called when the inbox page mounts / is focused.
- */
-export async function markInboxSeen(organizationId: string): Promise<void> {
-  const supabase = await createClient();
-  const userId = await getCurrentUserId(supabase);
-  if (!userId) return;
-
-  await supabase.from("inbox_last_seen").upsert(
-    {
-      user_id: userId,
-      organization_id: organizationId,
-      last_seen_at: new Date().toISOString(),
-    },
-    { onConflict: "user_id,organization_id" },
-  );
-}
-</file>
-
 <file path="app/(platform-client)/dashboard/inbox/InboxClient.tsx">
 "use client";
 
@@ -15362,333 +15725,392 @@ function MessageRow({ message }: { message: InboxMessageRow }) {
 }
 </file>
 
-<file path="app/(platform-client)/dashboard/knowledge-base/KnowledgeBaseClient.tsx">
-"use client";
+<file path="app/(platform-client)/dashboard/knowledge-base/actions.ts">
+"use server";
 
-import { useRef, useState, useTransition, type FormEvent } from "react";
-import {
-  Loader2,
-  Plus,
-  Trash2,
-  RotateCw,
-  Upload,
-  Link as LinkIcon,
-} from "lucide-react";
-
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  addKnowledgeBaseDocument,
-  deleteKnowledgeBaseDocument,
-  reindexKnowledgeBaseDocument,
-} from "./actions";
-
-type DocumentRow = {
-  id: string;
-  title: string;
-  status: string;
-  source_type: string;
-  created_at: string;
-  error_message?: string | null;
-  raw_content?: string | null;
-};
-
-const STATUS_VARIANT: Record<string, "success" | "warning" | "outline"> = {
-  ready: "success",
-  processing: "warning",
-  error: "outline",
-};
-
-const CONTENT_PLACEHOLDER = `Example:
-
-Q: What are your opening hours?
-A: We're open Monday to Saturday, 10am to 8pm.
-
-Q: Do you offer home delivery?
-A: Yes, free delivery within 5km, small fee beyond that.
-
-Write in whatever format makes sense — FAQs, a plain description of your business, policies, pricing. The AI only ever answers from what you put here.`;
-
-export function KnowledgeBaseClient({
-  documents,
-}: {
-  documents: DocumentRow[];
-}) {
-  const formRef = useRef<HTMLFormElement>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
-  const [pendingId, setPendingId] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  const handleAdd = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setError(null);
-    const formData = new FormData(e.currentTarget);
-    startTransition(async () => {
-      const result = await addKnowledgeBaseDocument(formData);
-      if (result?.error) setError(result.error);
-      else formRef.current?.reset();
-    });
-  };
-
-  const handleDelete = (id: string) => {
-    setPendingId(id);
-    startTransition(async () => {
-      await deleteKnowledgeBaseDocument(id);
-      setPendingId(null);
-    });
-  };
-
-  const handleReindex = (id: string) => {
-    setPendingId(id);
-    startTransition(async () => {
-      await reindexKnowledgeBaseDocument(id);
-      setPendingId(null);
-    });
-  };
-
-  return (
-    <div className="flex flex-col gap-8">
-      {/* Add knowledge */}
-      <form
-        ref={formRef}
-        onSubmit={handleAdd}
-        className="rounded-2xl border border-border bg-card p-6"
-      >
-        <h2 className="font-heading text-base font-semibold text-foreground">
-          Add knowledge
-        </h2>
-
-        <div className="mt-4 flex flex-col gap-1.5">
-          <label
-            htmlFor="title"
-            className="font-body text-sm font-medium text-foreground"
-          >
-            Title
-          </label>
-          <input
-            id="title"
-            name="title"
-            required
-            placeholder="e.g. Pricing & Hours"
-            className="rounded-lg border border-border bg-background px-3 py-2 font-body text-sm text-foreground placeholder:text-secondary-text focus:outline-none focus:ring-2 focus:ring-primary/40"
-          />
-        </div>
-
-        <div className="mt-4 flex flex-col gap-1.5">
-          <label
-            htmlFor="rawContent"
-            className="font-body text-sm font-medium text-foreground"
-          >
-            Content
-          </label>
-          <textarea
-            id="rawContent"
-            name="rawContent"
-            required
-            rows={8}
-            placeholder={CONTENT_PLACEHOLDER}
-            className="resize-none rounded-lg border border-border bg-background px-3 py-2.5 font-body text-sm text-foreground placeholder:text-secondary-text/70 focus:outline-none focus:ring-2 focus:ring-primary/40"
-          />
-        </div>
-
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <button
-            type="button"
-            disabled
-            title="Coming in a future update"
-            className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-background/50 px-4 py-2.5 font-body text-sm text-secondary-text opacity-60 cursor-not-allowed"
-          >
-            <Upload className="h-4 w-4" />
-            Upload PDF <span className="text-xs">(coming soon)</span>
-          </button>
-          <div className="flex items-center gap-2 rounded-lg border border-dashed border-border bg-background/50 px-4 py-2.5 opacity-60">
-            <LinkIcon className="h-4 w-4 flex-none text-secondary-text" />
-            <input
-              disabled
-              placeholder="Scrape from URL (coming soon)"
-              className="w-full bg-transparent font-body text-sm text-secondary-text placeholder:text-secondary-text cursor-not-allowed focus:outline-none"
-            />
-          </div>
-        </div>
-
-        {error && (
-          <p role="alert" className="mt-3 font-body text-sm text-error">
-            {error}
-          </p>
-        )}
-
-        <Button type="submit" disabled={isPending} className="mt-5">
-          {isPending ? (
-            <Loader2 className="animate-spin" />
-          ) : (
-            <Plus className="h-4 w-4" />
-          )}
-          Add to knowledge base
-        </Button>
-      </form>
-
-      {/* Document list */}
-      <div>
-        <h2 className="mb-3 font-heading text-base font-semibold text-foreground">
-          Documents
-        </h2>
-        {documents.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border bg-card/50 px-8 py-14 text-center">
-            <p className="font-body text-sm text-secondary-text">
-              No knowledge base documents yet — add your first one above.
-            </p>
-          </div>
-        ) : (
-          <div className="flex flex-col divide-y divide-border rounded-2xl border border-border bg-card">
-            {documents.map((doc) => {
-              const isRowPending = isPending && pendingId === doc.id;
-              const isExpanded = expandedId === doc.id;
-              return (
-                <div key={doc.id}>
-                  <div
-                    onClick={() => setExpandedId(isExpanded ? null : doc.id)}
-                    className="flex cursor-pointer flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="truncate font-body text-sm font-medium text-foreground">
-                          {doc.title}
-                        </p>
-                        <Badge
-                          variant={STATUS_VARIANT[doc.status] ?? "outline"}
-                          className="text-xs capitalize"
-                        >
-                          {doc.status}
-                        </Badge>
-                      </div>
-                      {doc.status === "error" && doc.error_message && (
-                        <p className="mt-1 font-body text-xs text-error">
-                          {doc.error_message}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex flex-none gap-2">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleReindex(doc.id);
-                        }}
-                        disabled={isRowPending}
-                        className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-body text-xs text-foreground transition-colors hover:bg-background disabled:opacity-50"
-                      >
-                        <RotateCw className="h-3.5 w-3.5" />
-                        Re-index
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete(doc.id);
-                        }}
-                        disabled={isRowPending}
-                        className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-body text-xs text-error transition-colors hover:bg-error/10 disabled:opacity-50"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                  {isExpanded && (
-                    <div className="border-t border-border bg-background px-4 py-3">
-                      <p className="whitespace-pre-wrap font-body text-xs leading-relaxed text-secondary-text">
-                        {doc.raw_content || "No content available."}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-</file>
-
-<file path="app/(platform-client)/dashboard/knowledge-base/page.tsx">
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { KnowledgeBaseClient } from "./KnowledgeBaseClient";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { ingestDocument } from "@/lib/knowledge-base/ingest";
+import { discoverPages, scrapePage } from "@/lib/knowledge-base/scrape";
+import { extractPdfText } from "@/lib/knowledge-base/pdf";
 
-export default async function KnowledgeBasePage() {
+/**
+ * Resolves the current user's active agent using the RLS-scoped
+ * server client — this is what makes ownership checks below actually
+ * safe. ingestDocument() itself uses the service-role client and
+ * bypasses RLS entirely, so every call site in this file must verify
+ * ownership via a plain (non-admin) select/update BEFORE calling it.
+ */
+async function getActiveAgentForCurrentUser() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  if (!user) return null;
 
   const { data: membership } = await supabase
     .from("organization_members")
     .select("organization_id")
-    .eq("user_id", user?.id ?? "")
+    .eq("user_id", user.id)
     .limit(1)
     .maybeSingle();
 
-  let agentId: string | null = null;
-  let documents: {
-    id: string;
-    title: string;
-    status: string;
-    source_type: string;
-    created_at: string;
-    error_message: string | null;
-    raw_content: string | null;
-  }[] = [];
+  if (!membership) return null;
 
-  if (membership) {
-    const { data: agent } = await supabase
-      .from("agents")
-      .select("id")
-      .eq("organization_id", membership.organization_id)
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("id, organization_id")
+    .eq("organization_id", membership.organization_id)
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
 
-    agentId = agent?.id ?? null;
+  return agent;
+}
 
-    if (agentId) {
-      const { data: docs } = await supabase
-        .from("knowledge_base_documents")
-        .select(
-          "id, title, status, source_type, created_at, error_message, raw_content",
-        )
-        .eq("agent_id", agentId)
-        .order("created_at", { ascending: false });
+export async function addKnowledgeBaseDocument(formData: FormData) {
+  const title = String(formData.get("title") ?? "").trim();
+  const rawContent = String(formData.get("rawContent") ?? "").trim();
 
-      documents = docs ?? [];
-    }
+  if (!title) return { error: "Give this document a short title." };
+  if (!rawContent || rawContent.length < 20) {
+    return { error: "Add a bit more detail — at least a few sentences." };
   }
 
-  return (
-    <div>
-      <h1 className="font-heading text-2xl font-bold text-foreground">
-        Knowledge Base
-      </h1>
-      <p className="mt-2 font-body text-sm text-secondary-text">
-        Add the facts your AI agent should answer from — FAQs, policies,
-        pricing, hours. The embedded widget only ever answers from what&apos;s
-        here.
-      </p>
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent) return { error: "No active agent found for your organization." };
 
-      {!agentId ? (
-        <div className="mt-8 rounded-2xl border border-dashed border-border bg-card/50 px-8 py-16 text-center">
-          <p className="font-body text-sm text-secondary-text">
-            No active agent found for your organization yet.
-          </p>
-        </div>
-      ) : (
-        <div className="mt-8">
-          <KnowledgeBaseClient documents={documents} />
-        </div>
-      )}
-    </div>
-  );
+  const supabase = await createClient();
+  const { data: doc, error } = await supabase
+    .from("knowledge_base_documents")
+    .insert({
+      agent_id: agent.id,
+      organization_id: agent.organization_id,
+      source_type: "manual_text",
+      title,
+      raw_content: rawContent,
+      status: "processing",
+    })
+    .select("id")
+    .single();
+
+  if (error || !doc) {
+    return { error: error?.message ?? "Failed to save document." };
+  }
+
+  try {
+    // Ran synchronously per Prompt 02 Section 4.2 — manual-text FAQ
+    // documents are short enough that this won't time out. ingestDocument
+    // itself doesn't touch request/response objects, so it can move to a
+    // background queue later without changing its internals.
+    await ingestDocument(doc.id);
+  } catch (err) {
+    console.error("[knowledge-base] ingestion failed:", err);
+    revalidatePath("/dashboard/knowledge-base");
+    return {
+      error: "Saved, but processing failed — see the status badge below.",
+    };
+  }
+
+  revalidatePath("/dashboard/knowledge-base");
+  return { error: null };
+}
+
+// ============================================================
+// URL scraping (Prompt 11)
+// ============================================================
+
+export async function discoverKnowledgeBaseUrls(rootUrl: string) {
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent) {
+    return { error: "No active agent found for your organization.", pages: [] };
+  }
+
+  let normalized: string;
+  try {
+    const parsed = new URL(rootUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error("bad protocol");
+    }
+    normalized = parsed.href;
+  } catch {
+    return { error: "Enter a valid URL, e.g. https://example.com", pages: [] };
+  }
+
+  try {
+    const pages = await discoverPages(normalized);
+    return { error: null, pages };
+  } catch (err) {
+    return {
+      error: err instanceof Error ? err.message : "Could not reach that site.",
+      pages: [],
+    };
+  }
+}
+
+/**
+ * Scrapes and ingests a SINGLE url. Deliberately singular (not a bulk
+ * `urls[]` action) so the client can loop over selected pages one at a
+ * time and show real "Scraping page 3 of 8..." progress between calls,
+ * per Section 2.2's sequential-processing requirement.
+ */
+export async function scrapeAndIngestUrl(url: string) {
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent) return { error: "No active agent found for your organization." };
+
+  let scraped: Awaited<ReturnType<typeof scrapePage>>;
+  try {
+    scraped = await scrapePage(url);
+  } catch (err) {
+    return {
+      error: err instanceof Error ? err.message : `Could not scrape ${url}.`,
+    };
+  }
+
+  const supabase = await createClient();
+  const { data: doc, error: insertError } = await supabase
+    .from("knowledge_base_documents")
+    .insert({
+      agent_id: agent.id,
+      organization_id: agent.organization_id,
+      source_type: "url",
+      source_url: url,
+      title: scraped.title,
+      raw_content: scraped.text,
+      status: "processing",
+      last_refreshed_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !doc) {
+    return { error: insertError?.message ?? `Failed to save ${url}.` };
+  }
+
+  try {
+    await ingestDocument(doc.id);
+  } catch (err) {
+    console.error("[knowledge-base] url ingestion failed:", err);
+    revalidatePath("/dashboard/knowledge-base");
+    return { error: `Saved ${url}, but processing failed.` };
+  }
+
+  revalidatePath("/dashboard/knowledge-base");
+  return { error: null };
+}
+
+export async function refreshKnowledgeBaseUrlDocument(documentId: string) {
+  const supabase = await createClient();
+
+  const { data: doc } = await supabase
+    .from("knowledge_base_documents")
+    .select("id, source_url, source_type")
+    .eq("id", documentId)
+    .maybeSingle();
+
+  if (!doc || doc.source_type !== "url" || !doc.source_url) {
+    return { error: "This document has no source URL to refresh from." };
+  }
+
+  let scraped: Awaited<ReturnType<typeof scrapePage>>;
+  try {
+    scraped = await scrapePage(doc.source_url);
+  } catch (err) {
+    return {
+      error:
+        err instanceof Error
+          ? err.message
+          : "Could not re-fetch the source page.",
+    };
+  }
+
+  await supabase
+    .from("knowledge_base_documents")
+    .update({
+      title: scraped.title,
+      raw_content: scraped.text,
+      status: "processing",
+      error_message: null,
+      last_refreshed_at: new Date().toISOString(),
+    })
+    .eq("id", documentId);
+
+  try {
+    await ingestDocument(documentId);
+  } catch (err) {
+    console.error("[knowledge-base] refresh failed:", err);
+    revalidatePath("/dashboard/knowledge-base");
+    return {
+      error:
+        "Refreshed, but re-processing failed — see the status badge below.",
+    };
+  }
+
+  revalidatePath("/dashboard/knowledge-base");
+  return { error: null };
+}
+
+// ============================================================
+// PDF upload (Prompt 11)
+// ============================================================
+
+export async function createPdfUploadUrl(fileName: string) {
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent) {
+    return {
+      error: "No active agent found for your organization.",
+      data: null,
+    };
+  }
+
+  const safeName = fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+  const path = `${agent.organization_id}/${Date.now()}-${safeName}`;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.storage
+    .from("knowledge-base-pdfs")
+    .createSignedUploadUrl(path);
+
+  if (error || !data) {
+    return {
+      error: error?.message ?? "Could not create an upload URL.",
+      data: null,
+    };
+  }
+
+  return {
+    error: null,
+    data: { path, token: data.token, signedUrl: data.signedUrl },
+  };
+}
+
+export async function ingestUploadedPdf(storagePath: string, fileName: string) {
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent) return { error: "No active agent found for your organization." };
+
+  // The signed upload URL only proves *a* logged-in user uploaded this
+  // file — this path-prefix check is the actual ownership guard before
+  // we touch knowledge_base_documents.
+  if (!storagePath.startsWith(`${agent.organization_id}/`)) {
+    return { error: "This file does not belong to your organization." };
+  }
+
+  const admin = createAdminClient();
+  const { data: file, error: downloadError } = await admin.storage
+    .from("knowledge-base-pdfs")
+    .download(storagePath);
+
+  if (downloadError || !file) {
+    return {
+      error: downloadError?.message ?? "Could not download the uploaded file.",
+    };
+  }
+
+  const buffer = await file.arrayBuffer();
+
+  let extraction: Awaited<ReturnType<typeof extractPdfText>>;
+  try {
+    extraction = await extractPdfText(buffer);
+  } catch {
+    return {
+      error:
+        "Could not read this PDF — it may be corrupted or in an unsupported format.",
+    };
+  }
+
+  const supabase = await createClient();
+
+  if (extraction.looksScanned) {
+    await supabase.from("knowledge_base_documents").insert({
+      agent_id: agent.id,
+      organization_id: agent.organization_id,
+      source_type: "pdf",
+      title: fileName,
+      raw_content: extraction.text || null,
+      status: "error",
+      error_message:
+        "This PDF appears to be a scanned image with no selectable text — try re-exporting it as a text-based PDF, or paste the content manually.",
+    });
+    revalidatePath("/dashboard/knowledge-base");
+    return { error: null };
+  }
+
+  const { data: doc, error: insertError } = await supabase
+    .from("knowledge_base_documents")
+    .insert({
+      agent_id: agent.id,
+      organization_id: agent.organization_id,
+      source_type: "pdf",
+      title: fileName,
+      raw_content: extraction.text,
+      status: "processing",
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !doc) {
+    return { error: insertError?.message ?? "Failed to save document." };
+  }
+
+  try {
+    await ingestDocument(doc.id);
+  } catch (err) {
+    console.error("[knowledge-base] pdf ingestion failed:", err);
+    revalidatePath("/dashboard/knowledge-base");
+    return {
+      error: "Saved, but processing failed — see the status badge below.",
+    };
+  }
+
+  revalidatePath("/dashboard/knowledge-base");
+  return { error: null };
+}
+
+export async function deleteKnowledgeBaseDocument(documentId: string) {
+  // RLS-scoped client — a delete on a document outside the caller's org
+  // simply matches zero rows, no explicit ownership check needed.
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("knowledge_base_documents")
+    .delete()
+    .eq("id", documentId);
+
+  revalidatePath("/dashboard/knowledge-base");
+  return { error: error?.message ?? null };
+}
+
+export async function reindexKnowledgeBaseDocument(documentId: string) {
+  const supabase = await createClient();
+
+  // Ownership check via the RLS-scoped client — required here because
+  // ingestDocument() below uses the service-role client, which would
+  // happily process ANY document id regardless of who's calling.
+  const { data: doc } = await supabase
+    .from("knowledge_base_documents")
+    .select("id")
+    .eq("id", documentId)
+    .maybeSingle();
+
+  if (!doc) {
+    return { error: "Document not found." };
+  }
+
+  await supabase
+    .from("knowledge_base_documents")
+    .update({ status: "processing", error_message: null })
+    .eq("id", documentId);
+
+  try {
+    await ingestDocument(documentId);
+  } catch (err) {
+    console.error("[knowledge-base] re-index failed:", err);
+    revalidatePath("/dashboard/knowledge-base");
+    return { error: "Re-index failed — see the status badge below." };
+  }
+
+  revalidatePath("/dashboard/knowledge-base");
+  return { error: null };
 }
 </file>
 
@@ -16413,44 +16835,6 @@ export function WebhooksClient({
         </div>
       )}
     </div>
-  );
-}
-</file>
-
-<file path="app/(platform-client)/layout.tsx">
-import { createClient } from "@/lib/supabase/server";
-import { PlatformShell } from "@/components/platform/PlatformShell";
-import { getUnreadInboxCount } from "@/lib/inbox/queries";
-
-export default async function ClientDashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("organization_id")
-    .eq("user_id", user?.id ?? "")
-    .limit(1)
-    .maybeSingle();
-
-  const unreadCount = membership
-    ? await getUnreadInboxCount(supabase, membership.organization_id)
-    : 0;
-
-  return (
-    <PlatformShell
-      variant="client"
-      userEmail={user?.email}
-      navBadges={{ "/dashboard/inbox": unreadCount }}
-    >
-      {children}
-    </PlatformShell>
   );
 }
 </file>
@@ -19170,369 +19554,6 @@ export const testimonials: Testimonial[] = [
 ];
 </file>
 
-<file path="docs/platform-setup.md">
-# Platform Setup
-
-Setup guide for the multi-tenant AI chatbot platform layered on top of the
-MBR Studio marketing site.
-
-## 1. Create a Supabase project
-
-1. [supabase.com/dashboard](https://supabase.com/dashboard) → New project
-2. Pick a region close to your users
-3. Save the database password somewhere safe
-
-## 2. Environment variables
-
-Copy `.env.example` to `.env.local` and fill in (Project → Settings → API):
-
-```
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-```
-
-## 3. Run migrations
-
-In the Supabase Dashboard → SQL Editor, run in order:
-
-1. `supabase/migrations/0001_platform_core.sql` — all tables + `vector` extension
-2. `supabase/migrations/0002_rls_policies.sql` — RLS on every table
-
-Verify:
-
-```sql
-select tablename, rowsecurity from pg_tables
-where schemaname = 'public' order by tablename;
-```
-
-Every table should show `rowsecurity = true`.
-
-## 4. Make your own account an admin
-
-1. Sign up through the app at `/signup` with your real email
-2. Confirm the email (Supabase sends a confirmation link by default)
-3. In Supabase Dashboard → SQL Editor, find your user id:
-
-   ```sql
-   select id, email from auth.users where email = 'you@example.com';
-   ```
-
-4. Insert yourself into `admins` using that id:
-
-   ```sql
-   insert into admins (user_id) values ('paste-your-uuid-here');
-   ```
-
-5. Log out and log back in at `/login` — you should now be able to reach
-   `/admin` instead of being redirected to `/dashboard`.
-
-## 5. Create your first test organization
-
-1. Go to `/admin/organizations`
-2. Fill in a name, click "Create organization"
-3. This creates: an `organizations` row, a default `agents` row, and an
-   `embed_keys` row with a `public_key` (shown next to the org in the list)
-
-Copy that `public_key`, the `organization_id`, and `agent_id` — Prompt 02
-(Knowledge Base + Website Widget) needs them to build and test the
-embeddable widget against a real agent.
-
-To find the ids:
-
-```sql
-select o.id as organization_id, a.id as agent_id, e.public_key
-from organizations o
-join agents a on a.organization_id = o.id
-join embed_keys e on e.agent_id = a.id
-order by o.created_at desc
-limit 1;
-```
-
----
-
-## Prompt 04 — Omnichannel (WhatsApp, Instagram, Messenger) Setup
-
-### What was built
-
-- `channel_connections` extended with `phone_number_id`, `webhook_verify_token`,
-  `linked_agent_id`, and a unique `(agent_id, channel)` constraint.
-- Access tokens encrypted at rest via AES-256-GCM
-  (`lib/channels/encryption.ts`, key in `CHANNEL_TOKEN_ENCRYPTION_KEY`).
-- One unified inbound webhook (`app/api/channels/webhook/route.ts`) handling
-  WhatsApp, Messenger, and Instagram, normalized via
-  `lib/channels/parse-inbound.ts`.
-- Outbound sending via `lib/channels/send.ts` (one function per channel,
-  with retry).
-- Inbound messages flow through the same KB retrieval + guardrails +
-  `buildSystemPrompt()` pipeline used by the website widget
-  (`lib/channels/process-inbound-message.ts`), keeping one consistent
-  AI agent across every channel.
-- Dashboard UI at `/dashboard/channels` to connect/disconnect each
-  channel and send a test WhatsApp message.
-
-### Meta App setup steps (in the order that actually worked)
-
-1. Create a Meta Developer App at developers.facebook.com/apps
-   (type: Business), and add the WhatsApp product.
-2. Note the App ID and App Secret from **App Settings → Basic**.
-3. From **WhatsApp → API Setup**, get the test Phone Number ID and a
-   temporary access token (or generate a permanent one via a System
-   User in Business Settings, with `whatsapp_business_management` +
-   `whatsapp_business_messaging` permissions).
-4. **Critical, easy-to-miss step**: subscribing the app to the webhook
-   fields in the dashboard is NOT enough on its own. The app must also
-   be explicitly subscribed to the specific WABA:
-   ```
-   POST https://graph.facebook.com/v21.0/{waba-id}/subscribed_apps
-   Authorization: Bearer {access-token-with-whatsapp_business_management}
-   ```
-   Verify with a GET on the same endpoint — expect `{"success": true}`.
-   Without this step, webhook configuration can show as verified in
-   the dashboard, but real messages will never trigger the webhook.
-5. Configure the webhook (**WhatsApp → Configuration**):
-   - Callback URL: `https://<your-domain>/api/channels/webhook`
-   - Verify Token: matches `META_WEBHOOK_VERIFY_TOKEN` in your env
-   - Subscribe to the `messages` field (it is NOT subscribed by
-     default — only `account_alerts` is).
-6. Connect the channel from `/dashboard/channels` in the app itself
-   (WABA ID, Phone Number ID, access token) — this is what actually
-   populates `channel_connections` with an encrypted token.
-
-### Known real-world gotcha: phone number verification
-
-A WhatsApp Business phone number has its own `code_verification_status`
-independent of the WABA/app setup. Check it via:
-
-```
-GET https://graph.facebook.com/v25.0/{waba-id}/phone_numbers
-```
-
-If `code_verification_status` is `NOT_VERIFIED`, live customer-sent
-messages will never reach your webhook even if everything else
-(signature verification, webhook subscription, `subscribed_apps`) is
-confirmed correct — Meta's synthetic "Test" event from the dashboard
-will still succeed in this state, which can be misleading. Verifying
-the number requires:
-
-```
-POST https://graph.facebook.com/v25.0/{phone-number-id}/request_code
-  ?code_method=SMS&language=en_US
-```
-
-then submitting the received code via `verify_code`. This endpoint can
-intermittently fail with error code `136024` ("servers temporarily
-unavailable") for reasons outside developer control — if this persists
-for multiple hours, it may indicate an app-review/Business Verification
-gap rather than a transient outage; consider using Meta's default test
-number (which does not require this verification) to validate the full
-pipeline while resolving business number verification separately.
-
-### Embeddings note (affects this and Prompts 02/03 too)
-
-The knowledge base embedding pipeline was migrated from a local
-`@xenova/transformers` model to Google's Gemini embeddings API
-(`gemini-embedding-001`, `outputDimensionality: 768`) because the
-former's native binary dependencies don't run in Vercel's serverless
-runtime. Requires `GOOGLE_AI_API_KEY` in the environment. See
-`lib/knowledge-base/embed.ts`.
-
-```
-
----
-```
-
----
-
-## Prompt 06 — White-Label Reseller Mode
-
-### Making a test org a reseller
-
-1. Go to `/admin/organizations`, click "Manage" on the org you want to make a reseller.
-2. Click "Enable reseller mode."
-3. Optionally fill in brand name / logo URL / custom domain and click "Save branding."
-
-### Adding a sub-client as that reseller
-
-1. Log in as a user who is a member of the reseller org.
-2. Go to `/dashboard/clients` (only visible when your org has reseller mode on).
-3. Add a client — this creates a new organization with `parent_organization_id`
-   set to your reseller org, a default agent, and an embed key. You become
-   `owner` of the new sub-client org automatically.
-
-### Verifying RLS scoping (Section 5, item 1)
-
-Run as three different logged-in test users, or check directly in SQL:
-
-```sql
--- Reseller A's sub-client should NOT be visible to Reseller B's members
-select * from organizations
-where parent_organization_id = '<reseller-A-org-id>';
--- run this as a user who is only a member of reseller B's org — should
--- return 0 rows.
-
--- A direct MBR Studio client (no parent) should never be visible to
--- any reseller
-select * from organizations where id = '<direct-client-org-id>';
--- run as a reseller-org member who is NOT also a direct member — 0 rows.
-
--- An admin should still see everything
-select count(*) from organizations;
--- run as a user in the `admins` table — should return the full count.
-```
-
-### Known limitation
-
-`/dashboard/clients/[id]` currently shows summary stats only. Full
-knowledge-base/guardrails/inbox editing per sub-client (reusing the
-existing dashboard components scoped by an org-id param instead of the
-current user's own membership) is a follow-up routing change — the
-RLS/security model already supports it fully via `is_org_accessible()`.
-
-### Handoff to Prompt 07
-
-`api_keys` and `webhook_endpoints` RLS policies were updated in
-migration `0012_reseller_branding.sql` to use `is_org_accessible()`,
-so they already work correctly for reseller sub-organizations —
-Prompt 07 can build directly on this without re-checking.
-
----
-
-## Prompt 06 — White-Label Reseller Mode
-
-### Making a test org a reseller
-
-1. Go to `/admin/organizations`, click "Manage" on the org you want to make a reseller.
-2. Click "Enable reseller mode."
-3. Optionally fill in brand name / logo URL / custom domain and click "Save branding."
-
-### Adding a sub-client as that reseller
-
-1. Log in as a user who is a member of the reseller org.
-2. Go to `/dashboard/clients` (only visible when your org has reseller mode on).
-3. Add a client — this creates a new organization with `parent_organization_id`
-   set to your reseller org, a default agent, and an embed key. You become
-   `owner` of the new sub-client org automatically.
-
-### Verifying RLS scoping (Section 5, item 1)
-
-Run as three different logged-in test users, or check directly in SQL:
-
-```sql
--- Reseller A's sub-client should NOT be visible to Reseller B's members
-select * from organizations
-where parent_organization_id = '<reseller-A-org-id>';
--- run this as a user who is only a member of reseller B's org — should
--- return 0 rows.
-
--- A direct MBR Studio client (no parent) should never be visible to
--- any reseller
-select * from organizations where id = '<direct-client-org-id>';
--- run as a reseller-org member who is NOT also a direct member — 0 rows.
-
--- An admin should still see everything
-select count(*) from organizations;
--- run as a user in the `admins` table — should return the full count.
-```
-
-### Known limitation
-
-`/dashboard/clients/[id]` currently shows summary stats only. Full
-knowledge-base/guardrails/inbox editing per sub-client (reusing the
-existing dashboard components scoped by an org-id param instead of the
-current user's own membership) is a follow-up routing change — the
-RLS/security model already supports it fully via `is_org_accessible()`.
-
-### White-label branding surfaces
-
-- Login/signup page (`/login`, `/signup`): looks up `reseller_domain`
-  against the request's `host` header and swaps the brand name/logo if
-  a matching reseller org is found. Requires the reseller's custom
-  domain to actually point at this deployment — out of scope here.
-- Widget "Powered by" footer: resolves via the served org's
-  `parent_organization_id` at request time in `/api/widget/config`, so
-  it always reflects current branding without a rebuild.
-- Both explicitly no-op for organizations with no `parent_organization_id`
-  — direct MBR Studio clients are unaffected.
-
-### Handoff to Prompt 07
-
-`api_keys` and `webhook_endpoints` RLS policies were updated in
-migration `0012_reseller_branding.sql` to use `is_org_accessible()`,
-so they already work correctly for reseller sub-organizations —
-Prompt 07 can build directly on this without re-checking.
-
-# Manual Billing (Pakistan-first) — Addendum to docs/platform-setup.md
-
-Built ahead of Prompt 08's Stripe flow because Stripe can't pay out to a
-Pakistani bank account without a foreign entity, and most local clients
-pay via bank transfer / JazzCash / Easypaisa rather than an international
-card. This does NOT touch the enforcement logic in
-`app/api/widget/chat/route.ts` or `app/api/channels/webhook/route.ts` —
-both already read `organizations.plan` / `status` / `monthly_message_limit`
-and don't care how those columns got set.
-
-## 1. Run the migration
-
-```
-supabase/migrations/0014_manual_billing.sql
-```
-
-## 2. Fill in real payment details
-
-Edit `lib/billing/plans.ts`:
-
-- `MANUAL_PAYMENT_METHODS[].instructions` — replace the `[TODO]` bank/JazzCash/Easypaisa details with your real ones.
-- `PLANS.*.priceMonthlyPKR` — confirm against real client conversations before treating as final.
-
-## 3. Wire up navigation
-
-In `components/platform/PlatformShell.tsx`:
-
-- Client nav (`NAV_ITEMS_BY_VARIANT.client`): add `{ label: "Billing", href: "/dashboard/settings/billing", icon: CreditCard }` (import `CreditCard` from lucide-react).
-- Admin nav (`NAV_ITEMS_BY_VARIANT.admin`): add `{ label: "Billing", href: "/admin/billing", icon: CreditCard }`.
-
-## 4. (Optional but recommended) Gate channels by plan
-
-In `app/(platform-client)/dashboard/channels/actions.ts`, at the top of
-`connectWhatsApp` / `connectMessenger` / `connectInstagram`, after
-resolving `agent`:
-
-````ts
-const { data: org } = await supabase
-  .from("organizations")
-  .select("plan")
-  .eq("id", agent.organization_id)
-  .maybeSingle();
-
-if (!isChannelAllowedForPlan(org?.plan ?? "starter", "whatsapp")) {
-  return { error: "Your current plan doesn't include this channel — upgrade from Settings > Billing." };
-}
-```//
-(swap `"whatsapp"` for the matching channel per function). Import
-`isChannelAllowedForPlan` from `@/lib/billing/limits`.
-
-## 5. Test the full cycle
-
-1. Sign up a fresh test account — org starts as `plan: 'starter'`, `status: 'trial'`.
-2. Go to `/dashboard/settings/billing`, pick a plan, choose a payment method, enter any reference text, submit.
-3. Log in as an admin, go to `/admin/billing` — the request appears under Pending.
-4. Click "Approve & activate" — confirm in SQL:
-   ```sql
-   select plan, status, monthly_message_limit from organizations where id = '<org id>';
-   select * from subscriptions where organization_id = '<org id>';
-   select status from billing_requests where organization_id = '<org id>';
-````
-
-`status` should be `active`, `monthly_message_limit` should match the approved plan, and the `billing_requests` row should show `approved`. 5. Try submitting a second request while one is still pending — should be blocked client-side with a clear message. 6. Test reject: submit another request, reject it from `/admin/billing`, confirm `organizations` is untouched and the client sees no pending banner anymore (can resubmit).
-
-## Known scope limits (by design, for now)
-
-- No automated renewal reminders — `subscriptions.current_period_end` is set on approval but nothing currently checks it. Add a cron job later if you want auto-expiry/renewal nudges.
-- `maxAgents` gating isn't wired in — the current codebase always creates exactly one agent per organization at signup/client-creation time, so there's no "add another agent to the same org" flow yet to gate.
-- This flow and a future Stripe flow (Prompt 08) can coexist: Stripe's webhook would just be another writer to the same three `organizations` columns, for clients who _can_ pay via card.
-</file>
-
 <file path="hooks/useChat.ts">
 "use client";
 
@@ -20575,6 +20596,962 @@ export function GuardrailsClient({
 }
 </file>
 
+<file path="app/(platform-client)/dashboard/inbox/actions.ts">
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { decryptToken } from "@/lib/channels/encryption";
+
+import { triggerWebhookDispatch } from "@/lib/webhooks/trigger";
+import {
+  sendWhatsAppMessage,
+  sendMessengerMessage,
+  sendInstagramMessage,
+} from "@/lib/channels/send";
+
+type ActionResult = { error: string | null };
+
+async function getCurrentUserId(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user?.id ?? null;
+}
+
+/**
+ * Takeover (Section 3.3 + 3.4). The `.eq("assigned_user_id", null)` OR
+ * "already mine" check is the optimistic lock: the UPDATE only
+ * matches a row if nobody else has claimed it yet (or the caller
+ * already owns it), so two staff clicking "Take over" at the same
+ * moment can't both silently win — whoever's UPDATE lands second
+ * matches zero rows and gets a clear "already taken" error instead of
+ * overwriting the first staff member's assignment.
+ */
+export async function takeoverConversation(
+  conversationId: string,
+): Promise<ActionResult> {
+  const supabase = await createClient();
+  const userId = await getCurrentUserId(supabase);
+  if (!userId) return { error: "Not authenticated." };
+
+  const { data, error } = await supabase
+    .from("conversations")
+    .update({ status: "human_handling", assigned_user_id: userId })
+    .eq("id", conversationId)
+    .neq("status", "resolved")
+    .or(`assigned_user_id.is.null,assigned_user_id.eq.${userId}`)
+    .select("id")
+    .maybeSingle();
+
+  if (error) return { error: error.message };
+  if (!data) {
+    return {
+      error:
+        "This conversation was just taken over by someone else — refresh to see who.",
+    };
+  }
+
+  await createAdminClient()
+    .channel(`conversation:${conversationId}`)
+    .send({
+      type: "broadcast",
+      event: "status_changed",
+      payload: { status: "human_handling" },
+    });
+
+  revalidatePath("/dashboard/inbox");
+  return { error: null };
+}
+
+export async function handBackToAI(
+  conversationId: string,
+): Promise<ActionResult> {
+  const supabase = await createClient();
+  const userId = await getCurrentUserId(supabase);
+  if (!userId) return { error: "Not authenticated." };
+
+  // Same optimistic-lock shape as takeover — only the currently
+  // assigned staff member (or an admin, covered by RLS) can hand back.
+  const { data, error } = await supabase
+    .from("conversations")
+    .update({ status: "ai_handling", assigned_user_id: null })
+    .eq("id", conversationId)
+    .eq("assigned_user_id", userId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) return { error: error.message };
+  if (!data) {
+    return { error: "You're no longer assigned to this conversation." };
+  }
+
+  await createAdminClient()
+    .channel(`conversation:${conversationId}`)
+    .send({
+      type: "broadcast",
+      event: "status_changed",
+      payload: { status: "ai_handling" },
+    });
+
+  revalidatePath("/dashboard/inbox");
+  return { error: null };
+}
+
+export async function resolveConversation(
+  conversationId: string,
+): Promise<ActionResult> {
+  const supabase = await createClient();
+
+  const { data: conversation, error: fetchError } = await supabase
+    .from("conversations")
+    .select("id, organization_id")
+    .eq("id", conversationId)
+    .maybeSingle();
+
+  if (fetchError || !conversation) {
+    return { error: fetchError?.message ?? "Conversation not found." };
+  }
+
+  const { error } = await supabase
+    .from("conversations")
+    .update({ status: "resolved", assigned_user_id: null })
+    .eq("id", conversationId);
+
+  if (error) return { error: error.message };
+
+  // Forward-looking per Prompt 01's webhook design — Prompt 07 will
+  // add a real dispatcher; this just makes sure the event exists.
+  await supabase.from("webhook_events").insert({
+    organization_id: conversation.organization_id,
+    event_type: "conversation.resolved",
+    payload: { conversation_id: conversationId },
+  });
+  triggerWebhookDispatch();
+  revalidatePath("/dashboard/inbox");
+  return { error: null };
+}
+
+/**
+ * Sends a human agent's reply and routes it out on the right channel.
+ *
+ * For `channel: 'website'` there is no outbound API call — inserting
+ * the `messages` row is the entire delivery mechanism, since the
+ * open widget is subscribed to Realtime for its own conversation_id
+ * (see Section 3.3 / the widget update) and will receive it directly.
+ */
+export async function sendHumanReply(
+  conversationId: string,
+  content: string,
+): Promise<ActionResult> {
+  const trimmed = content.trim();
+  if (!trimmed) return { error: "Message can't be empty." };
+
+  const supabase = await createClient();
+  const userId = await getCurrentUserId(supabase);
+  if (!userId) return { error: "Not authenticated." };
+
+  const { data: conversation, error: fetchError } = await supabase
+    .from("conversations")
+    .select(
+      "id, agent_id, organization_id, channel, channel_thread_id, status, assigned_user_id",
+    )
+    .eq("id", conversationId)
+    .maybeSingle();
+
+  if (fetchError || !conversation) {
+    return { error: fetchError?.message ?? "Conversation not found." };
+  }
+
+  if (
+    conversation.status !== "human_handling" ||
+    conversation.assigned_user_id !== userId
+  ) {
+    return {
+      error: "You need to take over this conversation before replying.",
+    };
+  }
+
+  const { error: insertError } = await supabase.from("messages").insert({
+    conversation_id: conversationId,
+    agent_id: conversation.agent_id,
+    organization_id: conversation.organization_id,
+    role: "human_agent",
+    content: trimmed,
+  });
+  if (insertError) return { error: insertError.message };
+
+  await supabase
+    .from("conversations")
+    .update({ last_message_at: new Date().toISOString() })
+    .eq("id", conversationId);
+
+  // Website: broadcast it — the widget listens on this topic directly.
+  if (conversation.channel === "website") {
+    await createAdminClient()
+      .channel(`conversation:${conversationId}`)
+      .send({
+        type: "broadcast",
+        event: "human_message",
+        payload: { content: trimmed, role: "human_agent" },
+      });
+    revalidatePath("/dashboard/inbox");
+    return { error: null };
+  }
+
+  // WhatsApp / Messenger / Instagram: fetch the connection and send
+  // through the matching Prompt 04 function.
+  if (!conversation.channel_thread_id) {
+    return {
+      error:
+        "Message saved, but this conversation has no channel thread id to reply to.",
+    };
+  }
+
+  const { data: connection } = await supabase
+    .from("channel_connections")
+    .select("access_token, phone_number_id")
+    .eq("agent_id", conversation.agent_id)
+    .eq("channel", conversation.channel)
+    .eq("status", "connected")
+    .maybeSingle();
+
+  if (!connection) {
+    return {
+      error:
+        "Message saved, but no connected channel was found to send it through.",
+    };
+  }
+
+  let accessToken: string;
+  try {
+    accessToken = decryptToken(connection.access_token);
+  } catch {
+    return {
+      error:
+        "Message saved, but the channel's access token could not be decrypted.",
+    };
+  }
+
+  let sent = false;
+  if (conversation.channel === "whatsapp" && connection.phone_number_id) {
+    sent = await sendWhatsAppMessage(
+      connection.phone_number_id,
+      accessToken,
+      conversation.channel_thread_id,
+      trimmed,
+    );
+  } else if (conversation.channel === "messenger") {
+    sent = await sendMessengerMessage(
+      accessToken,
+      conversation.channel_thread_id,
+      trimmed,
+    );
+  } else if (conversation.channel === "instagram") {
+    sent = await sendInstagramMessage(
+      accessToken,
+      conversation.channel_thread_id,
+      trimmed,
+    );
+  }
+
+  revalidatePath("/dashboard/inbox");
+
+  if (!sent) {
+    return {
+      error: "Message saved, but delivery to the channel failed — see logs.",
+    };
+  }
+  return { error: null };
+}
+
+/**
+ * Marks the inbox "seen" for the calling user in this org — clears
+ * the unread badge. Called when the inbox page mounts / is focused.
+ */
+export async function markInboxSeen(organizationId: string): Promise<void> {
+  const supabase = await createClient();
+  const userId = await getCurrentUserId(supabase);
+  if (!userId) return;
+
+  await supabase.from("inbox_last_seen").upsert(
+    {
+      user_id: userId,
+      organization_id: organizationId,
+      last_seen_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id,organization_id" },
+  );
+}
+</file>
+
+<file path="app/(platform-client)/dashboard/knowledge-base/KnowledgeBaseClient.tsx">
+"use client";
+
+import { useRef, useState, useTransition, type FormEvent } from "react";
+import {
+  Loader2,
+  Plus,
+  Trash2,
+  RotateCw,
+  Upload,
+  Link as LinkIcon,
+  Globe,
+  FileText,
+  AlignLeft,
+  Search,
+  CheckSquare,
+  Square,
+} from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { createClient } from "@/lib/supabase/client";
+import {
+  addKnowledgeBaseDocument,
+  deleteKnowledgeBaseDocument,
+  reindexKnowledgeBaseDocument,
+  discoverKnowledgeBaseUrls,
+  scrapeAndIngestUrl,
+  refreshKnowledgeBaseUrlDocument,
+  createPdfUploadUrl,
+  ingestUploadedPdf,
+} from "./actions";
+
+type DocumentRow = {
+  id: string;
+  title: string;
+  status: string;
+  source_type: string;
+  source_url?: string | null;
+  created_at: string;
+  error_message?: string | null;
+  raw_content?: string | null;
+};
+
+const STATUS_VARIANT: Record<string, "success" | "warning" | "outline"> = {
+  ready: "success",
+  processing: "warning",
+  error: "outline",
+};
+
+const SOURCE_ICON: Record<string, typeof Globe> = {
+  url: Globe,
+  pdf: FileText,
+  manual_text: AlignLeft,
+  faq_pair: AlignLeft,
+};
+
+const CONTENT_PLACEHOLDER = `Example:
+
+Q: What are your opening hours?
+A: We're open Monday to Saturday, 10am to 8pm.
+
+Q: Do you offer home delivery?
+A: Yes, free delivery within 5km, small fee beyond that.
+
+Write in whatever format makes sense — FAQs, a plain description of your business, policies, pricing. The AI only ever answers from what you put here.`;
+
+const MAX_PDF_BYTES = 10 * 1024 * 1024;
+const DEFAULT_SELECT_CAP = 10;
+
+type DiscoveredPage = { url: string; title: string };
+
+export function KnowledgeBaseClient({
+  documents,
+}: {
+  documents: DocumentRow[];
+}) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // --- URL discover/select/scrape flow ---
+  const [rootUrl, setRootUrl] = useState("");
+  type DiscoverState = "idle" | "discovering" | "selecting" | "scraping";
+  const [discoverState, setDiscoverState] = useState<DiscoverState>("idle");
+
+  const [discoveredPages, setDiscoveredPages] = useState<DiscoveredPage[]>([]);
+  const [selectedUrls, setSelectedUrls] = useState<Set<string>>(new Set());
+  const [urlError, setUrlError] = useState<string | null>(null);
+  const [scrapeProgress, setScrapeProgress] = useState<{
+    index: number;
+    total: number;
+  } | null>(null);
+
+  // --- PDF upload flow ---
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const [pdfStatus, setPdfStatus] = useState<
+    "idle" | "uploading" | "processing"
+  >("idle");
+
+  const handleAdd = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+    const formData = new FormData(e.currentTarget);
+    startTransition(async () => {
+      const result = await addKnowledgeBaseDocument(formData);
+      if (result?.error) setError(result.error);
+      else formRef.current?.reset();
+    });
+  };
+
+  const handleDelete = (id: string) => {
+    setPendingId(id);
+    startTransition(async () => {
+      await deleteKnowledgeBaseDocument(id);
+      setPendingId(null);
+    });
+  };
+
+  const handleReindex = (id: string) => {
+    setPendingId(id);
+    startTransition(async () => {
+      await reindexKnowledgeBaseDocument(id);
+      setPendingId(null);
+    });
+  };
+
+  const handleRefresh = (id: string) => {
+    setPendingId(id);
+    startTransition(async () => {
+      await refreshKnowledgeBaseUrlDocument(id);
+      setPendingId(null);
+    });
+  };
+
+  const handleDiscover = async () => {
+    setUrlError(null);
+    if (!rootUrl.trim()) {
+      setUrlError("Enter a URL first.");
+      return;
+    }
+    setDiscoverState("discovering");
+    const result = await discoverKnowledgeBaseUrls(rootUrl.trim());
+    if (result.error) {
+      setUrlError(result.error);
+      setDiscoverState("idle");
+      return;
+    }
+    if (result.pages.length === 0) {
+      setUrlError("No pages found on that site.");
+      setDiscoverState("idle");
+      return;
+    }
+    setDiscoveredPages(result.pages);
+    setSelectedUrls(
+      new Set(result.pages.slice(0, DEFAULT_SELECT_CAP).map((p) => p.url)),
+    );
+    setDiscoverState("selecting");
+  };
+
+  const toggleUrl = (url: string) => {
+    setSelectedUrls((prev) => {
+      const next = new Set(prev);
+      if (next.has(url)) next.delete(url);
+      else next.add(url);
+      return next;
+    });
+  };
+
+  const selectAll = () =>
+    setSelectedUrls(new Set(discoveredPages.map((p) => p.url)));
+  const selectNone = () => setSelectedUrls(new Set());
+
+  const handleScrapeSelected = async () => {
+    const urls = Array.from(selectedUrls);
+    if (urls.length === 0) {
+      setUrlError("Select at least one page.");
+      return;
+    }
+
+    setUrlError(null);
+    setDiscoverState("scraping");
+
+    for (let i = 0; i < urls.length; i++) {
+      setScrapeProgress({ index: i + 1, total: urls.length });
+      const result = await scrapeAndIngestUrl(urls[i]);
+      if (result.error) {
+        // Keep going for the rest — surface the last error rather than
+        // aborting the whole batch over one bad page.
+        setUrlError(result.error);
+      }
+    }
+
+    setScrapeProgress(null);
+    setDiscoverState("idle");
+    setDiscoveredPages([]);
+    setSelectedUrls(new Set());
+    setRootUrl("");
+  };
+
+  const cancelDiscover = () => {
+    setDiscoverState("idle");
+    setDiscoveredPages([]);
+    setSelectedUrls(new Set());
+    setUrlError(null);
+  };
+
+  const handlePdfSelect = async (file: File | undefined) => {
+    setPdfError(null);
+    if (!file) return;
+
+    if (file.type !== "application/pdf") {
+      setPdfError("Please choose a PDF file.");
+      return;
+    }
+    if (file.size > MAX_PDF_BYTES) {
+      setPdfError("File is too large — max 10MB.");
+      return;
+    }
+
+    setPdfStatus("uploading");
+    const { error: signError, data } = await createPdfUploadUrl(file.name);
+    if (signError || !data) {
+      setPdfError(signError ?? "Could not start the upload.");
+      setPdfStatus("idle");
+      return;
+    }
+
+    try {
+      const supabase = createClient();
+      const { error: uploadError } = await supabase.storage
+        .from("knowledge-base-pdfs")
+        .uploadToSignedUrl(data.path, data.token, file);
+
+      if (uploadError) {
+        setPdfError(uploadError.message);
+        setPdfStatus("idle");
+        return;
+      }
+    } catch {
+      setPdfError("Upload failed — check your connection and try again.");
+      setPdfStatus("idle");
+      return;
+    }
+
+    setPdfStatus("processing");
+    const result = await ingestUploadedPdf(data.path, file.name);
+    if (result.error) setPdfError(result.error);
+
+    setPdfStatus("idle");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  return (
+    <div className="flex flex-col gap-8">
+      {/* Add knowledge (manual text) */}
+      <form
+        ref={formRef}
+        onSubmit={handleAdd}
+        className="rounded-2xl border border-border bg-card p-6"
+      >
+        <h2 className="font-heading text-base font-semibold text-foreground">
+          Add knowledge
+        </h2>
+
+        <div className="mt-4 flex flex-col gap-1.5">
+          <label
+            htmlFor="title"
+            className="font-body text-sm font-medium text-foreground"
+          >
+            Title
+          </label>
+          <input
+            id="title"
+            name="title"
+            required
+            placeholder="e.g. Pricing & Hours"
+            className="rounded-lg border border-border bg-background px-3 py-2 font-body text-sm text-foreground placeholder:text-secondary-text focus:outline-none focus:ring-2 focus:ring-primary/40"
+          />
+        </div>
+
+        <div className="mt-4 flex flex-col gap-1.5">
+          <label
+            htmlFor="rawContent"
+            className="font-body text-sm font-medium text-foreground"
+          >
+            Content
+          </label>
+          <textarea
+            id="rawContent"
+            name="rawContent"
+            required
+            rows={8}
+            placeholder={CONTENT_PLACEHOLDER}
+            className="resize-none rounded-lg border border-border bg-background px-3 py-2.5 font-body text-sm text-foreground placeholder:text-secondary-text/70 focus:outline-none focus:ring-2 focus:ring-primary/40"
+          />
+        </div>
+
+        {error && (
+          <p role="alert" className="mt-3 font-body text-sm text-error">
+            {error}
+          </p>
+        )}
+
+        <Button type="submit" disabled={isPending} className="mt-5">
+          {isPending ? (
+            <Loader2 className="animate-spin" />
+          ) : (
+            <Plus className="h-4 w-4" />
+          )}
+          Add to knowledge base
+        </Button>
+      </form>
+
+      {/* PDF upload */}
+      <div className="rounded-2xl border border-border bg-card p-6">
+        <h2 className="font-heading text-base font-semibold text-foreground">
+          Upload a PDF
+        </h2>
+        <p className="mt-1 font-body text-sm text-secondary-text">
+          Menus, brochures, price sheets — up to 10MB, text-based (not a scanned
+          image).
+        </p>
+
+        <div className="mt-4 flex items-center gap-3">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/pdf"
+            disabled={pdfStatus !== "idle"}
+            onChange={(e) => handlePdfSelect(e.target.files?.[0])}
+            className="hidden"
+            id="pdf-upload"
+          />
+          <label
+            htmlFor="pdf-upload"
+            className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2.5 font-body text-sm text-foreground transition-colors hover:bg-background/70 ${
+              pdfStatus !== "idle" ? "pointer-events-none opacity-60" : ""
+            }`}
+          >
+            {pdfStatus === "idle" && <Upload className="h-4 w-4" />}
+            {pdfStatus !== "idle" && (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            )}
+            {pdfStatus === "idle" && "Choose PDF"}
+            {pdfStatus === "uploading" && "Uploading..."}
+            {pdfStatus === "processing" && "Processing..."}
+          </label>
+        </div>
+
+        {pdfError && (
+          <p role="alert" className="mt-3 font-body text-sm text-error">
+            {pdfError}
+          </p>
+        )}
+      </div>
+
+      {/* URL scraping */}
+      <div className="rounded-2xl border border-border bg-card p-6">
+        <h2 className="font-heading text-base font-semibold text-foreground">
+          Scrape from a website
+        </h2>
+        <p className="mt-1 font-body text-sm text-secondary-text">
+          Paste your website&apos;s homepage URL — we&apos;ll find its pages so
+          you can pick which ones to add.
+        </p>
+
+        {discoverState === "idle" && (
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+            <div className="flex flex-1 items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+              <LinkIcon className="h-4 w-4 flex-none text-secondary-text" />
+              <input
+                value={rootUrl}
+                onChange={(e) => setRootUrl(e.target.value)}
+                placeholder="https://yourbusiness.com"
+                className="w-full bg-transparent font-body text-sm text-foreground placeholder:text-secondary-text focus:outline-none"
+              />
+            </div>
+            <Button type="button" onClick={handleDiscover}>
+              <Search className="h-4 w-4" />
+              Find pages
+            </Button>
+          </div>
+        )}
+
+        {discoverState === "discovering" && (
+          <div className="mt-4 flex items-center gap-2 font-body text-sm text-secondary-text">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Looking for pages on that site...
+          </div>
+        )}
+
+        {discoverState === "selecting" && (
+          <div className="mt-4">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="font-body text-sm text-secondary-text">
+                Found {discoveredPages.length} page
+                {discoveredPages.length === 1 ? "" : "s"} — pick which to add.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={selectAll}
+                  className="font-body text-xs font-medium text-primary hover:underline"
+                >
+                  Select all
+                </button>
+                <button
+                  type="button"
+                  onClick={selectNone}
+                  className="font-body text-xs font-medium text-secondary-text hover:underline"
+                >
+                  Select none
+                </button>
+              </div>
+            </div>
+
+            <div className="flex max-h-64 flex-col divide-y divide-border overflow-y-auto rounded-lg border border-border">
+              {discoveredPages.map((page) => {
+                const checked = selectedUrls.has(page.url);
+                return (
+                  <label
+                    key={page.url}
+                    className="flex cursor-pointer items-start gap-2.5 px-3 py-2.5 hover:bg-background"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleUrl(page.url)}
+                      className="mt-0.5 flex-none text-secondary-text"
+                    >
+                      {checked ? (
+                        <CheckSquare className="h-4 w-4 text-primary" />
+                      ) : (
+                        <Square className="h-4 w-4" />
+                      )}
+                    </button>
+                    <span className="min-w-0">
+                      <span className="block truncate font-body text-sm text-foreground">
+                        {page.title}
+                      </span>
+                      <span className="block truncate font-body text-xs text-secondary-text">
+                        {page.url}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 flex gap-3">
+              <Button type="button" onClick={handleScrapeSelected}>
+                Add selected pages ({selectedUrls.size})
+              </Button>
+              <Button type="button" variant="outline" onClick={cancelDiscover}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {discoverState === "scraping" && scrapeProgress && (
+          <div className="mt-4 flex items-center gap-2 font-body text-sm text-secondary-text">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Scraping page {scrapeProgress.index} of {scrapeProgress.total}...
+          </div>
+        )}
+
+        {urlError && (
+          <p role="alert" className="mt-3 font-body text-sm text-error">
+            {urlError}
+          </p>
+        )}
+      </div>
+
+      {/* Document list */}
+      <div>
+        <h2 className="mb-3 font-heading text-base font-semibold text-foreground">
+          Documents
+        </h2>
+        {documents.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-border bg-card/50 px-8 py-14 text-center">
+            <p className="font-body text-sm text-secondary-text">
+              No knowledge base documents yet — add your first one above.
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col divide-y divide-border rounded-2xl border border-border bg-card">
+            {documents.map((doc) => {
+              const isRowPending = isPending && pendingId === doc.id;
+              const isExpanded = expandedId === doc.id;
+              const SourceIcon = SOURCE_ICON[doc.source_type] ?? AlignLeft;
+              return (
+                <div key={doc.id}>
+                  <div
+                    onClick={() => setExpandedId(isExpanded ? null : doc.id)}
+                    className="flex cursor-pointer flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <SourceIcon className="h-3.5 w-3.5 flex-none text-secondary-text" />
+                        <p className="truncate font-body text-sm font-medium text-foreground">
+                          {doc.title}
+                        </p>
+                        <Badge
+                          variant={STATUS_VARIANT[doc.status] ?? "outline"}
+                          className="text-xs capitalize"
+                        >
+                          {doc.status}
+                        </Badge>
+                      </div>
+                      {doc.status === "error" && doc.error_message && (
+                        <p className="mt-1 font-body text-xs text-error">
+                          {doc.error_message}
+                        </p>
+                      )}
+                      {doc.source_type === "url" && doc.source_url && (
+                        <p className="mt-1 truncate font-body text-xs text-secondary-text">
+                          {doc.source_url}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-none gap-2">
+                      {doc.source_type === "url" && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRefresh(doc.id);
+                          }}
+                          disabled={isRowPending}
+                          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-body text-xs text-foreground transition-colors hover:bg-background disabled:opacity-50"
+                        >
+                          <Globe className="h-3.5 w-3.5" />
+                          Refresh from source
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleReindex(doc.id);
+                        }}
+                        disabled={isRowPending}
+                        className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-body text-xs text-foreground transition-colors hover:bg-background disabled:opacity-50"
+                      >
+                        <RotateCw className="h-3.5 w-3.5" />
+                        Re-index
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(doc.id);
+                        }}
+                        disabled={isRowPending}
+                        className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-body text-xs text-error transition-colors hover:bg-error/10 disabled:opacity-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                  {isExpanded && (
+                    <div className="border-t border-border bg-background px-4 py-3">
+                      <p className="whitespace-pre-wrap font-body text-xs leading-relaxed text-secondary-text">
+                        {doc.raw_content || "No content available."}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="app/(platform-client)/dashboard/knowledge-base/page.tsx">
+import { createClient } from "@/lib/supabase/server";
+import { KnowledgeBaseClient } from "./KnowledgeBaseClient";
+
+export default async function KnowledgeBasePage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { data: membership } = await supabase
+    .from("organization_members")
+    .select("organization_id")
+    .eq("user_id", user?.id ?? "")
+    .limit(1)
+    .maybeSingle();
+
+  let agentId: string | null = null;
+  let documents: {
+    id: string;
+    title: string;
+    status: string;
+    source_type: string;
+    source_url: string | null;
+    created_at: string;
+    error_message: string | null;
+    raw_content: string | null;
+  }[] = [];
+
+  if (membership) {
+    const { data: agent } = await supabase
+      .from("agents")
+      .select("id")
+      .eq("organization_id", membership.organization_id)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+
+    agentId = agent?.id ?? null;
+
+    if (agentId) {
+      const { data: docs } = await supabase
+        .from("knowledge_base_documents")
+        .select(
+          "id, title, status, source_type, source_url, created_at, error_message, raw_content",
+        )
+        .eq("agent_id", agentId)
+        .order("created_at", { ascending: false });
+
+      documents = docs ?? [];
+    }
+  }
+
+  return (
+    <div>
+      <h1 className="font-heading text-2xl font-bold text-foreground">
+        Knowledge Base
+      </h1>
+      <p className="mt-2 font-body text-sm text-secondary-text">
+        Add the facts your AI agent should answer from — FAQs, policies,
+        pricing, hours. The embedded widget only ever answers from what&apos;s
+        here.
+      </p>
+
+      {!agentId ? (
+        <div className="mt-8 rounded-2xl border border-dashed border-border bg-card/50 px-8 py-16 text-center">
+          <p className="font-body text-sm text-secondary-text">
+            No active agent found for your organization yet.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-8">
+          <KnowledgeBaseClient documents={documents} />
+        </div>
+      )}
+    </div>
+  );
+}
+</file>
+
 <file path="app/(platform-client)/dashboard/page.tsx">
 import { PlanLimitBanner } from "@/components/platform/PlanLimitBanner";
 import { Building2, MessageSquare, Users, CheckCircle2 } from "lucide-react";
@@ -20724,6 +21701,49 @@ export default async function ClientOverviewPage() {
         </div>
       )}
     </div>
+  );
+}
+</file>
+
+<file path="app/(platform-client)/layout.tsx">
+import { createClient } from "@/lib/supabase/server";
+import { PlatformShell } from "@/components/platform/PlatformShell";
+import { getUnreadInboxCount } from "@/lib/inbox/queries";
+
+export default async function ClientDashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { data: membership } = await supabase
+    .from("organization_members")
+    .select("organization_id, organizations(is_reseller)")
+    .eq("user_id", user?.id ?? "")
+    .limit(1)
+    .maybeSingle();
+
+  const org = membership?.organizations as unknown as {
+    is_reseller: boolean;
+  } | null;
+
+  const unreadCount = membership
+    ? await getUnreadInboxCount(supabase, membership.organization_id)
+    : 0;
+
+  return (
+    <PlatformShell
+      variant="client"
+      userEmail={user?.email}
+      navBadges={{ "/dashboard/inbox": unreadCount }}
+      isReseller={!!org?.is_reseller}
+    >
+      {children}
+    </PlatformShell>
   );
 }
 </file>
@@ -21017,448 +22037,380 @@ function jsonResponse(
 }
 </file>
 
-<file path="components/platform/PlatformShell.tsx">
-"use client";
+<file path="docs/platform-setup.md">
+# Platform Setup
 
-import { useEffect, useRef, useState } from "react";
-import { Radio } from "lucide-react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import {
-  Menu,
-  X,
-  LogOut,
-  LayoutDashboard,
-  Building2,
-  Settings,
-  BookOpen,
-  MessagesSquare,
-  Palette,
-  Sun,
-  Moon,
-  PanelLeftClose,
-  PanelLeftOpen,
-  ShieldCheck,
-  Sparkles,
-  Users,
-  KeyRound,
-  Webhook,
-  CreditCard,
-} from "lucide-react";
+Setup guide for the multi-tenant AI chatbot platform layered on top of the
+MBR Studio marketing site.
 
-import { cn } from "@/lib/utils";
-import { signOut } from "@/lib/auth/actions";
-import { useTheme } from "@/components/theme/ThemeProvider";
-import { PlatformAmbient } from "@/components/platform/PlatformAmbient";
-import { useRouteLoader } from "@/components/loader/RouteLoader";
-import { useFocusTrap } from "@/components/chatbot/useFocusTrap";
+## 1. Create a Supabase project
 
-export type PlatformVariant = "admin" | "client";
+1. [supabase.com/dashboard](https://supabase.com/dashboard) → New project
+2. Pick a region close to your users
+3. Save the database password somewhere safe
 
-const SIDEBAR_COLLAPSED_KEY = "mbr-platform-sidebar-collapsed";
+## 2. Environment variables
 
-/**
- * Nav items (including icon COMPONENTS) live here, inside the client
- * component, on purpose. lucide-react icons are function components —
- * passing them as props from a Server Component layout to this client
- * component would cross the RSC serialization boundary with a
- * non-serializable value ("Functions cannot be passed to Client
- * Components"). Only the plain string `variant` prop crosses that
- * boundary; everything icon-related is resolved locally from it.
- */
-const NAV_ITEMS_BY_VARIANT: Record<
-  PlatformVariant,
-  { label: string; href: string; icon: typeof LayoutDashboard }[]
-> = {
-  admin: [
-    { label: "Overview", href: "/admin", icon: LayoutDashboard },
-    { label: "Organizations", href: "/admin/organizations", icon: Building2 },
-    { label: "Billing", href: "/admin/billing", icon: CreditCard },
-    { label: "Settings", href: "/admin/settings", icon: Settings },
-  ],
+Copy `.env.example` to `.env.local` and fill in (Project → Settings → API):
 
-  client: [
-    // Dashboard home comes first; onboarding is a secondary entry point
-    // for new users, not the landing item.
-    { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
-    { label: "Get Started", href: "/dashboard/onboarding", icon: Sparkles },
+```
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+```
 
-    {
-      label: "Knowledge Base",
-      href: "/dashboard/knowledge-base",
-      icon: BookOpen,
-    },
-    {
-      label: "Guardrails",
-      href: "/dashboard/agent/guardrails",
-      icon: ShieldCheck,
-    },
-    { label: "Templates", href: "/dashboard/agent/templates", icon: Sparkles },
-    { label: "Leads", href: "/dashboard/leads", icon: Users },
-    { label: "Clients", href: "/dashboard/clients", icon: Building2 },
-    { label: "Channels", href: "/dashboard/channels", icon: Radio },
-    {
-      label: "Inbox",
-      href: "/dashboard/inbox",
-      icon: MessagesSquare,
-    },
-    { label: "Appearance", href: "/dashboard/appearance", icon: Palette },
+## 3. Run migrations
 
-    // Settings family — kept contiguous since Billing, API Keys, and
-    // Webhooks are all sub-routes of /dashboard/settings. Parent link
-    // goes first.
-    { label: "Settings", href: "/dashboard/settings", icon: Settings },
-    { label: "Billing", href: "/dashboard/settings/billing", icon: CreditCard },
-    { label: "API Keys", href: "/dashboard/settings/api-keys", icon: KeyRound },
-    { label: "Webhooks", href: "/dashboard/settings/webhooks", icon: Webhook },
-  ],
-};
+In the Supabase Dashboard → SQL Editor, run in order:
 
-const BRAND_BY_VARIANT: Record<PlatformVariant, string> = {
-  admin: "MBR Studio — Admin",
-  client: "MBR Studio",
-};
+1. `supabase/migrations/0001_platform_core.sql` — all tables + `vector` extension
+2. `supabase/migrations/0002_rls_policies.sql` — RLS on every table
 
-/**
- * Picks the single "most active" nav item for a given pathname.
- *
- * Doing this per-item (as the old code did, testing each item against
- * pathname independently with `startsWith`) breaks as soon as one nav
- * href is a prefix of another — e.g. "/dashboard/settings" is a prefix
- * of "/dashboard/settings/billing", so both "Settings" and "Billing"
- * would light up simultaneously on the billing page. Computing the
- * longest matching href once, up front, guarantees exactly one active
- * item regardless of how nav routes are nested.
- */
-function getActiveHref(
-  pathname: string,
-  navItems: { href: string }[],
-): string | null {
-  let best: string | null = null;
+Verify:
 
-  for (const item of navItems) {
-    const isRootRoute = item.href === "/admin" || item.href === "/dashboard";
-    const matches =
-      pathname === item.href ||
-      (!isRootRoute && pathname.startsWith(`${item.href}/`));
+```sql
+select tablename, rowsecurity from pg_tables
+where schemaname = 'public' order by tablename;
+```
 
-    if (matches && (best === null || item.href.length > best.length)) {
-      best = item.href;
-    }
-  }
+Every table should show `rowsecurity = true`.
 
-  return best;
+## 4. Make your own account an admin
+
+1. Sign up through the app at `/signup` with your real email
+2. Confirm the email (Supabase sends a confirmation link by default)
+3. In Supabase Dashboard → SQL Editor, find your user id:
+
+   ```sql
+   select id, email from auth.users where email = 'you@example.com';
+   ```
+
+4. Insert yourself into `admins` using that id:
+
+   ```sql
+   insert into admins (user_id) values ('paste-your-uuid-here');
+   ```
+
+5. Log out and log back in at `/login` — you should now be able to reach
+   `/admin` instead of being redirected to `/dashboard`.
+
+## 5. Create your first test organization
+
+1. Go to `/admin/organizations`
+2. Fill in a name, click "Create organization"
+3. This creates: an `organizations` row, a default `agents` row, and an
+   `embed_keys` row with a `public_key` (shown next to the org in the list)
+
+Copy that `public_key`, the `organization_id`, and `agent_id` — Prompt 02
+(Knowledge Base + Website Widget) needs them to build and test the
+embeddable widget against a real agent.
+
+To find the ids:
+
+```sql
+select o.id as organization_id, a.id as agent_id, e.public_key
+from organizations o
+join agents a on a.organization_id = o.id
+join embed_keys e on e.agent_id = a.id
+order by o.created_at desc
+limit 1;
+```
+
+---
+
+## Prompt 04 — Omnichannel (WhatsApp, Instagram, Messenger) Setup
+
+### What was built
+
+- `channel_connections` extended with `phone_number_id`, `webhook_verify_token`,
+  `linked_agent_id`, and a unique `(agent_id, channel)` constraint.
+- Access tokens encrypted at rest via AES-256-GCM
+  (`lib/channels/encryption.ts`, key in `CHANNEL_TOKEN_ENCRYPTION_KEY`).
+- One unified inbound webhook (`app/api/channels/webhook/route.ts`) handling
+  WhatsApp, Messenger, and Instagram, normalized via
+  `lib/channels/parse-inbound.ts`.
+- Outbound sending via `lib/channels/send.ts` (one function per channel,
+  with retry).
+- Inbound messages flow through the same KB retrieval + guardrails +
+  `buildSystemPrompt()` pipeline used by the website widget
+  (`lib/channels/process-inbound-message.ts`), keeping one consistent
+  AI agent across every channel.
+- Dashboard UI at `/dashboard/channels` to connect/disconnect each
+  channel and send a test WhatsApp message.
+
+### Meta App setup steps (in the order that actually worked)
+
+1. Create a Meta Developer App at developers.facebook.com/apps
+   (type: Business), and add the WhatsApp product.
+2. Note the App ID and App Secret from **App Settings → Basic**.
+3. From **WhatsApp → API Setup**, get the test Phone Number ID and a
+   temporary access token (or generate a permanent one via a System
+   User in Business Settings, with `whatsapp_business_management` +
+   `whatsapp_business_messaging` permissions).
+4. **Critical, easy-to-miss step**: subscribing the app to the webhook
+   fields in the dashboard is NOT enough on its own. The app must also
+   be explicitly subscribed to the specific WABA:
+   ```
+   POST https://graph.facebook.com/v21.0/{waba-id}/subscribed_apps
+   Authorization: Bearer {access-token-with-whatsapp_business_management}
+   ```
+   Verify with a GET on the same endpoint — expect `{"success": true}`.
+   Without this step, webhook configuration can show as verified in
+   the dashboard, but real messages will never trigger the webhook.
+5. Configure the webhook (**WhatsApp → Configuration**):
+   - Callback URL: `https://<your-domain>/api/channels/webhook`
+   - Verify Token: matches `META_WEBHOOK_VERIFY_TOKEN` in your env
+   - Subscribe to the `messages` field (it is NOT subscribed by
+     default — only `account_alerts` is).
+6. Connect the channel from `/dashboard/channels` in the app itself
+   (WABA ID, Phone Number ID, access token) — this is what actually
+   populates `channel_connections` with an encrypted token.
+
+### Known real-world gotcha: phone number verification
+
+A WhatsApp Business phone number has its own `code_verification_status`
+independent of the WABA/app setup. Check it via:
+
+```
+GET https://graph.facebook.com/v25.0/{waba-id}/phone_numbers
+```
+
+If `code_verification_status` is `NOT_VERIFIED`, live customer-sent
+messages will never reach your webhook even if everything else
+(signature verification, webhook subscription, `subscribed_apps`) is
+confirmed correct — Meta's synthetic "Test" event from the dashboard
+will still succeed in this state, which can be misleading. Verifying
+the number requires:
+
+```
+POST https://graph.facebook.com/v25.0/{phone-number-id}/request_code
+  ?code_method=SMS&language=en_US
+```
+
+then submitting the received code via `verify_code`. This endpoint can
+intermittently fail with error code `136024` ("servers temporarily
+unavailable") for reasons outside developer control — if this persists
+for multiple hours, it may indicate an app-review/Business Verification
+gap rather than a transient outage; consider using Meta's default test
+number (which does not require this verification) to validate the full
+pipeline while resolving business number verification separately.
+
+### Embeddings note (affects this and Prompts 02/03 too)
+
+The knowledge base embedding pipeline was migrated from a local
+`@xenova/transformers` model to Google's Gemini embeddings API
+(`gemini-embedding-001`, `outputDimensionality: 768`) because the
+former's native binary dependencies don't run in Vercel's serverless
+runtime. Requires `GOOGLE_AI_API_KEY` in the environment. See
+`lib/knowledge-base/embed.ts`.
+
+```
+
+---
+```
+
+---
+
+## Prompt 06 — White-Label Reseller Mode
+
+### Making a test org a reseller
+
+1. Go to `/admin/organizations`, click "Manage" on the org you want to make a reseller.
+2. Click "Enable reseller mode."
+3. Optionally fill in brand name / logo URL / custom domain and click "Save branding."
+
+### Adding a sub-client as that reseller
+
+1. Log in as a user who is a member of the reseller org.
+2. Go to `/dashboard/clients` (only visible when your org has reseller mode on).
+3. Add a client — this creates a new organization with `parent_organization_id`
+   set to your reseller org, a default agent, and an embed key. You become
+   `owner` of the new sub-client org automatically.
+
+### Verifying RLS scoping (Section 5, item 1)
+
+Run as three different logged-in test users, or check directly in SQL:
+
+```sql
+-- Reseller A's sub-client should NOT be visible to Reseller B's members
+select * from organizations
+where parent_organization_id = '<reseller-A-org-id>';
+-- run this as a user who is only a member of reseller B's org — should
+-- return 0 rows.
+
+-- A direct MBR Studio client (no parent) should never be visible to
+-- any reseller
+select * from organizations where id = '<direct-client-org-id>';
+-- run as a reseller-org member who is NOT also a direct member — 0 rows.
+
+-- An admin should still see everything
+select count(*) from organizations;
+-- run as a user in the `admins` table — should return the full count.
+```
+
+### Known limitation
+
+`/dashboard/clients/[id]` currently shows summary stats only. Full
+knowledge-base/guardrails/inbox editing per sub-client (reusing the
+existing dashboard components scoped by an org-id param instead of the
+current user's own membership) is a follow-up routing change — the
+RLS/security model already supports it fully via `is_org_accessible()`.
+
+### Handoff to Prompt 07
+
+`api_keys` and `webhook_endpoints` RLS policies were updated in
+migration `0012_reseller_branding.sql` to use `is_org_accessible()`,
+so they already work correctly for reseller sub-organizations —
+Prompt 07 can build directly on this without re-checking.
+
+---
+
+## Prompt 06 — White-Label Reseller Mode
+
+### Making a test org a reseller
+
+1. Go to `/admin/organizations`, click "Manage" on the org you want to make a reseller.
+2. Click "Enable reseller mode."
+3. Optionally fill in brand name / logo URL / custom domain and click "Save branding."
+
+### Adding a sub-client as that reseller
+
+1. Log in as a user who is a member of the reseller org.
+2. Go to `/dashboard/clients` (only visible when your org has reseller mode on).
+3. Add a client — this creates a new organization with `parent_organization_id`
+   set to your reseller org, a default agent, and an embed key. You become
+   `owner` of the new sub-client org automatically.
+
+### Verifying RLS scoping (Section 5, item 1)
+
+Run as three different logged-in test users, or check directly in SQL:
+
+```sql
+-- Reseller A's sub-client should NOT be visible to Reseller B's members
+select * from organizations
+where parent_organization_id = '<reseller-A-org-id>';
+-- run this as a user who is only a member of reseller B's org — should
+-- return 0 rows.
+
+-- A direct MBR Studio client (no parent) should never be visible to
+-- any reseller
+select * from organizations where id = '<direct-client-org-id>';
+-- run as a reseller-org member who is NOT also a direct member — 0 rows.
+
+-- An admin should still see everything
+select count(*) from organizations;
+-- run as a user in the `admins` table — should return the full count.
+```
+
+### Known limitation
+
+`/dashboard/clients/[id]` currently shows summary stats only. Full
+knowledge-base/guardrails/inbox editing per sub-client (reusing the
+existing dashboard components scoped by an org-id param instead of the
+current user's own membership) is a follow-up routing change — the
+RLS/security model already supports it fully via `is_org_accessible()`.
+
+### White-label branding surfaces
+
+- Login/signup page (`/login`, `/signup`): looks up `reseller_domain`
+  against the request's `host` header and swaps the brand name/logo if
+  a matching reseller org is found. Requires the reseller's custom
+  domain to actually point at this deployment — out of scope here.
+- Widget "Powered by" footer: resolves via the served org's
+  `parent_organization_id` at request time in `/api/widget/config`, so
+  it always reflects current branding without a rebuild.
+- Both explicitly no-op for organizations with no `parent_organization_id`
+  — direct MBR Studio clients are unaffected.
+
+### Handoff to Prompt 07
+
+`api_keys` and `webhook_endpoints` RLS policies were updated in
+migration `0012_reseller_branding.sql` to use `is_org_accessible()`,
+so they already work correctly for reseller sub-organizations —
+Prompt 07 can build directly on this without re-checking.
+
+# Manual Billing (Pakistan-first) — Addendum to docs/platform-setup.md
+
+Built ahead of Prompt 08's Stripe flow because Stripe can't pay out to a
+Pakistani bank account without a foreign entity, and most local clients
+pay via bank transfer / JazzCash / Easypaisa rather than an international
+card. This does NOT touch the enforcement logic in
+`app/api/widget/chat/route.ts` or `app/api/channels/webhook/route.ts` —
+both already read `organizations.plan` / `status` / `monthly_message_limit`
+and don't care how those columns got set.
+
+## 1. Run the migration
+
+```
+supabase/migrations/0014_manual_billing.sql
+```
+
+## 2. Fill in real payment details
+
+Edit `lib/billing/plans.ts`:
+
+- `MANUAL_PAYMENT_METHODS[].instructions` — replace the `[TODO]` bank/JazzCash/Easypaisa details with your real ones.
+- `PLANS.*.priceMonthlyPKR` — confirm against real client conversations before treating as final.
+
+## 3. Wire up navigation
+
+In `components/platform/PlatformShell.tsx`:
+
+- Client nav (`NAV_ITEMS_BY_VARIANT.client`): add `{ label: "Billing", href: "/dashboard/settings/billing", icon: CreditCard }` (import `CreditCard` from lucide-react).
+- Admin nav (`NAV_ITEMS_BY_VARIANT.admin`): add `{ label: "Billing", href: "/admin/billing", icon: CreditCard }`.
+
+## 4. (Optional but recommended) Gate channels by plan
+
+In `app/(platform-client)/dashboard/channels/actions.ts`, at the top of
+`connectWhatsApp` / `connectMessenger` / `connectInstagram`, after
+resolving `agent`:
+
+````ts
+const { data: org } = await supabase
+  .from("organizations")
+  .select("plan")
+  .eq("id", agent.organization_id)
+  .maybeSingle();
+
+if (!isChannelAllowedForPlan(org?.plan ?? "starter", "whatsapp")) {
+  return { error: "Your current plan doesn't include this channel — upgrade from Settings > Billing." };
 }
+```//
+(swap `"whatsapp"` for the matching channel per function). Import
+`isChannelAllowedForPlan` from `@/lib/billing/limits`.
 
-export function PlatformShell({
-  variant,
-  userEmail,
-  navBadges,
-  children,
-}: {
-  variant: PlatformVariant;
-  userEmail?: string | null;
-  /** Keyed by nav item href, e.g. { "/dashboard/inbox": 3 } */
-  navBadges?: Record<string, number>;
-  children: React.ReactNode;
-}) {
-  const pathname = usePathname();
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const mobileDrawerRef = useRef<HTMLElement | null>(null);
+## 5. Test the full cycle
 
-  // Traps Tab focus inside the drawer and closes it on Escape — same
-  // hook the marketing site's chat widget already uses, reused here
-  // instead of writing a second focus-trap implementation.
-  useFocusTrap(mobileDrawerRef, mobileOpen, () => setMobileOpen(false));
+1. Sign up a fresh test account — org starts as `plan: 'starter'`, `status: 'trial'`.
+2. Go to `/dashboard/settings/billing`, pick a plan, choose a payment method, enter any reference text, submit.
+3. Log in as an admin, go to `/admin/billing` — the request appears under Pending.
+4. Click "Approve & activate" — confirm in SQL:
+   ```sql
+   select plan, status, monthly_message_limit from organizations where id = '<org id>';
+   select * from subscriptions where organization_id = '<org id>';
+   select status from billing_requests where organization_id = '<org id>';
+````
 
-  // Locks background scroll while the drawer is open, and compensates
-  // for the scrollbar disappearing so the page doesn't visibly shift
-  // width when the lock engages/releases.
-  useEffect(() => {
-    if (!mobileOpen) return;
-    const scrollbarWidth =
-      window.innerWidth - document.documentElement.clientWidth;
-    document.body.style.overflow = "hidden";
-    document.body.style.paddingRight = `${scrollbarWidth}px`;
-    return () => {
-      document.body.style.overflow = "";
-      document.body.style.paddingRight = "";
-    };
-  }, [mobileOpen]);
+`status` should be `active`, `monthly_message_limit` should match the approved plan, and the `billing_requests` row should show `approved`. 5. Try submitting a second request while one is still pending — should be blocked client-side with a clear message. 6. Test reject: submit another request, reject it from `/admin/billing`, confirm `organizations` is untouched and the client sees no pending banner anymore (can resubmit).
 
-  // Desktop icon-only collapse. Read from localStorage after mount only
-  // (not during the initial render) so server and client markup match
-  // on first paint — flipping to the stored value in a layout effect
-  // avoids a hydration mismatch warning.
-  const [collapsed, setCollapsed] = useState(false);
-  const [hydrated, setHydrated] = useState(false);
+## Known scope limits (by design, for now)
 
-  useEffect(() => {
-    const stored = window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
-    if (stored === "1") setCollapsed(true);
-    setHydrated(true);
-  }, []);
+- No automated renewal reminders — `subscriptions.current_period_end` is set on approval but nothing currently checks it. Add a cron job later if you want auto-expiry/renewal nudges.
+- `maxAgents` gating isn't wired in — the current codebase always creates exactly one agent per organization at signup/client-creation time, so there's no "add another agent to the same org" flow yet to gate.
+- This flow and a future Stripe flow (Prompt 08) can coexist: Stripe's webhook would just be another writer to the same three `organizations` columns, for clients who _can_ pay via card.
 
-  const toggleCollapsed = () => {
-    setCollapsed((prev) => {
-      const next = !prev;
-      window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
-      return next;
-    });
-  };
+## Realtime security model (permanent rule)
 
-  const navItems = NAV_ITEMS_BY_VARIANT[variant];
-  const brand = BRAND_BY_VARIANT[variant];
-  const activeHref = getActiveHref(pathname, navItems);
+- Anonymous/public visitors (widget) → **only** Supabase Realtime **Broadcast**, on topic `conversation:${conversationId}`. Never grant `anon` a `postgres_changes` subscription or direct table SELECT policy on `conversations`/`messages` — RLS `using` clauses filter rows, not queries, so any such policy leaks the whole table.
+- Authenticated staff inbox → existing `postgres_changes`, scoped by `is_org_accessible()` RLS. This is fine and unaffected.
+- Any future change to Realtime code must re-run the cross-session leak test: two different orgs' widgets open in two browsers, confirm org A's human reply never reaches org B's browser, and confirm `supabase.from('messages').select('*')` from an anon-key client returns zero rows.
 
-  return (
-    <div className="relative flex min-h-screen bg-background">
-      <PlatformAmbient />
+## Knowledge Base — URL scraping & PDF upload (Prompt 11)
 
-      {/* Desktop sidebar */}
-      <aside
-        className={cn(
-          "hidden flex-none border-r border-border bg-card md:flex md:flex-col",
-          // No transition before hydration — prevents a visible width
-          // animation on first load if the stored preference was "collapsed".
-          hydrated && "transition-[width] duration-200 ease-out",
-          collapsed ? "md:w-19" : "md:w-64",
-        )}
-      >
-        <SidebarContent
-          brand={brand}
-          navItems={navItems}
-          activeHref={activeHref}
-          userEmail={userEmail}
-          collapsed={collapsed}
-          onToggleCollapsed={toggleCollapsed}
-          navBadges={navBadges}
-        />
-      </aside>
-
-      {/* Mobile topbar */}
-      <div className="fixed inset-x-0 top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur-sm md:hidden">
-        <span className="font-heading text-sm font-semibold text-foreground">
-          {brand}
-        </span>
-        <button
-          type="button"
-          onClick={() => setMobileOpen(true)}
-          aria-label="Open menu"
-          className="rounded-lg p-2 text-foreground hover:bg-card"
-        >
-          <Menu className="h-5 w-5" strokeWidth={1.75} />
-        </button>
-      </div>
-
-      {/* Mobile backdrop */}
-      <div
-        aria-hidden="true"
-        onClick={() => setMobileOpen(false)}
-        className={cn(
-          "fixed inset-0 z-40 bg-black/60 transition-opacity duration-200 md:hidden",
-          mobileOpen
-            ? "pointer-events-auto opacity-100"
-            : "pointer-events-none opacity-0",
-        )}
-      />
-
-      {/* Mobile drawer — always full sidebar (never icon-only), per
-          the reasoning that collapse is a desktop-density feature; a
-          drawer that's already an overlay doesn't need to save width. */}
-      <aside
-        ref={mobileDrawerRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Sidebar navigation"
-        className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-border bg-card transition-transform duration-300 ease-out md:hidden",
-          mobileOpen ? "translate-x-0" : "-translate-x-full",
-        )}
-      >
-        <div className="flex h-14 items-center justify-end px-4">
-          <button
-            type="button"
-            onClick={() => setMobileOpen(false)}
-            aria-label="Close menu"
-            className="rounded-lg p-2 text-foreground hover:bg-background"
-          >
-            <X className="h-5 w-5" strokeWidth={1.75} />
-          </button>
-        </div>
-        <SidebarContent
-          brand={brand}
-          navItems={navItems}
-          activeHref={activeHref}
-          userEmail={userEmail}
-          onNavigate={() => setMobileOpen(false)}
-          hideHeader
-          collapsed={false}
-          navBadges={navBadges}
-        />
-      </aside>
-
-      {/* Main content */}
-      <main className="min-w-0 flex-1 pt-14 md:pt-0">
-        <div className="mx-auto max-w-6xl px-6 py-8 md:px-10 md:py-10">
-          {children}
-        </div>
-      </main>
-    </div>
-  );
-}
-
-function SidebarContent({
-  brand,
-  navItems,
-  activeHref,
-  userEmail,
-  onNavigate,
-  hideHeader,
-  collapsed,
-  onToggleCollapsed,
-  navBadges,
-}: {
-  brand: string;
-  navItems: { label: string; href: string; icon: typeof LayoutDashboard }[];
-  activeHref: string | null;
-  userEmail?: string | null;
-  onNavigate?: () => void;
-  hideHeader?: boolean;
-  collapsed: boolean;
-  onToggleCollapsed?: () => void;
-  navBadges?: Record<string, number>;
-}) {
-  const { theme, toggleTheme } = useTheme();
-  const { start } = useRouteLoader();
-
-  return (
-    <>
-      {!hideHeader && (
-        <div className="flex h-16 items-center justify-between border-b border-border px-4">
-          {!collapsed && (
-            <span className="truncate font-heading text-base font-semibold tracking-tight text-foreground">
-              {brand}
-            </span>
-          )}
-          {onToggleCollapsed && (
-            <button
-              type="button"
-              onClick={onToggleCollapsed}
-              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              className={cn(
-                "flex h-8 w-8 flex-none items-center justify-center rounded-lg text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground",
-                collapsed && "mx-auto",
-              )}
-            >
-              {collapsed ? (
-                <PanelLeftOpen className="h-4 w-4" strokeWidth={1.75} />
-              ) : (
-                <PanelLeftClose className="h-4 w-4" strokeWidth={1.75} />
-              )}
-            </button>
-          )}
-        </div>
-      )}
-
-      <nav className="flex flex-1 flex-col gap-1 px-3 py-4">
-        {navItems.map((item) => {
-          const isActive = item.href === activeHref;
-          const Icon = item.icon;
-
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => {
-                start();
-                onNavigate?.();
-              }}
-              title={collapsed ? item.label : undefined}
-              className={cn(
-                "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 font-body text-sm font-medium transition-colors duration-150",
-                collapsed && "justify-center px-0",
-                isActive
-                  ? "bg-primary/10 text-primary"
-                  : "text-secondary-text hover:bg-background hover:text-foreground",
-              )}
-            >
-              {/* Active accent bar — mirrors the red rule pattern from
-                  the reference dashboard, using the brand primary color. */}
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-primary transition-opacity duration-150",
-                  isActive ? "opacity-100" : "opacity-0",
-                )}
-              />
-              <Icon className="h-4 w-4 flex-none" strokeWidth={1.75} />
-              {!collapsed && (
-                <span className="flex flex-1 items-center justify-between">
-                  {item.label}
-                  {!!navBadges?.[item.href] && (
-                    <span className="ml-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 font-body text-[10px] font-semibold text-primary-foreground">
-                      {navBadges[item.href]}
-                    </span>
-                  )}
-                </span>
-              )}
-              {collapsed && !!navBadges?.[item.href] && (
-                <span
-                  aria-hidden="true"
-                  className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary"
-                />
-              )}
-            </Link>
-          );
-        })}
-      </nav>
-
-      <div className="border-t border-border p-3">
-        {/* Theme toggle */}
-        <button
-          type="button"
-          onClick={toggleTheme}
-          title={
-            theme === "dark" ? "Switch to light theme" : "Switch to dark theme"
-          }
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground",
-            collapsed && "justify-center px-0",
-          )}
-        >
-          {theme === "dark" ? (
-            <Sun className="h-4 w-4 flex-none" strokeWidth={1.75} />
-          ) : (
-            <Moon className="h-4 w-4 flex-none" strokeWidth={1.75} />
-          )}
-          {!collapsed && (theme === "dark" ? "Light mode" : "Dark mode")}
-        </button>
-
-        {!collapsed && userEmail && (
-          <p className="truncate px-3 pb-1 pt-2 font-body text-xs text-secondary-text">
-            {userEmail}
-          </p>
-        )}
-
-        <form action={signOut} onSubmit={() => start()}>
-          <button
-            type="submit"
-            title={collapsed ? "Log out" : undefined}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground",
-              collapsed && "justify-center px-0",
-            )}
-          >
-            <LogOut className="h-4 w-4 flex-none" strokeWidth={1.75} />
-            {!collapsed && "Log out"}
-          </button>
-        </form>
-      </div>
-    </>
-  );
-}
+- **PDF text extraction:** `unpdf` — pure WASM, wraps pdf.js's core, no native binary. Chosen specifically because `@xenova/transformers` previously broke in production on Vercel's serverless runtime due to its native dependency; `unpdf` has no such requirement.
+- **Storage bucket:** `knowledge-base-pdfs` (private). Path convention `<organization_id>/<timestamp>-<filename>.pdf`. RLS via `storage.objects` policies reusing `is_org_accessible()` on the first path segment — see migration `0017_kb_scraping_pdf.sql`.
+- **URL scraping:** plain `fetch` + `cheerio`, no headless browser. Respects `robots.txt`, identifies as `MBRStudioBot/1.0`, tries `/sitemap.xml` first before link-crawling. Known limitation: heavy client-side-rendered (SPA) sites won't scrape meaningfully since there's no JS execution — documented, not silently failing (partial/empty content still shows the normal ingestion pipeline's status).
+- Scanned/image-only PDFs are detected (extracted text too short relative to page count) and marked `status: 'error'` with a clear message — OCR is out of scope by design.
 </file>
 
 <file path="lib/channels/process-inbound-message.ts">
@@ -21848,37 +22800,6 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
-</file>
-
-<file path=".env.example">
-RESEND_API_KEY=
-
-OPENROUTER_API_KEY=
-
-GOOGLE_AI_API_KEY=
-
-NEXT_PUBLIC_SITE_URL=
-
-NEXT_PUBLIC_SUPABASE_URL=
-
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-
-SUPABASE_SERVICE_ROLE_KEY=
-
-# Meta App
-META_APP_ID=
-META_APP_SECRET=
-# WhatsApp Cloud API
-META_WHATSAPP_PHONE_NUMBER_ID=
-META_WHATSAPP_ACCESS_TOKEN=
-
-# Webhook
-META_WEBHOOK_VERIFY_TOKEN=
-
-# Encryption
-CHANNEL_TOKEN_ENCRYPTION_KEY=
-
- permanent access token for your WhatsApp Business Account to send messages via the API=
 </file>
 
 <file path="app/api/widget/chat/route.ts">
@@ -22300,6 +23221,303 @@ async function bumpDailyAnalytics(
 }
 </file>
 
+<file path="components/platform/PlatformShell.tsx">
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Menu, LogOut, Sun, Moon } from "lucide-react";
+import {
+  Building2,
+  Settings,
+  BookOpen,
+  MessagesSquare,
+  Palette,
+  ShieldCheck,
+  Sparkles,
+  Users,
+  KeyRound,
+  Webhook,
+  CreditCard,
+  Radio,
+} from "lucide-react";
+
+import { cn } from "@/lib/utils";
+import { signOut } from "@/lib/auth/actions";
+import { useTheme } from "@/components/theme/ThemeProvider";
+import { PlatformAmbient } from "@/components/platform/PlatformAmbient";
+import { useRouteLoader } from "@/components/loader/RouteLoader";
+import { DesktopNav, type NavGroup } from "@/components/platform/DesktopNav";
+import { MobileNav } from "@/components/platform/MobileNav";
+
+export type PlatformVariant = "admin" | "client";
+
+const NAV_GROUPS_BY_VARIANT: Record<
+  PlatformVariant,
+  (isReseller: boolean) => NavGroup[]
+> = {
+  admin: () => [
+    { type: "link", label: "Overview", href: "/admin" },
+    { type: "link", label: "Organizations", href: "/admin/organizations" },
+    { type: "link", label: "Billing", href: "/admin/billing" },
+    { type: "link", label: "Settings", href: "/admin/settings" },
+  ],
+
+  client: (isReseller) => {
+    const groups: NavGroup[] = [
+      { type: "link", label: "Overview", href: "/dashboard" },
+      {
+        type: "dropdown",
+        label: "Agent",
+        items: [
+          {
+            label: "Knowledge Base",
+            href: "/dashboard/knowledge-base",
+            icon: BookOpen,
+          },
+          {
+            label: "Guardrails",
+            href: "/dashboard/agent/guardrails",
+            icon: ShieldCheck,
+          },
+          {
+            label: "Templates",
+            href: "/dashboard/agent/templates",
+            icon: Sparkles,
+          },
+          { label: "Appearance", href: "/dashboard/appearance", icon: Palette },
+        ],
+      },
+      {
+        type: "dropdown",
+        label: "Growth",
+        items: [
+          { label: "Leads", href: "/dashboard/leads", icon: Users },
+          { label: "Inbox", href: "/dashboard/inbox", icon: MessagesSquare },
+          { label: "Channels", href: "/dashboard/channels", icon: Radio },
+        ],
+      },
+    ];
+
+    if (isReseller) {
+      groups.push({
+        type: "link",
+        label: "Clients",
+        href: "/dashboard/clients",
+      });
+    }
+
+    groups.push({
+      type: "dropdown",
+      label: "Account",
+      items: [
+        { label: "Settings", href: "/dashboard/settings", icon: Settings },
+        {
+          label: "Billing",
+          href: "/dashboard/settings/billing",
+          icon: CreditCard,
+        },
+        {
+          label: "API Keys",
+          href: "/dashboard/settings/api-keys",
+          icon: KeyRound,
+        },
+        {
+          label: "Webhooks",
+          href: "/dashboard/settings/webhooks",
+          icon: Webhook,
+        },
+      ],
+    });
+
+    return groups;
+  },
+};
+
+const BRAND_BY_VARIANT: Record<PlatformVariant, string> = {
+  admin: "MBR Studio — Admin",
+  client: "MBR Studio",
+};
+
+function flattenHrefs(groups: NavGroup[]): { href: string }[] {
+  return groups.flatMap((group) =>
+    group.type === "link"
+      ? [{ href: group.href }]
+      : group.items.map((item) => ({ href: item.href })),
+  );
+}
+
+/**
+ * Same longest-match logic the old sidebar shell used — carried over
+ * unchanged, just applied to the flattened list of every href across
+ * all top-level groups and their dropdown items.
+ */
+function getActiveHref(
+  pathname: string,
+  hrefs: { href: string }[],
+): string | null {
+  let best: string | null = null;
+
+  for (const item of hrefs) {
+    const isRootRoute = item.href === "/admin" || item.href === "/dashboard";
+    const matches =
+      pathname === item.href ||
+      (!isRootRoute && pathname.startsWith(`${item.href}/`));
+
+    if (matches && (best === null || item.href.length > best.length)) {
+      best = item.href;
+    }
+  }
+
+  return best;
+}
+
+export function PlatformShell({
+  variant,
+  userEmail,
+  navBadges,
+  isReseller = false,
+  children,
+}: {
+  variant: PlatformVariant;
+  userEmail?: string | null;
+  /** Keyed by nav item href, e.g. { "/dashboard/inbox": 3 } */
+  navBadges?: Record<string, number>;
+  isReseller?: boolean;
+  children: React.ReactNode;
+}) {
+  const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const { theme, toggleTheme } = useTheme();
+  const { start } = useRouteLoader();
+
+  const groups = NAV_GROUPS_BY_VARIANT[variant](isReseller);
+  const brand = BRAND_BY_VARIANT[variant];
+  const activeHref = getActiveHref(pathname, flattenHrefs(groups));
+
+  return (
+    <div className="relative min-h-screen bg-background">
+      <PlatformAmbient />
+
+      <header className="fixed inset-x-0 top-0 z-30 border-b border-border bg-background/85 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 md:px-8">
+          <Link
+            href={variant === "admin" ? "/admin" : "/dashboard"}
+            onClick={() => start()}
+            className="font-heading text-base font-semibold tracking-tight text-foreground"
+          >
+            {brand}
+          </Link>
+
+          <DesktopNav
+            groups={groups}
+            activeHref={activeHref}
+            navBadges={navBadges}
+          />
+
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label={
+                theme === "dark"
+                  ? "Switch to light theme"
+                  : "Switch to dark theme"
+              }
+              className="hidden rounded-lg p-2 text-secondary-text transition-colors duration-150 hover:bg-card hover:text-foreground md:inline-flex"
+            >
+              {theme === "dark" ? (
+                <Sun className="h-4 w-4" strokeWidth={1.75} />
+              ) : (
+                <Moon className="h-4 w-4" strokeWidth={1.75} />
+              )}
+            </button>
+
+            <UserMenu userEmail={userEmail} />
+
+            <button
+              type="button"
+              onClick={() => setMobileOpen(true)}
+              aria-label="Open menu"
+              aria-expanded={mobileOpen}
+              className="rounded-lg p-2 text-foreground hover:bg-card md:hidden"
+            >
+              <Menu className="h-5 w-5" strokeWidth={1.75} />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <MobileNav
+        open={mobileOpen}
+        onClose={() => setMobileOpen(false)}
+        groups={groups}
+        activeHref={activeHref}
+        navBadges={navBadges}
+        userEmail={userEmail}
+      />
+
+      <main className="min-w-0 pt-16">
+        <div className="mx-auto max-w-6xl px-6 py-8 md:px-10 md:py-10">
+          {children}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function UserMenu({ userEmail }: { userEmail?: string | null }) {
+  const [open, setOpen] = useState(false);
+  const { start } = useRouteLoader();
+
+  return (
+    <div className="relative hidden md:block">
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        aria-expanded={open}
+        aria-haspopup="true"
+        aria-label="Account menu"
+        className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 font-body text-sm font-semibold text-primary transition-colors duration-150 hover:bg-primary/20"
+      >
+        {userEmail?.[0]?.toUpperCase() ?? "?"}
+      </button>
+
+      {open && (
+        <>
+          <div
+            aria-hidden="true"
+            onClick={() => setOpen(false)}
+            className="fixed inset-0 z-40"
+          />
+          <div
+            role="menu"
+            className="absolute right-0 top-full z-50 mt-2 w-56 rounded-xl border border-border bg-card p-1.5 shadow-xl shadow-black/[0.06] dark:shadow-black/30"
+          >
+            {userEmail && (
+              <p className="truncate px-3 py-2 font-body text-xs text-secondary-text">
+                {userEmail}
+              </p>
+            )}
+            <form action={signOut} onSubmit={() => start()}>
+              <button
+                type="submit"
+                role="menuitem"
+                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground"
+              >
+                <LogOut className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                Log out
+              </button>
+            </form>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+</file>
+
 <file path="data/blog.ts">
 // data/blog.ts
 /**
@@ -22373,6 +23591,37 @@ export const blogPosts: BlogPost[] = [
     published: false,
   },
 ];
+</file>
+
+<file path=".env.example">
+RESEND_API_KEY=
+
+OPENROUTER_API_KEY=
+
+GOOGLE_AI_API_KEY=
+
+NEXT_PUBLIC_SITE_URL=
+
+NEXT_PUBLIC_SUPABASE_URL=
+
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+
+SUPABASE_SERVICE_ROLE_KEY=
+
+# Meta App
+META_APP_ID=
+META_APP_SECRET=
+# WhatsApp Cloud API
+META_WHATSAPP_PHONE_NUMBER_ID=
+META_WHATSAPP_ACCESS_TOKEN=
+
+# Webhook
+META_WEBHOOK_VERIFY_TOKEN=
+
+# Encryption
+CHANNEL_TOKEN_ENCRYPTION_KEY=
+
+ permanent access token for your WhatsApp Business Account to send messages via the API=
 </file>
 
 <file path="lib/widget/chatbot-widget-source.js">
@@ -22919,52 +24168,31 @@ export const blogPosts: BlogPost[] = [
       );
 
       this._realtimeChannel = this._realtimeClient
-        .channel("widget-conversation-" + this._conversationId)
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "messages",
-            filter: "conversation_id=eq." + this._conversationId,
-          },
-          function (payload) {
-            var row = payload.new;
-            if (row.role === "human_agent") {
-              self._addBubble("human", row.content);
-            }
-          },
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "UPDATE",
-            schema: "public",
-            table: "conversations",
-            filter: "id=eq." + this._conversationId,
-          },
-          function (payload) {
-            var newStatus = payload.new.status;
-            if (newStatus === self._lastKnownStatus) return;
+        .channel("conversation:" + this._conversationId)
+        .on("broadcast", { event: "human_message" }, function (payload) {
+          self._addBubble("human", payload.payload.content);
+        })
+        .on("broadcast", { event: "status_changed" }, function (payload) {
+          var newStatus = payload.payload.status;
+          if (newStatus === self._lastKnownStatus) return;
 
-            if (newStatus === "human_handling") {
-              self._addSystemNote(
-                "You're now chatting with " +
-                  (self._config.orgName || "the team") +
-                  "'s team.",
-              );
-            } else if (
-              newStatus === "ai_handling" &&
-              self._lastKnownStatus === "human_handling"
-            ) {
-              self._addSystemNote(
-                "You're back to chatting with the AI assistant.",
-              );
-            }
+          if (newStatus === "human_handling") {
+            self._addSystemNote(
+              "You're now chatting with " +
+                (self._config.orgName || "the team") +
+                "'s team.",
+            );
+          } else if (
+            newStatus === "ai_handling" &&
+            self._lastKnownStatus === "human_handling"
+          ) {
+            self._addSystemNote(
+              "You're back to chatting with the AI assistant.",
+            );
+          }
 
-            self._lastKnownStatus = newStatus;
-          },
-        )
+          self._lastKnownStatus = newStatus;
+        })
         .subscribe();
     } catch (err) {
       console.error("[MBR Chat Widget] Realtime subscription failed:", err);
@@ -23111,6 +24339,7 @@ export const blogPosts: BlogPost[] = [
     "@supabase/supabase-js": "^2.110.0",
     "@vercel/analytics": "^2.0.1",
     "ai": "^6.0.218",
+    "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.42.2",
@@ -23122,6 +24351,7 @@ export const blogPosts: BlogPost[] = [
     "resend": "^6.16.0",
     "tailwind-merge": "^3.6.0",
     "tw-animate-css": "^1.4.0",
+    "unpdf": "^1.6.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {

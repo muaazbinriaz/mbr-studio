@@ -82,7 +82,11 @@ function ServiceCard({ service, index }: { service: Service; index: number }) {
         </p>
 
         <Link
-          href={`/services#${service.slug}`}
+          href={
+            service.slug === "ai-business-automation"
+              ? "/ai-agent"
+              : `/services#${service.slug}`
+          }
           className="inline-flex items-center gap-1.5 font-body text-sm font-medium text-primary transition-colors duration-200 hover:text-accent"
         >
           Learn more

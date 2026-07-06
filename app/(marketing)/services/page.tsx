@@ -52,6 +52,7 @@ interface ServiceDetail {
   includes: string[];
   whoItsFor: string;
   ctaLabel: string;
+  demoHref?: string;
 }
 
 const SERVICE_DETAILS: Record<string, ServiceDetail> = {
@@ -77,6 +78,7 @@ const SERVICE_DETAILS: Record<string, ServiceDetail> = {
     whoItsFor:
       "Teams getting repetitive inbound questions that pull focus and time away from higher-value work.",
     ctaLabel: "Automate my inbox",
+    demoHref: "/ai-agent",
   },
   "whatsapp-automation": {
     includes: [
@@ -243,9 +245,19 @@ function ServiceSection({
               </p>
             )}
 
-            <Button asChild className="rounded-lg px-6">
-              <Link href="/contact">{detail?.ctaLabel ?? "Get a quote"}</Link>
-            </Button>
+            <div className="flex flex-wrap items-center gap-4">
+              <Button asChild className="rounded-lg px-6">
+                <Link href="/contact">{detail?.ctaLabel ?? "Get a quote"}</Link>
+              </Button>
+              {detail?.demoHref && (
+                <Link
+                  href={detail.demoHref}
+                  className="font-body text-sm font-medium text-primary hover:text-accent"
+                >
+                  Try the live demo →
+                </Link>
+              )}
+            </div>
           </div>
 
           {/* Right: what's included */}
