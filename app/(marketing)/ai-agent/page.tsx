@@ -32,7 +32,7 @@ export const metadata: Metadata = {
 /**
  * .env.local mein NEXT_PUBLIC_DEMO_WIDGET_KEY set karo (neeche steps
  * dekho) — jab tak set na ho, widget script load hi nahi hoga (silently
- * broken dikhne ke bajaye).
+ * broken dikhne ke bajaye). okay?
  */
 const DEMO_WIDGET_PUBLIC_KEY = process.env.NEXT_PUBLIC_DEMO_WIDGET_KEY || null;
 
