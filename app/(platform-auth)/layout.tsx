@@ -1,6 +1,11 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AuthSplitLayout } from "@/components/platform/AuthSplitLayout";
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 export default async function PlatformAuthLayout({
   children,

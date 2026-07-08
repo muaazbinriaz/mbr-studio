@@ -15,30 +15,6 @@ import { siteConfig } from "@/config/site";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { serviceSchema } from "@/lib/seo/schemas";
 
-/**
- * Services Page — Prompt 13, SEO pass in Prompt 20.
- *
- * Blueprint ref: Part 1, Section 1 (Services list) + Section 4
- * (Information Architecture: Services page, "Explain offerings in
- * depth", primary CTA "Get a quote", SEO intent: service-specific
- * keywords).
- *
- * data/services.ts only carries { slug, title, description, icon } —
- * enough for the home page cards, not enough for a full page that
- * needs to explain "what it includes" and "who it's for" per service.
- * Rather than invent new fields on the shared Service type (which
- * would ripple into the home page cards too), the extra copy for this
- * page lives in SERVICE_DETAILS below, keyed by slug, and is merged
- * with the base data at render time. If you'd rather these fields
- * live in data/services.ts directly, say so and I'll move them.
- *
- * SEO PASS: title trimmed to just the topic — the root layout's title
- * template now appends "| MBR Studio — Websites & AI Automation", so
- * hardcoding the suffix here would have duplicated it (see layout.tsx
- * comment for the bug this fixes). Added canonical URL and a Service
- * JSON-LD block per service, per Blueprint Part 2 Section 13.
- */
-
 export const metadata: Metadata = {
   title: "Services",
   description:
@@ -129,8 +105,7 @@ const SERVICE_DETAILS: Record<string, ServiceDetail> = {
 export default function ServicesPage() {
   return (
     <>
-      {/* One Service JSON-LD block per service, matching Blueprint
-          Part 2 Section 13 ("Service schema on the Services page"). */}
+      {/* One Service JSON-LD block per service */}
       {services.map((service) => (
         <JsonLd
           key={service.slug}
@@ -150,15 +125,27 @@ export default function ServicesPage() {
           <h1 className="font-heading text-[36px] font-bold leading-tight tracking-tight text-text sm:text-[48px] md:text-[56px]">
             Everything you need to build, automate, and grow.
           </h1>
-          <p
-            className="mx-auto mt-5 max-w-2xl font-body text-base text-secondary-text
- sm:text-lg"
-          >
+          <p className="mx-auto mt-5 max-w-2xl font-body text-base text-secondary-text sm:text-lg">
             Every engagement is senior-led, built on a modern stack, and scoped
             to your business — not sold off a fixed package.
           </p>
         </div>
       </section>
+
+      {/* Sticky jump-to-service nav */}
+      <div className="sticky top-16 z-30 -mx-6 overflow-x-auto border-b border-border bg-background/90 px-6 py-3 backdrop-blur-md md:mx-0">
+        <div className="mx-auto flex max-w-6xl gap-2">
+          {services.map((s) => (
+            <a
+              key={s.slug}
+              href={`#${s.slug}`}
+              className="whitespace-nowrap rounded-full border border-border px-3 py-1.5 text-xs font-medium text-secondary-text transition-colors hover:border-primary/50 hover:text-text"
+            >
+              {s.title}
+            </a>
+          ))}
+        </div>
+      </div>
 
       {/* Service sections */}
       {services.map((service, index) => (
@@ -218,7 +205,7 @@ function ServiceSection({
   return (
     <section
       id={service.slug}
-      className={`border-t border-border ${
+      className={`scroll-mt-24 border-t border-border ${
         isEven ? "bg-background" : "bg-secondary-background"
       }`}
     >

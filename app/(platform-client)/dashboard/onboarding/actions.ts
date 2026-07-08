@@ -85,3 +85,25 @@ export async function markOnboardingComplete() {
   revalidatePath("/dashboard");
   return { error: null };
 }
+
+/**
+ * Self-reported checkbox for the getting-started checklist — "I added
+ * the embed code to my site." Can't be verified automatically, so it's
+ * explicitly labeled as self-reported in the UI.
+ */
+export async function markEmbedAdded() {
+  const organizationId = await getCurrentOrgId();
+  if (!organizationId) return { error: "No organization found." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("agents")
+    .update({ embed_added_self_reported: true })
+    .eq("organization_id", organizationId)
+    .eq("is_active", true);
+
+  if (error) return { error: "Something went wrong — try again." };
+
+  revalidatePath("/dashboard");
+  return { error: null };
+}

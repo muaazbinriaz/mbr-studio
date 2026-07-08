@@ -19,6 +19,7 @@ import {
 } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 interface Connection {
   id: string;
@@ -40,35 +41,63 @@ export function ChannelsClient({ connections }: { connections: Connection[] }) {
   const whatsapp = connections.find((c) => c.channel === "whatsapp");
   const messenger = connections.find((c) => c.channel === "messenger");
   const instagram = connections.find((c) => c.channel === "instagram");
+  const hasAnyConnection = connections.length > 0;
 
   return (
     <div className="flex flex-col gap-6">
-      <ChannelCard
-        icon={MessageCircle}
-        title="WhatsApp"
-        connection={whatsapp}
-        note="Connecting WhatsApp requires a verified Meta Business account; this typically takes 1–3 days the first time."
-      >
-        <WhatsAppForm connection={whatsapp} />
-      </ChannelCard>
+      {!hasAnyConnection && (
+        <div className="rounded-2xl border border-border bg-card p-6">
+          <p className="font-body text-sm font-medium text-foreground">
+            Want to connect WhatsApp, Instagram, or Messenger?
+          </p>
+          <p className="mt-1 font-body text-sm text-secondary-text">
+            These need API credentials from Meta that most businesses don&apos;t
+            have on hand. Book a quick setup call and we&apos;ll connect it for
+            you.
+          </p>
 
-      <ChannelCard
-        icon={MessagesSquare}
-        title="Messenger"
-        connection={messenger}
-        note="Requires a connected Facebook Page and Page access token from Meta Business Suite."
-      >
-        <MessengerForm connection={messenger} />
-      </ChannelCard>
+          <a
+            href="/contact"
+            className="mt-3 inline-block font-body text-sm font-medium text-primary hover:underline"
+          >
+            Book a setup call →
+          </a>
+        </div>
+      )}
 
-      <ChannelCard
-        icon={Camera}
-        title="Instagram"
-        connection={instagram}
-        note="Requires an Instagram Business account linked to a Facebook Page."
-      >
-        <InstagramForm connection={instagram} />
-      </ChannelCard>
+      <details className="group">
+        <summary className="cursor-pointer font-body text-sm font-medium text-primary hover:underline">
+          I already have my API credentials
+        </summary>
+        <div className="mt-4 flex flex-col gap-6">
+          <ChannelCard
+            icon={MessageCircle}
+            title="WhatsApp"
+            connection={whatsapp}
+            note="Connecting WhatsApp requires a verified Meta Business account; this typically takes 1–3 days the first time."
+          >
+            <WhatsAppForm connection={whatsapp} />
+          </ChannelCard>
+
+          <ChannelCard
+            icon={MessagesSquare}
+            title="Messenger"
+            connection={messenger}
+            note="Requires a connected Facebook Page and Page access token from Meta Business Suite."
+          >
+            <MessengerForm connection={messenger} />
+          </ChannelCard>
+
+          <ChannelCard
+            icon={Camera}
+            title="Instagram"
+            connection={instagram}
+            note="Requires an Instagram Business account linked to a Facebook Page."
+          >
+            <InstagramForm connection={instagram} />
+          </ChannelCard>
+        </div>
+      </details>
     </div>
   );
 }
@@ -89,11 +118,16 @@ function ChannelCard({
   const [isPending, startTransition] = useTransition();
   const [testPhone, setTestPhone] = useState("");
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [disconnectError, setDisconnectError] = useState<string | null>(null);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 
   const handleDisconnect = () => {
     if (!connection) return;
+    setDisconnectError(null);
     startTransition(async () => {
-      await disconnectChannel(connection.id);
+      const result = await disconnectChannel(connection.id);
+      if (result?.error) setDisconnectError(result.error);
+      setConfirmDisconnect(false);
     });
   };
 
@@ -106,16 +140,33 @@ function ChannelCard({
     });
   };
 
+  const isConnected = connection?.status === "connected";
+
   return (
-    <div className="rounded-2xl border border-border bg-card p-6">
+    <div
+      className={`rounded-2xl border bg-card p-6 transition-colors ${
+        isConnected ? "border-success/40" : "border-border"
+      }`}
+    >
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <div
+            className={`flex h-10 w-10 items-center justify-center rounded-lg ${
+              isConnected
+                ? "bg-success/10 text-success"
+                : "bg-primary/10 text-primary"
+            }`}
+          >
             <Icon className="h-5 w-5" strokeWidth={1.75} />
           </div>
-          <h2 className="font-heading text-base font-semibold text-foreground">
-            {title}
-          </h2>
+          <div>
+            <h2 className="font-heading text-base font-semibold text-foreground">
+              {title}
+            </h2>
+            <p className="font-body text-xs text-secondary-text">
+              {isConnected ? "Connected" : "Not connected"}
+            </p>
+          </div>
         </div>
         {connection && (
           <Badge
@@ -171,10 +222,16 @@ function ChannelCard({
             </p>
           )}
 
+          {disconnectError && (
+            <p role="alert" className="font-body text-xs text-error">
+              {disconnectError}
+            </p>
+          )}
+
           <Button
             type="button"
             variant="outline"
-            onClick={handleDisconnect}
+            onClick={() => setConfirmDisconnect(true)}
             disabled={isPending}
             className="w-fit text-error hover:bg-error/10"
           >
@@ -185,6 +242,16 @@ function ChannelCard({
       ) : (
         children
       )}
+
+      <ConfirmDialog
+        open={confirmDisconnect}
+        title={`Disconnect ${title}?`}
+        description="End-users on this channel will stop receiving replies from your bot until you reconnect it. This can't be undone automatically — you'll need to re-authenticate to restore it."
+        confirmLabel="Disconnect"
+        isLoading={isPending}
+        onCancel={() => setConfirmDisconnect(false)}
+        onConfirm={handleDisconnect}
+      />
     </div>
   );
 }

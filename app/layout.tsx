@@ -1,9 +1,6 @@
 import { Suspense } from "react";
 import Script from "next/script";
-import { Analytics } from "@vercel/analytics/react";
-import { GoogleAnalytics } from "@next/third-parties/google";
-import { ChatProvider } from "@/components/chatbot/useChat";
-import { ChatWindow } from "@/components/chatbot/ChatWindow";
+import { CookieConsent } from "@/components/analytics/CookieConsent";
 import type { Metadata } from "next";
 import { Geist, Inter } from "next/font/google";
 import "./globals.css";
@@ -107,41 +104,20 @@ export default function RootLayout({
           {THEME_INIT_SCRIPT}
         </Script>
         <ThemeProvider>
-          <Suspense fallback={null}>
-            <RouteLoaderProvider>
-              <SkipLink />
-              <JsonLd data={organizationSchema()} />
-              <ChatProvider>
-                {children}
-                <ChatWindow />
-              </ChatProvider>
-            </RouteLoaderProvider>
-          </Suspense>
+          <RouteLoaderProvider>
+            <SkipLink />
+            <JsonLd data={organizationSchema()} />
+            {children}
+          </RouteLoaderProvider>
         </ThemeProvider>
 
         {/*
-          Analytics — makes privacy/page.tsx's claim ("Vercel Analytics
-          and Google Analytics") actually true.
-
-          <Analytics /> (Vercel) doesn't need Suspense/provider wrapping —
-          it's a self-contained client component that injects a script
-          and reports Web Vitals / page views on route change internally.
-          Rendered as a top-level sibling in <body>, same as the docs'
-          recommended placement.
-
-          NOTE — cookie consent: this site's Privacy Policy references
-          GDPR/UK compliance, which implies EU/UK visitors may need a
-          consent mechanism before analytics scripts fire. That's a
-          legal/product decision, not something to silently bolt on here
-          — intentionally NOT implemented in this change. Before this
-          goes live for EU/UK traffic, add a consent-gating layer (e.g.
-          only rendering <Analytics />/<GoogleAnalytics /> after consent,
-          or using a CMP) around this block.
+          Analytics is now consent-gated — CookieConsent shows a banner
+          and only mounts <Analytics />/<GoogleAnalytics /> after the
+          visitor explicitly accepts. Satisfies the GDPR/UK note in
+          privacy/page.tsx.
         */}
-        <Analytics />
-        {process.env.NEXT_PUBLIC_GA_ID && (
-          <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
-        )}
+        <CookieConsent />
       </body>
     </html>
   );

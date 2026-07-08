@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import { ArrowUp, ArrowDown } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -20,6 +21,8 @@ export function StatCard({
   badgeLabel,
   badgeVariant = "success",
   accent = "primary",
+  trend,
+  trendSuffix = "vs last period",
 }: {
   icon: ComponentType<{ className?: string; strokeWidth?: number }>;
   label: string;
@@ -27,6 +30,8 @@ export function StatCard({
   badgeLabel?: string;
   badgeVariant?: "success" | "warning" | "secondary" | "outline";
   accent?: "primary" | "accent";
+  trend?: number | null;
+  trendSuffix?: string;
 }) {
   return (
     <div
@@ -62,9 +67,27 @@ export function StatCard({
       <p className="relative mt-5 font-heading text-3xl font-bold text-foreground">
         {value}
       </p>
-      <p className="relative mt-1 font-body text-sm text-secondary-text">
-        {label}
-      </p>
+      <div className="relative mt-1 flex items-center gap-1.5">
+        <p className="font-body text-sm text-secondary-text">{label}</p>
+        {trend !== undefined &&
+          (trend === null ? (
+            <span className="font-body text-xs text-secondary-text">(New)</span>
+          ) : (
+            <span
+              className={cn(
+                "flex items-center gap-0.5 font-body text-xs font-medium",
+                trend > 0 && "text-success",
+                trend < 0 && "text-destructive",
+                trend === 0 && "text-secondary-text",
+              )}
+              title={trendSuffix}
+            >
+              {trend > 0 && <ArrowUp className="h-3 w-3" strokeWidth={2} />}
+              {trend < 0 && <ArrowDown className="h-3 w-3" strokeWidth={2} />}
+              {trend === 0 ? "flat" : `${Math.abs(Math.round(trend))}%`}
+            </span>
+          ))}
+      </div>
 
       {/* Bottom accent line, draws in on hover */}
       <div

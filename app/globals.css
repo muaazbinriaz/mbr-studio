@@ -56,9 +56,13 @@
   --space-8: 64px;
   --space-12: 96px;
   --space-16: 128px;
+
+  color-scheme: light;
 }
 
 .dark {
+  color-scheme: dark;
+
   /* Color System — DARK (unchanged) */
   --background: #030712;
   --background-secondary: #0f172a;
@@ -156,6 +160,9 @@ nav a {
   * {
     border-color: var(--color-border);
     outline-color: var(--color-ring);
+    transition:
+      border-color 0.3s ease,
+      background-color 0.3s ease;
   }
 
   html {
@@ -165,6 +172,9 @@ nav a {
   body {
     background: var(--color-background);
     color: var(--color-foreground);
+    transition:
+      background-color 0.3s ease,
+      color 0.3s ease;
     font-family: var(--font-sans), system-ui, sans-serif;
     font-size: var(--text-base); /* 16px */
     line-height: 1.7; /* generous line-height for readability, per design system */

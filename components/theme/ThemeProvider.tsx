@@ -16,18 +16,18 @@ const ThemeContext = createContext<{
 } | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("dark");
-
-  // Hydrate initial theme from localStorage or system preference
-  useEffect(() => {
-    const stored = localStorage.getItem("mbr-theme") as Theme | null;
-    const prefersDark = window.matchMedia(
-      "(prefers-color-scheme: dark)",
-    ).matches;
-    const initial = stored ?? (prefersDark ? "dark" : "light");
-    setTheme(initial);
-    document.documentElement.classList.toggle("dark", initial === "dark");
-  }, []);
+  // Read the class the blocking theme-init script (app/layout.tsx) already
+  // set on <html> before this component ever mounts, instead of guessing
+  // "dark". Without this, state started wrong and only self-corrected in
+  // a useEffect after first paint — visibly animated by the global
+  // background-color transition in globals.css. Reading the DOM here
+  // means state is correct from the very first render, nothing to correct.
+  const [theme, setTheme] = useState<Theme>(() => {
+    if (typeof window === "undefined") return "dark";
+    return document.documentElement.classList.contains("dark")
+      ? "dark"
+      : "light";
+  });
 
   // Apply class on every theme change
   useEffect(() => {

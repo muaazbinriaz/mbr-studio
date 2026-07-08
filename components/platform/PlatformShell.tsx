@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, LogOut, Sun, Moon } from "lucide-react";
+import { Menu, LogOut, Sun, Moon, ExternalLink } from "lucide-react";
 import {
   Building2,
   Settings,
@@ -41,39 +41,20 @@ const NAV_GROUPS_BY_VARIANT: Record<
   ],
 
   client: (isReseller) => {
+    // Essential: what a small-business owner touches regularly, always
+    // one click away. Everything else lives under two grouped menus —
+    // "Agent" (config that shapes what the bot says/does) and "Account"
+    // (billing, keys, webhooks) — instead of one flat 9-item dropdown.
+    // Nothing is removed, just re-prioritized and grouped by intent.
     const groups: NavGroup[] = [
       { type: "link", label: "Overview", href: "/dashboard" },
       {
-        type: "dropdown",
-        label: "Agent",
-        items: [
-          {
-            label: "Knowledge Base",
-            href: "/dashboard/knowledge-base",
-            icon: BookOpen,
-          },
-          {
-            label: "Guardrails",
-            href: "/dashboard/agent/guardrails",
-            icon: ShieldCheck,
-          },
-          {
-            label: "Templates",
-            href: "/dashboard/agent/templates",
-            icon: Sparkles,
-          },
-          { label: "Appearance", href: "/dashboard/appearance", icon: Palette },
-        ],
+        type: "link",
+        label: "Knowledge Base",
+        href: "/dashboard/knowledge-base",
       },
-      {
-        type: "dropdown",
-        label: "Growth",
-        items: [
-          { label: "Leads", href: "/dashboard/leads", icon: Users },
-          { label: "Inbox", href: "/dashboard/inbox", icon: MessagesSquare },
-          { label: "Channels", href: "/dashboard/channels", icon: Radio },
-        ],
-      },
+      { type: "link", label: "Inbox", href: "/dashboard/inbox" },
+      { type: "link", label: "Leads", href: "/dashboard/leads" },
     ];
 
     if (isReseller) {
@@ -86,13 +67,32 @@ const NAV_GROUPS_BY_VARIANT: Record<
 
     groups.push({
       type: "dropdown",
-      label: "Account",
+      label: "Agent",
       items: [
+        {
+          label: "Guardrails",
+          href: "/dashboard/agent/guardrails",
+          icon: ShieldCheck,
+        },
+        {
+          label: "Templates",
+          href: "/dashboard/agent/templates",
+          icon: Sparkles,
+        },
+        { label: "Appearance", href: "/dashboard/appearance", icon: Palette },
+        { label: "Channels", href: "/dashboard/channels", icon: Radio },
         {
           label: "Setup Wizard",
           href: "/dashboard/onboarding",
           icon: Sparkles,
         },
+      ],
+    });
+
+    groups.push({
+      type: "dropdown",
+      label: "Account",
+      items: [
         { label: "Settings", href: "/dashboard/settings", icon: Settings },
         {
           label: "Billing",
@@ -183,13 +183,23 @@ export function PlatformShell({
 
       <header className="fixed inset-x-0 top-0 z-30 border-b border-border bg-background/85 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 md:px-8">
-          <Link
-            href={variant === "admin" ? "/admin" : "/dashboard"}
-            onClick={() => start()}
-            className="font-heading text-base font-semibold tracking-tight text-foreground"
-          >
-            {brand}
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href={variant === "admin" ? "/admin" : "/dashboard"}
+              onClick={() => start()}
+              className="font-heading text-base font-semibold tracking-tight text-foreground"
+            >
+              {brand}
+            </Link>
+            <Link
+              href="/"
+              onClick={() => start()}
+              className="hidden items-center gap-1 rounded-full border border-border px-2.5 py-1 font-body text-xs text-secondary-text transition-colors duration-150 hover:border-primary/40 hover:text-foreground sm:inline-flex"
+            >
+              <ExternalLink className="h-3 w-3" strokeWidth={1.75} />
+              View live site
+            </Link>
+          </div>
 
           <DesktopNav
             groups={groups}
@@ -222,7 +232,7 @@ export function PlatformShell({
               onClick={() => setMobileOpen(true)}
               aria-label="Open menu"
               aria-expanded={mobileOpen}
-              className="rounded-lg p-2 text-foreground hover:bg-card md:hidden"
+              className="rounded-lg p-3 text-foreground hover:bg-card md:hidden"
             >
               <Menu className="h-5 w-5" strokeWidth={1.75} />
             </button>
@@ -281,6 +291,15 @@ function UserMenu({ userEmail }: { userEmail?: string | null }) {
                 {userEmail}
               </p>
             )}
+            <Link
+              href="/"
+              role="menuitem"
+              onClick={() => start()}
+              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground"
+            >
+              <ExternalLink className="h-4 w-4 flex-none" strokeWidth={1.75} />
+              View live site
+            </Link>
             <form action={signOut} onSubmit={() => start()}>
               <button
                 type="submit"

@@ -35,7 +35,7 @@ export function DesktopNav({
               href={group.href}
               onClick={() => start()}
               className={cn(
-                "rounded-lg px-3 py-2 font-body text-sm font-medium transition-colors duration-150",
+                "rounded-lg px-3 py-2 font-body text-sm font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.97]",
                 isActive
                   ? "bg-primary/10 text-primary"
                   : "text-secondary-text hover:bg-card hover:text-foreground",
@@ -73,7 +73,7 @@ export function DesktopNav({
                     setOpenGroup(null);
                   }}
                   className={cn(
-                    "flex items-center gap-2.5 rounded-lg px-3 py-2 font-body text-sm font-medium transition-colors duration-150",
+                    "flex items-center gap-2.5 rounded-lg px-3 py-2 font-body text-sm font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.97]",
                     isActive
                       ? "bg-primary/10 text-primary"
                       : "text-foreground hover:bg-background",

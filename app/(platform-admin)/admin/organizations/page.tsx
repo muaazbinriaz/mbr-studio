@@ -53,32 +53,35 @@ export default async function AdminOrganizationsPage() {
               return (
                 <div
                   key={org.id}
-                  className="flex flex-col gap-2 p-5 sm:flex-row sm:items-center sm:justify-between"
+                  className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="font-heading text-sm font-semibold text-foreground">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate font-heading text-sm font-semibold text-foreground">
                         {org.name}
                       </p>
-                      <Badge variant="outline" className="text-xs capitalize">
+                      <Badge
+                        variant="outline"
+                        className="flex-none text-xs capitalize"
+                      >
                         {org.status}
                       </Badge>
                     </div>
-                    <p className="mt-1 font-body text-xs text-secondary-text">
+                    <p className="mt-1 truncate font-body text-xs text-secondary-text">
                       slug: {org.slug}
                       {agent && ` · agent: ${agent.name}`}
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex min-w-0 flex-wrap items-center gap-3">
                     {publicKey && (
-                      <code className="w-fit rounded-md bg-background px-2.5 py-1 font-mono text-xs text-secondary-text">
+                      <code className="w-fit max-w-full truncate rounded-md bg-background px-2.5 py-1 font-mono text-xs text-secondary-text">
                         {publicKey}
                       </code>
                     )}
                     <Link
                       href={`/admin/organizations/${org.id}`}
-                      className="font-body text-xs text-primary hover:text-accent"
+                      className="flex-none font-body text-xs text-primary hover:text-accent"
                     >
                       Manage
                     </Link>

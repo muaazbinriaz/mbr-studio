@@ -7,13 +7,6 @@ import type { Service } from "@/types";
  * Each function returns a plain object matching schema.org shape.
  * Render via the <JsonLd> component (components/seo/JsonLd.tsx),
  * which handles the <script type="application/ld+json"> wrapper.
- *
- * GAP: articleSchema() is written ahead of the blog existing, since
- * blog/page.tsx and blog/[slug]/page.tsx weren't part of the files I
- * was given. The shape below matches Blueprint Part 2 Section 13's
- * "Article schema on blog posts" requirement, but hasn't been wired
- * to a real page yet — do that once the blog post data shape exists,
- * rather than guessing its fields now.
  */
 
 export function organizationSchema() {
@@ -61,7 +54,36 @@ export function breadcrumbSchema(items: { name: string; url: string }[]) {
   };
 }
 
-// Not yet wired to a real page — see GAP note above.
+export function caseStudySchema(
+  project: {
+    title: string;
+    summary: string;
+    slug: string;
+    image: string;
+    client: string;
+    tags: string[];
+  },
+  url: string,
+) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "CreativeWork",
+    headline: project.title,
+    name: project.title,
+    description: project.summary,
+    url,
+    image: `${siteConfig.url}${project.image}`,
+    about: project.client,
+    keywords: project.tags.join(", "),
+    author: {
+      "@type": "Organization",
+      name: siteConfig.name,
+      url: siteConfig.url,
+    },
+  };
+}
+
+// Wired to app/(marketing)/blog/[slug]/page.tsx.
 export function articleSchema(post: {
   title: string;
   description: string;

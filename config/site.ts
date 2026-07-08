@@ -7,11 +7,12 @@ export const siteConfig = {
   tagline: "Digital products, built to grow your business.",
   description:
     "MBR Studio is a premium software agency building websites, AI-powered automation, and digital products for growing businesses.",
-  url: "https://mbr-studio.vercel.app",
+  url: "https://mbrstudio.co",
   ogImage: "/og-images/default.png",
   email: "mbrstudio.dev@gmail.com",
   // Added fields for the chat route
   consultationUrl: "https://cal.com/mbr-studio/consultation",
+
   contactEmail: "mbrstudio.dev@gmail.com",
   links: {
     twitter: "https://twitter.com/mbrstudio",
@@ -32,6 +33,11 @@ export const navLinks = [
 export const primaryCta = {
   label: "Book a Consultation",
   href: "/contact",
+} as const;
+
+export const secondaryCta = {
+  label: "Start Free",
+  href: "/signup",
 } as const;
 
 /**

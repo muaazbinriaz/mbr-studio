@@ -22,8 +22,10 @@ export default async function KnowledgeBasePage() {
     source_type: string;
     source_url: string | null;
     created_at: string;
+    updated_at: string;
     error_message: string | null;
     raw_content: string | null;
+    chunkCount: number;
   }[] = [];
 
   if (membership) {
@@ -41,34 +43,55 @@ export default async function KnowledgeBasePage() {
       const { data: docs } = await supabase
         .from("knowledge_base_documents")
         .select(
-          "id, title, status, source_type, source_url, created_at, error_message, raw_content",
+          "id, title, status, source_type, source_url, created_at, updated_at, error_message, raw_content",
         )
         .eq("agent_id", agentId)
-        .order("created_at", { ascending: false });
+        .order("updated_at", { ascending: false });
 
-      documents = docs ?? [];
+      // Client-side scale is small enough (typical small-business KB) that
+      // one extra query for chunk counts, reduced in JS, beats N+1 queries
+      // per document.
+      const { data: chunks } = await supabase
+        .from("knowledge_base_chunks")
+        .select("document_id")
+        .eq("agent_id", agentId);
+
+      const chunkCounts = new Map<string, number>();
+      for (const c of chunks ?? []) {
+        chunkCounts.set(
+          c.document_id,
+          (chunkCounts.get(c.document_id) ?? 0) + 1,
+        );
+      }
+
+      documents = (docs ?? []).map((d) => ({
+        ...d,
+        chunkCount: chunkCounts.get(d.id) ?? 0,
+      }));
     }
   }
 
   return (
-    <div>
-      <h1 className="font-heading text-2xl font-bold text-foreground">
-        Knowledge Base
-      </h1>
-      <p className="mt-2 font-body text-sm text-secondary-text">
-        Add the facts your AI agent should answer from — FAQs, policies,
-        pricing, hours. The embedded widget only ever answers from what&apos;s
-        here.
-      </p>
+    <div className="flex h-[calc(100vh-8rem)] flex-col">
+      <div className="mb-4 flex-none">
+        <h1 className="font-heading text-2xl font-bold text-foreground">
+          Knowledge Base
+        </h1>
+        <p className="mt-2 font-body text-sm text-secondary-text">
+          Add the facts your AI agent should answer from — FAQs, policies,
+          pricing, hours. The embedded widget only ever answers from what&apos;s
+          here.
+        </p>
+      </div>
 
       {!agentId ? (
-        <div className="mt-8 rounded-2xl border border-dashed border-border bg-card/50 px-8 py-16 text-center">
+        <div className="rounded-2xl border border-dashed border-border bg-card/50 px-8 py-16 text-center">
           <p className="font-body text-sm text-secondary-text">
             No active agent found for your organization yet.
           </p>
         </div>
       ) : (
-        <div className="mt-8">
+        <div className="min-h-0 flex-1">
           <KnowledgeBaseClient documents={documents} />
         </div>
       )}

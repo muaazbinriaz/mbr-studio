@@ -6,9 +6,10 @@ import {
   useEffect,
   useRef,
   useState,
+  Suspense,
   type ReactNode,
 } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type LoaderContextType = {
   isLoading: boolean;
@@ -25,11 +26,65 @@ export function useRouteLoader() {
   return ctx;
 }
 
+// Drop-in replacement for next/navigation's useRouter for any component
+// that navigates programmatically (auth redirects, wizard "finish" steps,
+// redirects after a mutation, etc). It starts the same top progress bar
+// that <a> clicks already trigger, so router.push/replace never causes a
+// silent/blank wait again. Usage:
+//
+//   const router = useLoaderRouter();
+//   router.push("/dashboard"); // bar starts immediately, same as a link click
+export function useLoaderRouter() {
+  const router = useRouter();
+  const { start } = useRouteLoader();
+
+  return {
+    ...router,
+    push: (href: string, options?: Parameters<typeof router.push>[1]) => {
+      start();
+      router.push(href, options);
+    },
+    replace: (href: string, options?: Parameters<typeof router.replace>[1]) => {
+      start();
+      router.replace(href, options);
+    },
+  };
+}
+
+// useSearchParams() must live inside its own Suspense boundary — but
+// ONLY around this tiny inner component, never around the whole app.
+// The old code wrapped `{children}` (the entire app) in a top-level
+// <Suspense fallback={null}>, which meant that any state update
+// touching this boundary could cause the ENTIRE app tree — including
+// whatever <a> a user had just clicked — to briefly unmount and get
+// replaced with `null`. That's the confirmed root cause of the
+// signup/login logo link silently doing nothing (Prompt 15).
+function RouteLoaderInner({
+  onRouteChange,
+  onClickSetup,
+}: {
+  onRouteChange: (pathname: string, searchParams: URLSearchParams) => void;
+  onClickSetup: (pathname: string) => () => void;
+}) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    onRouteChange(pathname, searchParams);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, searchParams]);
+
+  useEffect(() => {
+    return onClickSetup(pathname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
+  return null;
+}
+
 export function RouteLoaderProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -59,16 +114,14 @@ export function RouteLoaderProvider({ children }: { children: ReactNode }) {
     }, 250); // let the bar visibly reach 100% before it disappears
   };
 
-  // Route change completed -> stop the bar
-  useEffect(() => {
+  const handleRouteChange = () => {
     stop();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, searchParams]);
+  };
 
   // Global click listener: catch clicks on internal links anywhere in the
   // app (nav, buttons wrapped in <Link>, footer links, etc.) and start
   // the bar INSTANTLY, before Next.js even begins the transition.
-  useEffect(() => {
+  const setupClickListener = (pathname: string) => {
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       const anchor = target.closest("a");
@@ -96,11 +149,16 @@ export function RouteLoaderProvider({ children }: { children: ReactNode }) {
 
     document.addEventListener("click", handleClick);
     return () => document.removeEventListener("click", handleClick);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname]);
+  };
 
   return (
     <LoaderContext.Provider value={{ isLoading, start, stop }}>
+      <Suspense fallback={null}>
+        <RouteLoaderInner
+          onRouteChange={handleRouteChange}
+          onClickSetup={setupClickListener}
+        />
+      </Suspense>
       {isLoading && (
         <div
           className="fixed left-0 top-0 z-[100] h-[3px] w-full bg-transparent"

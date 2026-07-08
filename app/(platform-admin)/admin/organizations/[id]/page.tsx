@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { OrgDetailClient } from "./OrgDetailClient";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 
 export default async function AdminOrganizationDetailPage({
   params,
@@ -34,6 +36,13 @@ export default async function AdminOrganizationDetailPage({
 
   return (
     <div>
+      <Link
+        href="/admin/organizations"
+        className="mb-4 inline-flex items-center gap-1.5 font-body text-sm text-secondary-text hover:text-foreground"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to organizations
+      </Link>
       <div className="flex items-center gap-3">
         <h1 className="font-heading text-2xl font-bold text-foreground">
           {org.name}

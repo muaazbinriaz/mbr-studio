@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, Copy, Loader2, ArrowRight, ArrowLeft } from "lucide-react";
 
@@ -10,6 +9,7 @@ import { applyTemplate } from "@/app/(platform-client)/dashboard/agent/templates
 import { addKnowledgeBaseDocument } from "@/app/(platform-client)/dashboard/knowledge-base/actions";
 import { saveOrgBasics, saveBranding, markOnboardingComplete } from "./actions";
 import { Button } from "@/components/ui/button";
+import { useLoaderRouter } from "@/components/loader/RouteLoader";
 
 type OrgInfo = {
   name: string;
@@ -37,7 +37,7 @@ export function OnboardingWizard({
   publicKey: string | null;
   templates: AgentTemplate[];
 }) {
-  const router = useRouter();
+  const router = useLoaderRouter();
   const [step, setStep] = useState(0);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);

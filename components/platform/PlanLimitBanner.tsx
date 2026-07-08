@@ -96,29 +96,33 @@ function Banner({
   description: string;
   ctaLabel: string;
 }) {
+  // Slim left-accent STRIP (not a full padded card) — the checklist
+  // above is the "onboarding task" card; this is the "commercial
+  // nudge" and stays visually lighter so it doesn't read as another
+  // checklist item.
   const toneClasses =
     tone === "warning"
-      ? "border-warning/30 bg-warning/10 text-warning"
-      : "border-primary/30 bg-primary/10 text-primary";
+      ? "border-l-warning bg-warning/[0.06] text-warning"
+      : "border-l-primary bg-primary/[0.05] text-primary";
 
   return (
     <div
-      className={`flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-5 ${toneClasses}`}
+      className={`mb-8 flex flex-wrap items-center justify-between gap-3 rounded-lg border-y border-r border-l-4 border-border/60 px-4 py-3 ${toneClasses}`}
     >
-      <div className="flex items-start gap-3">
-        <Icon className="mt-0.5 h-4 w-4 flex-none" />
+      <div className="flex items-center gap-2.5">
+        <Icon className="h-4 w-4 flex-none" strokeWidth={2} />
         <div>
-          <p className="font-body text-sm font-medium text-foreground">
+          <span className="font-body text-sm font-medium text-foreground">
             {title}
-          </p>
-          <p className="mt-0.5 font-body text-xs text-secondary-text">
+          </span>
+          <span className="ml-1.5 font-body text-xs text-secondary-text">
             {description}
-          </p>
+          </span>
         </div>
       </div>
       <Link
         href="/dashboard/settings/billing"
-        className="flex-none rounded-lg bg-primary px-4 py-2 font-body text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
+        className="flex-none rounded-lg bg-primary px-3.5 py-1.5 font-body text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
       >
         {ctaLabel}
       </Link>

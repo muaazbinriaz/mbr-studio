@@ -5,6 +5,7 @@ import { ChevronDown } from "lucide-react";
 
 import { faq as faqs } from "@/data/faq";
 import type { FaqItem as FAQItem } from "@/types";
+import { StaggerContainer, StaggerItem } from "@/components/animations/Motion";
 
 /**
  * FAQ — Prompt 12 (part 2 of 2)
@@ -69,16 +70,17 @@ export function FAQ() {
           </h2>
         </div>
 
-        <div className="divide-y divide-border border-y border-border">
+        <StaggerContainer className="divide-y divide-border border-y border-border">
           {list.map((item, index) => (
-            <FAQItemRow
-              key={item.question}
-              item={item}
-              isOpen={openIndexes.has(index)}
-              onToggle={() => toggle(index)}
-            />
+            <StaggerItem key={item.question}>
+              <FAQItemRow
+                item={item}
+                isOpen={openIndexes.has(index)}
+                onToggle={() => toggle(index)}
+              />
+            </StaggerItem>
           ))}
-        </div>
+        </StaggerContainer>
       </div>
     </section>
   );

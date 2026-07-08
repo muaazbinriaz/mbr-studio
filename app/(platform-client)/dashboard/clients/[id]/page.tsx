@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 
 export default async function ClientDetailPage({
   params,
@@ -45,6 +47,13 @@ export default async function ClientDetailPage({
 
   return (
     <div>
+      <Link
+        href="/dashboard/clients"
+        className="mb-4 inline-flex items-center gap-1.5 font-body text-sm text-secondary-text hover:text-foreground"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to clients
+      </Link>
       <div className="flex items-center gap-3">
         <h1 className="font-heading text-2xl font-bold text-foreground">
           {org.name}

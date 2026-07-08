@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ChevronDown, LogOut, Sun, Moon, X } from "lucide-react";
+import { ChevronDown, LogOut, Sun, Moon, X, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/auth/actions";
 import { useTheme } from "@/components/theme/ThemeProvider";
@@ -95,7 +95,7 @@ export function MobileNav({
                 type="button"
                 onClick={onClose}
                 aria-label="Close menu"
-                className="rounded-lg p-2 text-foreground hover:bg-background"
+                className="rounded-lg p-3 text-foreground hover:bg-background"
               >
                 <X className="h-5 w-5" strokeWidth={1.75} />
               </button>
@@ -210,6 +210,18 @@ export function MobileNav({
             </nav>
 
             <div className="mt-3 border-t border-border pt-3">
+              <Link
+                href="/"
+                onClick={handleNavigate}
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-3 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground"
+              >
+                <ExternalLink
+                  className="h-4 w-4 flex-none"
+                  strokeWidth={1.75}
+                />
+                View live site
+              </Link>
+
               <button
                 type="button"
                 onClick={toggleTheme}

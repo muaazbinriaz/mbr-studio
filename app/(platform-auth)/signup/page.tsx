@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
-import { Mail, UserPlus } from "lucide-react";
+import { Mail, UserPlus, RefreshCw } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,8 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendMessage, setResendMessage] = useState<string | null>(null);
 
   const handleSignup = async (e: FormEvent) => {
     e.preventDefault();
@@ -41,6 +43,21 @@ export default function SignupPage() {
     setSubmitted(true);
   };
 
+  const handleResend = async () => {
+    setResending(true);
+    setResendMessage(null);
+    const supabase = createClient();
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/dashboard` },
+    });
+    setResending(false);
+    setResendMessage(
+      error ? error.message : "Confirmation email resent — check your inbox.",
+    );
+  };
+
   return (
     <Card className="border-border/80 shadow-xl shadow-black/[0.03] dark:shadow-black/20">
       <CardHeader className="items-center pb-2 pt-8 text-center">
@@ -60,6 +77,26 @@ export default function SignupPage() {
               Check <span className="font-medium text-foreground">{email}</span>{" "}
               for a confirmation link to finish creating your account.
             </p>
+            <p className="font-body text-xs text-secondary-text">
+              This usually arrives within a minute — check spam if it
+              doesn&apos;t.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={resending}
+              loading={resending}
+              onClick={handleResend}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Resend confirmation email
+            </Button>
+            {resendMessage && (
+              <p className="font-body text-xs text-secondary-text">
+                {resendMessage}
+              </p>
+            )}
           </div>
         ) : (
           <form onSubmit={handleSignup} className="flex flex-col gap-4">

@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { Loader2, Plus, Trash2, Copy, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { WEBHOOK_EVENT_TYPES } from "@/lib/webhooks/events";
 import {
   createWebhookEndpoint,
@@ -40,6 +41,7 @@ export function WebhooksClient({
   const [error, setError] = useState<string | null>(null);
   const [newSecret, setNewSecret] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Endpoint | null>(null);
 
   const handleCreate = (formData: FormData) => {
     setError(null);
@@ -62,8 +64,11 @@ export function WebhooksClient({
   };
 
   const handleDelete = (id: string) => {
+    setError(null);
     startTransition(async () => {
-      await deleteWebhookEndpoint(id);
+      const result = await deleteWebhookEndpoint(id);
+      if (result.error) setError(result.error);
+      setDeleteTarget(null);
     });
   };
 
@@ -189,9 +194,9 @@ export function WebhooksClient({
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleDelete(ep.id)}
+                  onClick={() => setDeleteTarget(ep)}
                   disabled={isPending}
-                  className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-body text-xs text-error hover:bg-error/10"
+                  className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-body text-xs text-error hover:bg-error/10 disabled:opacity-50"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
@@ -220,6 +225,16 @@ export function WebhooksClient({
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete this webhook endpoint?"
+        description={`Events will stop being sent to ${deleteTarget?.target_url ?? "this URL"}. This can't be undone.`}
+        confirmLabel="Delete endpoint"
+        isLoading={isPending}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && handleDelete(deleteTarget.id)}
+      />
     </div>
   );
 }

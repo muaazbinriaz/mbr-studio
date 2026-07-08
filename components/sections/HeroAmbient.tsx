@@ -12,14 +12,14 @@ export function HeroAmbient() {
       className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
     >
       <motion.div
-        className="absolute -left-40 -top-40 h-[520px] w-[520px] rounded-full bg-primary/25 blur-[120px]"
+        className="absolute -left-40 -top-40 h-[520px] w-[520px] rounded-full bg-primary/15 blur-[120px] dark:bg-primary/25"
         animate={
           shouldReduceMotion ? undefined : { x: [0, 40, 0], y: [0, 30, 0] }
         }
         transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
-        className="absolute -right-32 top-1/3 h-[420px] w-[420px] rounded-full bg-accent/20 blur-[120px]"
+        className="absolute -right-32 top-1/3 h-[420px] w-[420px] rounded-full bg-accent/10 blur-[120px] dark:bg-accent/20"
         animate={
           shouldReduceMotion ? undefined : { x: [0, -30, 0], y: [0, -40, 0] }
         }

@@ -351,7 +351,6 @@ export async function deleteKnowledgeBaseDocument(documentId: string) {
   revalidatePath("/dashboard/knowledge-base");
   return { error: error?.message ?? null };
 }
-
 export async function reindexKnowledgeBaseDocument(documentId: string) {
   const supabase = await createClient();
 
@@ -379,6 +378,52 @@ export async function reindexKnowledgeBaseDocument(documentId: string) {
     console.error("[knowledge-base] re-index failed:", err);
     revalidatePath("/dashboard/knowledge-base");
     return { error: "Re-index failed — see the status badge below." };
+  }
+
+  revalidatePath("/dashboard/knowledge-base");
+  return { error: null };
+}
+
+// ============================================================
+// Inline edit (Prompt 18) — fixes a typo/fact without delete+recreate
+// ============================================================
+
+export async function updateKnowledgeBaseDocument(
+  documentId: string,
+  rawContent: string,
+) {
+  const trimmed = rawContent.trim();
+  if (!trimmed || trimmed.length < 20) {
+    return { error: "Add a bit more detail — at least a few sentences." };
+  }
+
+  const supabase = await createClient();
+
+  const { data: doc } = await supabase
+    .from("knowledge_base_documents")
+    .select("id")
+    .eq("id", documentId)
+    .maybeSingle();
+
+  if (!doc) return { error: "Document not found." };
+
+  await supabase
+    .from("knowledge_base_documents")
+    .update({
+      raw_content: trimmed,
+      status: "processing",
+      error_message: null,
+    })
+    .eq("id", documentId);
+
+  try {
+    await ingestDocument(documentId);
+  } catch (err) {
+    console.error("[knowledge-base] edit re-ingest failed:", err);
+    revalidatePath("/dashboard/knowledge-base");
+    return {
+      error: "Saved, but re-processing failed — see the status badge below.",
+    };
   }
 
   revalidatePath("/dashboard/knowledge-base");

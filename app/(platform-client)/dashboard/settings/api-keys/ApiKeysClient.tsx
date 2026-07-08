@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { Loader2, Plus, Trash2, Copy, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { createApiKey, revokeApiKey } from "./actions";
 import { formatDate } from "@/lib/formatters";
 
@@ -22,6 +23,7 @@ export function ApiKeysClient({ keys }: { keys: ApiKeyRow[] }) {
   const [error, setError] = useState<string | null>(null);
   const [newKey, setNewKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState<ApiKeyRow | null>(null);
 
   const handleCreate = (formData: FormData) => {
     setError(null);
@@ -38,8 +40,11 @@ export function ApiKeysClient({ keys }: { keys: ApiKeyRow[] }) {
   };
 
   const handleRevoke = (id: string) => {
+    setError(null);
     startTransition(async () => {
-      await revokeApiKey(id);
+      const result = await revokeApiKey(id);
+      if (result.error) setError(result.error);
+      setRevokeTarget(null);
     });
   };
 
@@ -132,9 +137,9 @@ export function ApiKeysClient({ keys }: { keys: ApiKeyRow[] }) {
               {!key.revoked_at && (
                 <button
                   type="button"
-                  onClick={() => handleRevoke(key.id)}
+                  onClick={() => setRevokeTarget(key)}
                   disabled={isPending}
-                  className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-body text-xs text-error hover:bg-error/10"
+                  className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-body text-xs text-error hover:bg-error/10 disabled:opacity-50"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   Revoke
@@ -144,6 +149,16 @@ export function ApiKeysClient({ keys }: { keys: ApiKeyRow[] }) {
           ))
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!revokeTarget}
+        title="Revoke this API key?"
+        description={`Any integration using "${revokeTarget?.label ?? "this key"}" will immediately stop working. This can't be undone.`}
+        confirmLabel="Revoke key"
+        isLoading={isPending}
+        onCancel={() => setRevokeTarget(null)}
+        onConfirm={() => revokeTarget && handleRevoke(revokeTarget.id)}
+      />
     </div>
   );
 }

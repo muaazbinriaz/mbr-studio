@@ -8,6 +8,9 @@ export const metadata: Metadata = {
   title: "Blog",
   description:
     "Insights on websites, AI automation, and digital growth for small businesses.",
+  alternates: {
+    canonical: "/blog",
+  },
 };
 
 export default async function BlogPage({

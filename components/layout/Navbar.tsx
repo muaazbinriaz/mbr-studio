@@ -8,7 +8,9 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { navLinks, primaryCta, siteConfig } from "@/config/site";
+import { navLinks, primaryCta, secondaryCta, siteConfig } from "@/config/site";
+import { blogPosts } from "@/data/blog";
+
 import { cn } from "@/lib/utils";
 
 const SCROLL_THRESHOLD = 24;
@@ -18,6 +20,13 @@ export function Navbar() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const pathname = usePathname();
+
+  // Safe check: ensure blogPosts is an array before calling .some()
+  const hasPublishedPosts =
+    Array.isArray(blogPosts) && blogPosts.some((p) => p.published);
+  const visibleNavLinks = navLinks.filter(
+    (link) => link.href !== "/blog" || hasPublishedPosts,
+  );
 
   const drawerRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -98,11 +107,29 @@ export function Navbar() {
             aria-label="Primary"
             className="hidden items-center gap-8 md:flex"
           >
-            {navLinks.map((link) => (
+            {visibleNavLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="text-sm text-secondary-text transition-colors hover:text-foreground"
+                aria-current={
+                  (
+                    (link.href as string) === "/"
+                      ? pathname === "/"
+                      : pathname.startsWith(link.href)
+                  )
+                    ? "page"
+                    : undefined
+                }
+                className={cn(
+                  "relative text-sm transition-colors after:absolute after:-bottom-1 after:left-0 after:h-px after:transition-all after:duration-300",
+                  (
+                    (link.href as string) === "/"
+                      ? pathname === "/"
+                      : pathname.startsWith(link.href)
+                  )
+                    ? "text-foreground after:w-full after:bg-foreground"
+                    : "text-secondary-text hover:text-foreground after:w-0 hover:after:w-full after:bg-foreground",
+                )}
               >
                 {link.label}
               </Link>
@@ -127,6 +154,9 @@ export function Navbar() {
                 <Moon className="h-4 w-4" />
               )}
             </button>
+            <Button asChild variant="outline" size="sm">
+              <Link href={secondaryCta.href}>{secondaryCta.label}</Link>
+            </Button>
             <Button asChild size="sm">
               <Link href={primaryCta.href}>{primaryCta.label}</Link>
             </Button>
@@ -136,7 +166,7 @@ export function Navbar() {
           <button
             ref={menuButtonRef}
             type="button"
-            className="-mr-2 rounded-md p-2 text-foreground md:hidden"
+            className="-mr-1 rounded-md p-3 text-foreground md:hidden"
             aria-label="Open menu"
             aria-expanded={open}
             aria-controls="mobile-nav-drawer"
@@ -177,7 +207,7 @@ export function Navbar() {
           </span>
           <button
             type="button"
-            className="-mr-2 rounded-md p-2 text-foreground"
+            className="-mr-1 rounded-md p-3 text-foreground"
             aria-label="Close menu"
             onClick={() => setOpen(false)}
           >
@@ -189,12 +219,30 @@ export function Navbar() {
           aria-label="Mobile"
           className="flex flex-1 flex-col gap-1 px-4 pt-2"
         >
-          {navLinks.map((link) => (
+          {visibleNavLinks.map((link) => (
             <Link
               key={link.href}
               href={link.href}
               onClick={() => setOpen(false)}
-              className="rounded-lg px-2 py-4 text-lg text-foreground transition-colors hover:bg-card"
+              aria-current={
+                (
+                  (link.href as string) === "/"
+                    ? pathname === "/"
+                    : pathname.startsWith(link.href)
+                )
+                  ? "page"
+                  : undefined
+              }
+              className={cn(
+                "relative text-sm transition-colors after:absolute after:-bottom-1 after:left-0 after:h-px after:transition-all after:duration-300",
+                (
+                  (link.href as string) === "/"
+                    ? pathname === "/"
+                    : pathname.startsWith(link.href)
+                )
+                  ? "text-foreground after:w-full after:bg-foreground"
+                  : "text-secondary-text hover:text-foreground after:w-0 hover:after:w-full after:bg-foreground",
+              )}
             >
               {link.label}
             </Link>
@@ -206,6 +254,11 @@ export function Navbar() {
           <button
             type="button"
             onClick={toggleTheme}
+            aria-label={
+              theme === "dark"
+                ? "Switch to light theme"
+                : "Switch to dark theme"
+            }
             className="mb-4 flex w-full items-center gap-2 rounded-lg px-2 py-3 text-secondary-text transition-colors hover:bg-card hover:text-foreground"
           >
             {theme === "dark" ? (
@@ -215,6 +268,11 @@ export function Navbar() {
             )}
             <span>{theme === "dark" ? "Light mode" : "Dark mode"}</span>
           </button>
+          <Button asChild variant="outline" size="lg" className="mb-2 w-full">
+            <Link href={secondaryCta.href} onClick={() => setOpen(false)}>
+              {secondaryCta.label}
+            </Link>
+          </Button>
           <Button asChild size="lg" className="w-full">
             <Link href={primaryCta.href} onClick={() => setOpen(false)}>
               {primaryCta.label}

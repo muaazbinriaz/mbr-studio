@@ -13,7 +13,7 @@ export function HeroEyebrow() {
       transition={{ duration: 0.4 }}
       className="mb-6 font-body text-sm font-medium tracking-wide text-secondary-text"
     >
-      MBR Studio — Digital Product Development &amp; AI Automation
+      Web Development Agency + the AI Chat Agent behind it — try it live below
     </motion.p>
   );
 }

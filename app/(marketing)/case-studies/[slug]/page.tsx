@@ -7,6 +7,9 @@ import { ArrowRight } from "lucide-react";
 import { projects } from "@/data/projects";
 import type { Project } from "@/types";
 import { Button } from "@/components/ui/button";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { siteConfig } from "@/config/site";
+import { breadcrumbSchema, caseStudySchema } from "@/lib/seo/schemas";
 
 interface CaseStudyPageProps {
   params: Promise<{ slug: string }>; // ✅ params is async
@@ -25,12 +28,13 @@ export async function generateMetadata({
   const project = (projects as Project[]).find((p) => p.slug === slug);
 
   if (!project) {
-    return { title: "Case Study | MBR Studio" };
+    return { title: "Case Study" };
   }
 
   return {
-    title: `${project.title} | MBR Studio Case Studies`,
+    title: project.title,
     description: project.summary,
+    alternates: { canonical: `/case-studies/${project.slug}` },
   };
 }
 
@@ -44,6 +48,23 @@ export default async function CaseStudyPage({ params }: CaseStudyPageProps) {
 
   return (
     <>
+      <JsonLd
+        data={breadcrumbSchema([
+          { name: "Home", url: siteConfig.url },
+          { name: "Case Studies", url: `${siteConfig.url}/case-studies` },
+          {
+            name: project.title,
+            url: `${siteConfig.url}/case-studies/${project.slug}`,
+          },
+        ])}
+      />
+      <JsonLd
+        data={caseStudySchema(
+          project,
+          `${siteConfig.url}/case-studies/${project.slug}`,
+        )}
+      />
+
       {/* 1. Hero */}
       <section className="bg-background">
         <div className="mx-auto max-w-5xl px-6 py-24 md:px-10 md:py-32">

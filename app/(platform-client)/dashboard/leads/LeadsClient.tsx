@@ -1,7 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, Mail, Phone, MessageSquareText } from "lucide-react";
+import Link from "next/link";
+import {
+  Search,
+  Mail,
+  Phone,
+  MessageSquareText,
+  UsersRound,
+} from "lucide-react";
 import { formatDate } from "@/lib/formatters";
 
 type Lead = {
@@ -29,11 +36,26 @@ export function LeadsClient({ leads }: { leads: Lead[] }) {
 
   if (leads.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-border bg-card/50 px-8 py-16 text-center">
-        <p className="font-body text-sm text-secondary-text">
-          No leads captured yet — they&apos;ll show up here once a visitor
-          leaves their details.
-        </p>
+      <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border bg-card/50 px-8 py-16 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <UsersRound className="h-5 w-5" strokeWidth={1.75} />
+        </div>
+        <div>
+          <p className="font-body text-sm font-medium text-foreground">
+            No leads yet
+          </p>
+          <p className="mt-1 max-w-sm font-body text-sm text-secondary-text">
+            Leads show up automatically once a visitor shares their name, email,
+            or phone with your agent. Make sure your widget is live on your site
+            to start capturing them.
+          </p>
+        </div>
+        <Link
+          href="/dashboard/onboarding"
+          className="mt-1 rounded-lg bg-primary px-4 py-2 font-body text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
+        >
+          Get your embed code
+        </Link>
       </div>
     );
   }

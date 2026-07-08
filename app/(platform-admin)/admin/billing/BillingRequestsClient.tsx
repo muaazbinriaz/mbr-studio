@@ -89,7 +89,10 @@ export function BillingRequestsClient({
             {pending.map((r) => {
               const isRowBusy = isPending && activeId === r.id;
               return (
-                <div key={r.id} className="flex flex-col gap-3 p-5">
+                <div
+                  key={r.id}
+                  className="flex flex-col gap-3 border-l-2 border-l-warning p-5 transition-colors hover:bg-background/50"
+                >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <Link

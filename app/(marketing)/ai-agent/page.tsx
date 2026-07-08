@@ -291,15 +291,23 @@ export default function AiAgentPage() {
             Want this for your business?
           </h2>
           <p className="mx-auto mt-4 max-w-xl font-body text-base text-secondary-text">
-            Tell us about your business and we&apos;ll set up an agent trained
-            on your knowledge base, ready to embed on your site.
+            Ready to set this up for your own business? Start free and configure
+            it yourself, or book a call and we&apos;ll set it up with you.
           </p>
-          <div className="mt-8">
+          <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
             <Button asChild size="lg" className="rounded-lg px-7 py-6">
-              <Link href="/contact">
-                Book a Free Consultation
+              <Link href="/signup">
+                Start Free Trial
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              size="lg"
+              className="rounded-lg px-7 py-6"
+            >
+              <Link href="/contact">Book a Consultation</Link>
             </Button>
           </div>
         </div>

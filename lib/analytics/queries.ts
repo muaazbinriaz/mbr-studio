@@ -94,10 +94,56 @@ export async function getOrgAnalyticsSummary(
     totalMessages,
     resolvedByAi,
     uniqueVisitors,
+    // resolved_by_ai is tracked per-message while totalConversations is
+    // per-conversation, so on low-volume accounts (trials especially)
+    // the raw ratio can exceed 1 (e.g. 1 conversation, 5 AI replies =
+    // "500%"). Clamping to 100% keeps the stat honest and explainable
+    // until the underlying metric is tracked per-conversation.
     resolutionRate:
-      totalConversations > 0 ? resolvedByAi / totalConversations : 0,
+      totalConversations > 0
+        ? Math.min(1, resolvedByAi / totalConversations)
+        : 0,
     daily: Array.from(byDate.values()),
   };
+}
+
+export interface PeriodComparison {
+  totalConversations: number;
+  totalMessages: number;
+  uniqueVisitors: number;
+}
+
+/**
+ * Totals for the period immediately BEFORE the current window, so the
+ * Overview page can show "+12% vs last period" instead of a bare
+ * number. On a brand-new trial account both periods are legitimately
+ * zero — callers should treat that as "no trend yet" (see StatCard).
+ */
+export async function getPreviousPeriodSummary(
+  supabase: SupabaseServerClient,
+  organizationId: string,
+  days: number = 30,
+): Promise<PeriodComparison> {
+  const rangeEnd = startOfRange(days);
+  const rangeStart = startOfRange(days * 2);
+
+  const { data: rows } = await supabase
+    .from("agent_daily_analytics")
+    .select("total_conversations, total_messages, unique_visitors")
+    .eq("organization_id", organizationId)
+    .gte("date", rangeStart)
+    .lt("date", rangeEnd);
+
+  let totalConversations = 0;
+  let totalMessages = 0;
+  let uniqueVisitors = 0;
+  for (const row of rows ?? []) {
+    totalConversations += row.total_conversations;
+    totalMessages += row.total_messages;
+    uniqueVisitors += row.unique_visitors;
+  }
+
+  return { totalConversations, totalMessages, uniqueVisitors };
 }
 
 export interface AdminPlatformSummary {

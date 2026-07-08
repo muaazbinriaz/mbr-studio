@@ -69,7 +69,8 @@ export default async function GuardrailsPage() {
       {!agentId ? (
         <div className="mt-8 rounded-2xl border border-dashed border-border bg-card/50 px-8 py-16 text-center">
           <p className="font-body text-sm text-secondary-text">
-            No active agent found for your organization yet.
+            Setting up your AI agent... this usually takes just a second.
+            Refresh if this doesn&apos;t clear in a moment.
           </p>
         </div>
       ) : (

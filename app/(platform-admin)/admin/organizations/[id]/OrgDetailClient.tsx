@@ -138,14 +138,14 @@ export function OrgDetailClient({
               {subOrgs.map((sub) => (
                 <div
                   key={sub.id}
-                  className="flex items-center justify-between py-3"
+                  className="flex min-w-0 items-center justify-between gap-3 py-3"
                 >
-                  <span className="font-body text-sm text-foreground">
+                  <span className="truncate font-body text-sm text-foreground">
                     {sub.name}
                   </span>
                   <Link
                     href={`/admin/organizations/${sub.id}`}
-                    className="font-body text-xs text-primary hover:text-accent"
+                    className="flex-none font-body text-xs text-primary hover:text-accent"
                   >
                     View
                   </Link>

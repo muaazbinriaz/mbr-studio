@@ -7,7 +7,9 @@ import { Process } from "@/components/sections/Process";
 import { Services } from "@/components/sections/Services";
 import { Technologies } from "@/components/sections/Technologies";
 import { Testimonials } from "@/components/sections/Testimonials";
+import { StatsBar } from "@/components/sections/StatsBar";
 import { WhyChooseUs } from "@/components/sections/WhyChooseUs";
+import { testimonials } from "@/data/testimonials";
 
 /**
  * Home Page — SEO pass (Prompt 20).
@@ -43,7 +45,7 @@ export default function Home() {
       <Process />
       <WhyChooseUs />
       <Technologies />
-      <Testimonials />
+      {testimonials.length > 0 ? <Testimonials /> : <StatsBar />}
       <FAQ />
     </main>
   );

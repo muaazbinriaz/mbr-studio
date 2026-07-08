@@ -134,19 +134,42 @@ export function BillingClient({
         </div>
 
         <div className="mt-5">
-          <div className="mb-1.5 flex items-center justify-between font-body text-xs text-secondary-text">
-            <span>
+          <div className="mb-1.5 flex items-center justify-between font-body text-xs">
+            <span className="text-secondary-text">
               {messagesThisMonth.toLocaleString()} /{" "}
               {monthlyMessageLimit.toLocaleString()} messages this month
             </span>
-            <span>{usagePercent}%</span>
+            <span
+              className={`font-semibold ${
+                usageRatio >= 0.8
+                  ? usageRatio >= 1
+                    ? "text-error"
+                    : "text-warning"
+                  : "text-secondary-text"
+              }`}
+            >
+              {usagePercent}%
+            </span>
           </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-background">
+          <div
+            className={`w-full overflow-hidden rounded-full bg-background transition-all duration-300 ${
+              usageRatio >= 0.8 ? "h-3" : "h-2"
+            }`}
+          >
             <div
-              className={`h-full rounded-full transition-all duration-300 ${usageTone}`}
+              className={`h-full rounded-full transition-all duration-300 ${usageTone} ${
+                usageRatio >= 0.8
+                  ? "animate-pulse motion-reduce:animate-none"
+                  : ""
+              }`}
               style={{ width: `${usagePercent}%` }}
             />
           </div>
+          {usageRatio >= 0.8 && usageRatio < 1 && (
+            <p className="mt-2 font-body text-xs text-warning">
+              Approaching your monthly limit — consider upgrading soon.
+            </p>
+          )}
           {usageRatio >= 1 && (
             <p className="mt-2 font-body text-xs text-error">
               You&apos;ve hit your monthly limit — upgrade to keep your chatbot
@@ -197,10 +220,10 @@ export function BillingClient({
                   key={id}
                   type="button"
                   onClick={() => setSelectedPlan(id)}
-                  className={`flex flex-col rounded-2xl border p-6 text-left transition-colors duration-150 ${
+                  className={`flex flex-col rounded-2xl border p-6 text-left transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.99] ${
                     selectedPlan === id
-                      ? "border-primary bg-primary/5"
-                      : "border-border bg-card hover:border-primary/40"
+                      ? "border-primary bg-primary/5 shadow-[0_0_0_1px_rgba(99,102,241,0.15),0_8px_30px_-8px_rgba(99,102,241,0.35)]"
+                      : "border-border bg-card hover:border-primary/40 hover:shadow-[0_0_0_1px_rgba(99,102,241,0.1),0_8px_24px_-8px_rgba(99,102,241,0.2)]"
                   }`}
                 >
                   <p className="font-heading text-base font-semibold text-foreground">

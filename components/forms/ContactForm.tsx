@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CheckCircle2, Loader2, Send } from "lucide-react";
+import { FadeIn } from "@/components/animations/FadeIn";
 
 import {
   contactFormSchema,
@@ -65,7 +66,7 @@ export function ContactForm() {
 
   if (submitState === "success") {
     return (
-      <div
+      <FadeIn
         role="status"
         className="flex flex-col items-center gap-4 rounded-2xl border border-border bg-card px-8 py-16 text-center"
       >
@@ -86,7 +87,7 @@ export function ContactForm() {
         >
           Send another message
         </button>
-      </div>
+      </FadeIn>
     );
   }
 

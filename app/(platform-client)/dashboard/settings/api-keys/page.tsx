@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { ApiKeysClient } from "./ApiKeysClient";
 import { maskApiKey } from "@/lib/api/keys";
+import { siteConfig } from "@/config/site";
 
 export default async function ApiKeysPage() {
   const supabase = await createClient();
@@ -47,12 +48,13 @@ export default async function ApiKeysPage() {
         API Keys
       </h1>
       <p className="mt-2 font-body text-sm text-secondary-text">
-        Use these keys to authenticate requests to the public API.{" "}
+        For connecting to other tools like Zapier or your CRM. Use these keys to
+        authenticate requests to the public API.{" "}
         <a
-          href="/docs/api"
+          href={`mailto:${siteConfig.contactEmail}?subject=API%20docs%20request`}
           className="text-primary underline underline-offset-2"
         >
-          View API docs
+          Need help? Email us
         </a>
       </p>
       <div className="mt-8">

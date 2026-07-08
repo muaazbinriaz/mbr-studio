@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { OnboardingWizard } from "./OnboardingWizard";
 import { AGENT_TEMPLATES } from "@/lib/agents/templates";
@@ -23,11 +24,17 @@ export default async function OnboardingPage() {
   if (membership) {
     const { data: agent } = await supabase
       .from("agents")
-      .select("id, embed_keys(public_key)")
+      .select("id, setup_complete, embed_keys(public_key)")
       .eq("organization_id", membership.organization_id)
       .eq("is_active", true)
       .limit(1)
       .maybeSingle();
+
+    // Already set up? Don't let a returning user silently re-run the
+    // wizard and overwrite their real settings with template defaults.
+    if (agent?.setup_complete) {
+      redirect("/dashboard");
+    }
 
     agentId = agent?.id ?? null;
     const keys = agent?.embed_keys as { public_key: string }[] | undefined;

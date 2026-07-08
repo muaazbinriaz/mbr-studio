@@ -13,6 +13,7 @@ import {
   Undo2,
   CheckCircle2,
   AlertTriangle,
+  ArrowLeft,
 } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
@@ -20,6 +21,7 @@ import { isFallbackReply } from "@/lib/chat/lead-capture";
 import { formatDate } from "@/lib/formatters";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SkeletonBlock } from "@/components/platform/Skeleton";
 import type {
   InboxConversationRow,
   InboxMessageRow,
@@ -100,6 +102,10 @@ export function InboxClient({
   const [channelFilter, setChannelFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [attentionOnly, setAttentionOnly] = useState(false);
+  // Mobile only: which single pane is visible. Desktop always shows both
+  // panes side by side regardless of this value (see md:flex overrides
+  // below), so this never affects tablet/desktop layout.
+  const [mobileView, setMobileView] = useState<"list" | "thread">("list");
 
   const threadRef = useRef<HTMLDivElement>(null);
 
@@ -356,9 +362,14 @@ export function InboxClient({
   };
 
   return (
-    <div className="grid h-full grid-cols-1 gap-4 md:grid-cols-[340px_1fr]">
+    <div className="flex h-full min-h-0 flex-col gap-4 md:grid md:grid-cols-[340px_1fr]">
       {/* Left pane — conversation list */}
-      <div className="flex min-h-0 flex-col rounded-2xl border border-border bg-card">
+      <div
+        className={`min-h-0 flex-1 flex-col rounded-2xl border border-border bg-card md:flex md:flex-none ${
+          mobileView === "thread" ? "hidden" : "flex"
+        }`}
+      >
+        {" "}
         <div className="flex flex-none flex-col gap-2 border-b border-border p-3">
           <div className="flex gap-2">
             <select
@@ -393,7 +404,6 @@ export function InboxClient({
             Needs attention only
           </label>
         </div>
-
         <div className="min-h-0 flex-1 overflow-y-auto">
           {filteredConversations.length === 0 ? (
             <p className="p-4 font-body text-sm text-secondary-text">
@@ -407,7 +417,10 @@ export function InboxClient({
                 <button
                   key={c.id}
                   type="button"
-                  onClick={() => setSelectedId(c.id)}
+                  onClick={() => {
+                    setSelectedId(c.id);
+                    setMobileView("thread");
+                  }}
                   className={`flex w-full flex-col gap-1 border-b border-border px-3 py-3 text-left transition-colors duration-150 ${
                     isSelected ? "bg-primary/10" : "hover:bg-background"
                   }`}
@@ -440,13 +453,10 @@ export function InboxClient({
                       {STATUS_LABEL[c.status]}
                     </Badge>
                     {c.needsAttention && (
-                      <Badge
-                        variant="outline"
-                        className="flex items-center gap-1 text-[10px] text-warning"
-                      >
+                      <span className="flex animate-pulse items-center gap-1 rounded-full bg-warning px-2 py-0.5 text-[10px] font-semibold text-white motion-reduce:animate-none">
                         <AlertTriangle className="h-2.5 w-2.5" />
-                        Attention
-                      </Badge>
+                        Needs attention
+                      </span>
                     )}
                   </div>
                 </button>
@@ -457,27 +467,45 @@ export function InboxClient({
       </div>
 
       {/* Right pane — thread + composer */}
-      <div className="flex min-h-0 flex-col rounded-2xl border border-border bg-card">
+      <div
+        className={`min-h-0 flex-1 flex-col rounded-2xl border border-border bg-card md:flex ${
+          mobileView === "thread" ? "flex" : "hidden"
+        }`}
+      >
         {!selected ? (
-          <div className="flex flex-1 items-center justify-center">
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center">
+            <MessageCircle
+              className="h-8 w-8 text-secondary-text"
+              strokeWidth={1.5}
+            />
             <p className="font-body text-sm text-secondary-text">
-              Select a conversation to view it.
+              Select a conversation from the left to view it.
             </p>
           </div>
         ) : (
           <>
             <div className="flex flex-none items-center justify-between gap-3 border-b border-border p-4">
-              <div>
-                <p className="font-heading text-sm font-semibold text-foreground">
-                  {selected.visitorLabel}
-                </p>
-                <div className="mt-1 flex items-center gap-2">
-                  <Badge variant={STATUS_VARIANT[selected.status]}>
-                    {STATUS_LABEL[selected.status]}
-                  </Badge>
-                  <span className="font-body text-xs capitalize text-secondary-text">
-                    {selected.channel}
-                  </span>
+              <div className="flex min-w-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMobileView("list")}
+                  aria-label="Back to conversation list"
+                  className="-ml-1.5 flex h-9 w-9 flex-none items-center justify-center rounded-lg text-secondary-text hover:bg-background hover:text-foreground md:hidden"
+                >
+                  <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+                <div className="min-w-0">
+                  <p className="truncate font-heading text-sm font-semibold text-foreground">
+                    {selected.visitorLabel}
+                  </p>
+                  <div className="mt-1 flex items-center gap-2">
+                    <Badge variant={STATUS_VARIANT[selected.status]}>
+                      {STATUS_LABEL[selected.status]}
+                    </Badge>
+                    <span className="font-body text-xs capitalize text-secondary-text">
+                      {selected.channel}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -514,9 +542,20 @@ export function InboxClient({
 
             <div ref={threadRef} className="min-h-0 flex-1 overflow-y-auto p-4">
               {messagesLoading ? (
-                <p className="font-body text-sm text-secondary-text">
-                  Loading messages…
-                </p>
+                <div className="flex flex-col gap-2.5" aria-hidden="true">
+                  <div className="flex items-end gap-2">
+                    <SkeletonBlock className="h-6 w-6 flex-none rounded-full" />
+                    <SkeletonBlock className="h-9 w-2/5 rounded-2xl rounded-bl-md" />
+                  </div>
+                  <div className="flex flex-row-reverse items-end gap-2">
+                    <SkeletonBlock className="h-6 w-6 flex-none rounded-full" />
+                    <SkeletonBlock className="h-12 w-1/2 rounded-2xl rounded-br-md" />
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <SkeletonBlock className="h-6 w-6 flex-none rounded-full" />
+                    <SkeletonBlock className="h-9 w-1/3 rounded-2xl rounded-bl-md" />
+                  </div>
+                </div>
               ) : (
                 <div className="flex flex-col gap-2.5">
                   {messages.map((m) => (
@@ -574,8 +613,25 @@ function MessageRow({ message }: { message: InboxMessageRow }) {
   const isHuman = message.role === "human_agent";
   const isUser = message.role === "user";
 
+  const avatar = (
+    <div
+      className={`flex h-6 w-6 flex-none items-center justify-center rounded-full font-body text-[10px] font-bold ${
+        isUser
+          ? "bg-border text-foreground"
+          : isHuman
+            ? "bg-success text-primary-foreground"
+            : "bg-primary text-primary-foreground"
+      }`}
+    >
+      {isUser ? "V" : isHuman ? "H" : "AI"}
+    </div>
+  );
+
   return (
-    <div className={`flex ${isUser ? "justify-start" : "justify-end"}`}>
+    <div
+      className={`flex items-end gap-2 ${isUser ? "justify-start" : "flex-row-reverse justify-start"}`}
+    >
+      {avatar}
       <div
         className={`max-w-[75%] rounded-2xl px-4 py-2.5 font-body text-sm leading-relaxed ${
           isUser

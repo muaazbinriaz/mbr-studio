@@ -5,6 +5,7 @@ import { Loader2, Plus, Trash2, ShieldCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { formatDate } from "@/lib/formatters";
 import { addAdminByEmail, removeAdmin } from "./actions";
 
@@ -26,6 +27,7 @@ export function AdminSettingsClient({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<AdminRow | null>(null);
 
   const handleAdd = (formData: FormData) => {
     setError(null);
@@ -45,6 +47,7 @@ export function AdminSettingsClient({
     startTransition(async () => {
       const result = await removeAdmin(userId);
       setPendingId(null);
+      setRemoveTarget(null);
       if (result?.error) setError(result.error);
     });
   };
@@ -113,7 +116,7 @@ export function AdminSettingsClient({
                 {!admin.isYou && (
                   <button
                     type="button"
-                    onClick={() => handleRemove(admin.userId)}
+                    onClick={() => setRemoveTarget(admin)}
                     disabled={isPending}
                     className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-body text-xs text-error transition-colors hover:bg-error/10 disabled:opacity-50"
                   >
@@ -135,6 +138,16 @@ export function AdminSettingsClient({
         Logged in as {currentUserEmail}. Admin access is platform-wide — admins
         can see and manage every organization, not just their own.
       </p>
+
+      <ConfirmDialog
+        open={!!removeTarget}
+        title="Remove this admin?"
+        description={`${removeTarget?.email ?? "This user"} will immediately lose platform-wide admin access to every organization. This can't be undone from here — they'd need to be re-added.`}
+        confirmLabel="Remove admin"
+        isLoading={isPending}
+        onCancel={() => setRemoveTarget(null)}
+        onConfirm={() => removeTarget && handleRemove(removeTarget.userId)}
+      />
     </div>
   );
 }
