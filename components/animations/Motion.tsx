@@ -65,12 +65,11 @@ export function StaggerContainer({
           transition: shouldReduceMotion
             ? {}
             : {
-                staggerChildren: staggerDelay,
+                // caps total stagger regardless of item count
+                staggerChildren: Math.min(staggerDelay, maxDelay),
                 staggerDirection: 1,
                 delayChildren: 0,
                 when: "beforeChildren",
-                // caps total stagger regardless of item count
-                staggerChildren: Math.min(staggerDelay, maxDelay),
               },
         },
       }}
