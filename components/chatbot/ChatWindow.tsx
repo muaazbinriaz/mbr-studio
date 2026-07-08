@@ -12,6 +12,7 @@ import { TypingIndicator } from "./TypingIndicator";
 import { OpeningOptions } from "./OpeningOptions";
 import { OPENING_OPTIONS } from "./chatbot";
 import { buildWhatsAppLink } from "@/config/contact";
+import { cn } from "@/lib/utils";
 
 // Spring used for the panel opening on desktop — mirrors the "pop up from
 // the launcher" feel used by Intercom/Crisp. Closing reuses a quicker tween
@@ -279,7 +280,21 @@ export function ChatWindow() {
             ? { duration: 2.4, repeat: Infinity, ease: "easeInOut" }
             : { duration: 0.15 }
         }
-        className="fixed bottom-4 right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl shadow-black/30 sm:bottom-6 sm:right-6"
+        className={cn(
+          // BUGFIX: on mobile the chat panel renders full-screen
+          // (`fixed inset-0`, see panel className above) at the same
+          // z-index (z-50) as this button. Since this button always
+          // rendered afterward in the DOM, it visually floated on top
+          // of the panel's own bottom-right corner — directly over the
+          // message input's Send button — showing a second, redundant,
+          // misplaced X once the panel was open. Hidden below `sm` while
+          // open; the panel's own header X is the only close affordance
+          // there. Kept visible on `sm`+ where the panel is a bottom-right
+          // floating card that doesn't cover this screen area, so the
+          // button coexisting below it (Intercom-style) still works.
+          "fixed z-50 h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl shadow-black/30 sm:flex sm:bottom-6 sm:right-6",
+          isOpen ? "hidden" : "flex bottom-4 right-4",
+        )}
       >
         <AnimatePresence mode="wait" initial={false}>
           <motion.span

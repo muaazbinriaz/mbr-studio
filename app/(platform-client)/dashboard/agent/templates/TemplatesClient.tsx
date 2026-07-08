@@ -6,14 +6,17 @@ import { Loader2, Sparkles, Check } from "lucide-react";
 import type { AgentTemplate } from "@/lib/agents/templates";
 import { applyTemplate } from "./actions";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 export function TemplatesClient({ templates }: { templates: AgentTemplate[] }) {
   const [isPending, startTransition] = useTransition();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [appliedId, setAppliedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
 
   const handleApply = (templateId: string) => {
+    setConfirmId(null);
     setError(null);
     setActiveId(templateId);
     startTransition(async () => {
@@ -26,6 +29,8 @@ export function TemplatesClient({ templates }: { templates: AgentTemplate[] }) {
       }
     });
   };
+
+  const confirmTemplate = templates.find((t) => t.id === confirmId);
 
   return (
     <div>
@@ -53,7 +58,7 @@ export function TemplatesClient({ templates }: { templates: AgentTemplate[] }) {
                 {template.description}
               </p>
               <Button
-                onClick={() => handleApply(template.id)}
+                onClick={() => setConfirmId(template.id)}
                 disabled={isPending}
                 variant={isApplied ? "outline" : "default"}
               >
@@ -68,6 +73,16 @@ export function TemplatesClient({ templates }: { templates: AgentTemplate[] }) {
           );
         })}
       </div>
+
+      <ConfirmDialog
+        open={confirmId !== null}
+        title={`Apply "${confirmTemplate?.name}" template?`}
+        description="This will replace your agent's current system prompt, guardrail settings, and greeting chips with this template's defaults. Anything you've customized in Guardrails will be overwritten. Starter FAQs will be added to your knowledge base (existing ones won't be duplicated)."
+        confirmLabel="Apply template"
+        isLoading={isPending}
+        onCancel={() => setConfirmId(null)}
+        onConfirm={() => confirmId && handleApply(confirmId)}
+      />
     </div>
   );
 }

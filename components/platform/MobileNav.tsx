@@ -111,13 +111,21 @@ export function MobileNav({
                       href={group.href}
                       onClick={handleNavigate}
                       className={cn(
-                        "rounded-lg px-3 py-3 font-body text-base font-medium transition-colors duration-150",
+                        "flex items-center justify-between rounded-lg px-3 py-3 font-body text-base font-medium transition-colors duration-150",
                         isActive
                           ? "bg-primary/10 text-primary"
                           : "text-foreground hover:bg-background",
                       )}
                     >
                       {group.label}
+                      {/* BUGFIX: same gap as DesktopNav — top-level links
+                          never rendered navBadges, so Inbox's unread
+                          count was computed but never shown. */}
+                      {!!navBadges?.[group.href] && (
+                        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 font-body text-[10px] font-semibold text-primary-foreground">
+                          {navBadges[group.href]}
+                        </span>
+                      )}
                     </Link>
                   );
                 }

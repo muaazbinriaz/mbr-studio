@@ -57,6 +57,15 @@ export async function applyTemplate(templateId: string) {
   if (guardrailError) return { error: guardrailError.message };
 
   for (const faq of template.starterFaqs) {
+    const { data: alreadyExists } = await supabase
+      .from("knowledge_base_documents")
+      .select("id")
+      .eq("agent_id", agent.id)
+      .eq("title", faq.title)
+      .maybeSingle();
+
+    if (alreadyExists) continue; // already added by a previous template apply
+
     const { data: doc, error: docError } = await supabase
       .from("knowledge_base_documents")
       .insert({

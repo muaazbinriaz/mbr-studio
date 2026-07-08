@@ -73,7 +73,7 @@ export function WhyChooseUs() {
                   transition={{ duration: 0.4, delay: index * 0.06 }}
                   className="flex gap-5 py-8 first:pt-0 last:pb-0"
                 >
-                  <div className="flex h-11 w-11 flex-none items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <div className="flex h-11 w-11 flex-none items-center justify-center rounded-lg bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg shadow-primary/20">
                     <Icon className="h-5 w-5" strokeWidth={1.75} />
                   </div>
                   <div>

@@ -125,7 +125,7 @@ function TestimonialCarousel({
                       className="h-10 w-10 rounded-full object-cover"
                     />
                   ) : (
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 font-heading text-sm font-semibold text-primary">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-primary to-accent font-heading text-sm font-semibold text-primary-foreground">
                       {current.author.charAt(0)}
                     </div>
                   )}

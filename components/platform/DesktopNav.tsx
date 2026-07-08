@@ -35,13 +35,23 @@ export function DesktopNav({
               href={group.href}
               onClick={() => start()}
               className={cn(
-                "rounded-lg px-3 py-2 font-body text-sm font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.97]",
+                "flex items-center gap-1.5 rounded-lg px-3 py-2 font-body text-sm font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.97]",
                 isActive
                   ? "bg-primary/10 text-primary"
                   : "text-secondary-text hover:bg-card hover:text-foreground",
               )}
             >
               {group.label}
+              {/* BUGFIX: this branch previously never read navBadges at
+                  all — only the dropdown-item branch below did. Since
+                  Inbox is a top-level link (not inside a dropdown), its
+                  unread count was computed and passed all the way down
+                  but never rendered anywhere. */}
+              {!!navBadges?.[group.href] && (
+                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 font-body text-[10px] font-semibold text-primary-foreground">
+                  {navBadges[group.href]}
+                </span>
+              )}
             </Link>
           );
         }

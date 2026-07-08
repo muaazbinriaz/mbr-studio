@@ -112,14 +112,38 @@ export const projects: Project[] = [
   },
 ];
 
+/**
+ * BUGFIX: this used to compare `project.industry.toLowerCase()` (free
+ * text like "Healthcare / Aesthetic Clinic") for strict equality against
+ * `category`, which is a BusinessType enum value (e.g. "healthcare").
+ * "healthcare / aesthetic clinic" !== "healthcare", so matchCategory was
+ * false for every real project whenever a category was supplied — the
+ * AI's searchPortfolio tool would silently return zero results any time
+ * the model passed a category, even when a matching project existed.
+ * Fixed by matching each BusinessType against keywords that can appear
+ * inside the free-text `industry` field instead of requiring equality.
+ */
+const CATEGORY_KEYWORDS: Record<BusinessType, string[]> = {
+  restaurant: ["restaurant", "food", "cafe"],
+  retail: ["retail", "e-commerce", "ecommerce", "shop"],
+  services: ["services", "agency"],
+  real_estate: ["real estate", "property"],
+  healthcare: ["healthcare", "clinic", "medical"],
+  startup_saas: ["startup", "saas"],
+  other: [],
+};
+
 export function searchProjects(
   category?: BusinessType,
   keyword?: string,
 ): Project[] {
   // Simple in-memory search – replace with real data when you add more projects.
   return projects.filter((project) => {
+    const industryLower = project.industry.toLowerCase();
     const matchCategory =
-      !category || project.industry.toLowerCase() === category;
+      !category ||
+      category === "other" ||
+      CATEGORY_KEYWORDS[category].some((kw) => industryLower.includes(kw));
     const matchKeyword =
       !keyword ||
       project.title.toLowerCase().includes(keyword.toLowerCase()) ||

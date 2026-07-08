@@ -4,6 +4,7 @@ import { ArrowRight, Check } from "lucide-react";
 
 import { Technologies } from "@/components/sections/Technologies";
 import { Button } from "@/components/ui/button";
+import { LogoMark } from "@/components/brand/Logo";
 
 /**
  * About Page — Prompt 15, SEO pass in Prompt 20.
@@ -81,8 +82,8 @@ export default function AboutPage() {
           </h1>
 
           <div className="mt-14 grid grid-cols-1 gap-10 md:grid-cols-[auto_1fr] md:items-start md:gap-12">
-            <div className="flex h-20 w-20 flex-none items-center justify-center rounded-2xl border border-border bg-card font-heading text-2xl font-bold text-text md:h-24 md:w-24">
-              MBR
+            <div className="flex h-20 w-20 flex-none items-center justify-center rounded-2xl border border-border bg-card md:h-24 md:w-24">
+              <LogoMark className="h-10 w-10 md:h-12 md:w-12" />
             </div>
 
             <div className="max-w-2xl">

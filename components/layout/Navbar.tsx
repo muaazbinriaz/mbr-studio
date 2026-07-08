@@ -8,6 +8,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/brand/Logo";
 import { navLinks, primaryCta, secondaryCta, siteConfig } from "@/config/site";
 import { blogPosts } from "@/data/blog";
 
@@ -96,11 +97,8 @@ export function Navbar() {
         )}
       >
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
-          <Link
-            href="/"
-            className="font-heading text-lg font-semibold tracking-tight"
-          >
-            {siteConfig.name}
+          <Link href="/" aria-label={`${siteConfig.name} — Home`}>
+            <Logo />
           </Link>
 
           <nav
@@ -202,9 +200,7 @@ export function Navbar() {
         )}
       >
         <div className="flex h-16 items-center justify-between px-6">
-          <span className="font-heading text-lg font-semibold tracking-tight">
-            {siteConfig.name}
-          </span>
+          <Logo />
           <button
             type="button"
             className="-mr-1 rounded-md p-3 text-foreground"

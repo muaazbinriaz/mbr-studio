@@ -417,3 +417,95 @@ nav a {
      --primary's hex value. Now sourced from the token directly. */
   background-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
 }
+
+/* =========================================================================
+   STEP 1 ADDITIONS — append to the end of the existing app/globals.css.
+   Do not replace the file — this is a diff, not a full replacement.
+   ========================================================================= */
+
+/* ---------------------------------------------------------------
+   Glassmorphism + animated gradient border utilities
+   Used by HeroVisual.tsx. Kept generic (not hero-specific class
+   names) so any future card/modal can reuse them.
+--------------------------------------------------------------------- */
+@layer utilities {
+  .glass-card {
+    background: color-mix(in srgb, var(--color-card) 70%, transparent);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--color-border);
+  }
+
+  /* Animated gradient border. Renders a rotating primary→accent gradient
+     ring around the element using a masked pseudo-element, so it works
+     on top of any border-radius without an extra wrapper element. */
+  .animated-border {
+    position: relative;
+  }
+
+  .animated-border::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      120deg,
+      var(--color-primary),
+      var(--color-accent),
+      var(--color-primary)
+    );
+    background-size: 200% 200%;
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    animation: mbr-border-flow 6s linear infinite;
+    pointer-events: none;
+  }
+
+  @keyframes mbr-border-flow {
+    0% {
+      background-position: 0% 50%;
+    }
+    100% {
+      background-position: 200% 50%;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animated-border::before {
+      animation: none;
+    }
+  }
+
+  /* Static gradient-ring — same visual as .animated-border but no motion.
+     Use on repeated content cards (e.g. Services "what's included" panels,
+     one per service section) where an always-animating border across
+     multiple cards on one page would be distracting rather than premium.
+     Reserve .animated-border itself for one-off hero/featured elements. */
+  .gradient-ring {
+    position: relative;
+  }
+
+  .gradient-ring::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      135deg,
+      var(--color-primary),
+      var(--color-accent)
+    );
+    opacity: 0.5;
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+}

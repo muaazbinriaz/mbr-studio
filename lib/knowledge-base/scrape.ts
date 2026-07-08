@@ -1,8 +1,11 @@
 import * as cheerio from "cheerio";
+import { isIP } from "node:net";
+import { lookup as dnsLookup } from "node:dns/promises";
 
 const USER_AGENT = "MBRStudioBot/1.0 (+https://mbrstudio.dev)";
 const REQUEST_TIMEOUT_MS = 8000;
 const MAX_DISCOVERED_PAGES = 18;
+const MAX_REDIRECTS = 5;
 const PRIORITY_PATH_HINTS = [
   "/about",
   "/services",
@@ -20,17 +23,119 @@ interface RobotsRules {
   disallowedPaths: string[];
 }
 
-async function fetchWithTimeout(url: string, timeoutMs = REQUEST_TIMEOUT_MS) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, {
-      signal: controller.signal,
-      headers: { "User-Agent": USER_AGENT },
-    });
-  } finally {
-    clearTimeout(timer);
+/**
+ * SSRF guard. Rejects any URL whose hostname is not http/https, or whose
+ * resolved IP falls in a loopback / private / link-local / reserved range —
+ * this is what blocks cloud metadata endpoints (169.254.169.254), localhost,
+ * and internal 10.x/172.16-31.x/192.168.x addresses from being fetched by
+ * this server-side scraper on behalf of an authenticated org member.
+ */
+function isBlockedIp(ip: string): boolean {
+  const version = isIP(ip);
+  if (version === 4) {
+    const parts = ip.split(".").map(Number);
+    const [a, b] = parts;
+    if (a === 127) return true; // loopback
+    if (a === 10) return true; // private
+    if (a === 172 && b >= 16 && b <= 31) return true; // private
+    if (a === 192 && b === 168) return true; // private
+    if (a === 169 && b === 254) return true; // link-local / cloud metadata
+    if (a === 0) return true; // "this" network
+    if (a >= 224) return true; // multicast/reserved
+    return false;
   }
+  if (version === 6) {
+    const lower = ip.toLowerCase();
+    if (lower === "::1") return true; // loopback
+    if (lower.startsWith("fe80:")) return true; // link-local
+    if (lower.startsWith("fc") || lower.startsWith("fd")) return true; // unique local
+    if (lower.startsWith("::ffff:")) {
+      // IPv4-mapped IPv6 — re-check the embedded v4 address
+      const mapped = lower.replace("::ffff:", "");
+      return isIP(mapped) === 4 ? isBlockedIp(mapped) : true;
+    }
+    return false;
+  }
+  return true; // couldn't parse — fail closed
+}
+
+async function assertSafeUrl(urlString: string): Promise<void> {
+  let parsed: URL;
+  try {
+    parsed = new URL(urlString);
+  } catch {
+    throw new Error("Invalid URL.");
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Only http/https URLs are allowed.");
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  if (hostname === "localhost" || hostname.endsWith(".localhost")) {
+    throw new Error("Requests to localhost are not allowed.");
+  }
+
+  // If the hostname is already a literal IP, check it directly.
+  if (isIP(hostname)) {
+    if (isBlockedIp(hostname)) {
+      throw new Error(
+        "Requests to internal or private addresses are not allowed.",
+      );
+    }
+    return;
+  }
+
+  // Otherwise resolve DNS ourselves and check every returned address —
+  // this is what catches DNS rebinding (a public hostname that resolves
+  // to a private IP either now or on a subsequent lookup).
+  let addresses: { address: string }[];
+  try {
+    addresses = await dnsLookup(hostname, { all: true });
+  } catch {
+    throw new Error(`Could not resolve host: ${hostname}`);
+  }
+
+  if (addresses.length === 0 || addresses.some((a) => isBlockedIp(a.address))) {
+    throw new Error(
+      "Requests to internal or private addresses are not allowed.",
+    );
+  }
+}
+
+/**
+ * Fetch with the SSRF guard applied on the initial URL and re-applied on
+ * every redirect hop. Redirects are followed manually (redirect: "manual")
+ * so a public URL that later 302s to an internal address can't bypass the
+ * check the way it would under fetch's default automatic redirect handling.
+ */
+async function fetchWithTimeout(url: string, timeoutMs = REQUEST_TIMEOUT_MS) {
+  let currentUrl = url;
+
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    await assertSafeUrl(currentUrl);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let res: Response;
+    try {
+      res = await fetch(currentUrl, {
+        signal: controller.signal,
+        headers: { "User-Agent": USER_AGENT },
+        redirect: "manual",
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+
+    const isRedirect = res.status >= 300 && res.status < 400;
+    const location = res.headers.get("location");
+    if (!isRedirect || !location) return res;
+
+    currentUrl = new URL(location, currentUrl).href;
+  }
+
+  throw new Error("Too many redirects.");
 }
 
 /**

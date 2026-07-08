@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { services } from "@/data/services";
 import { siteConfig } from "@/config/site";
+import { Logo } from "@/components/brand/Logo";
 
 const sitemapLinks = [
   { label: "Home", href: "/" },
@@ -35,11 +36,8 @@ export function Footer() {
         <div className="grid grid-cols-2 gap-x-8 gap-y-12 md:grid-cols-4 md:gap-x-6">
           {/* Column 1 — Brand + socials */}
           <div className="col-span-2 md:col-span-1">
-            <Link
-              href="/"
-              className="font-heading text-lg font-semibold tracking-tight"
-            >
-              {siteConfig.name}
+            <Link href="/" aria-label={`${siteConfig.name} — Home`}>
+              <Logo />
             </Link>
             <p className="mt-3 max-w-[26ch] text-sm text-secondary-text">
               {siteConfig.tagline}

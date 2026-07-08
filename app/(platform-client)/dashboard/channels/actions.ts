@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { encryptToken } from "@/lib/channels/encryption";
+import { verifyMetaCredential } from "@/lib/channels/verify-credential";
 import { sendWhatsAppMessage } from "@/lib/channels/send";
 import { isChannelAllowedForPlan } from "@/lib/billing/limits";
 
@@ -74,6 +75,9 @@ export async function connectWhatsApp(formData: FormData) {
     return { error: "All fields are required." };
   }
 
+  const verification = await verifyMetaCredential(phoneNumberId, accessToken);
+  if (!verification.ok) return { error: verification.error };
+
   const encrypted = encryptToken(accessToken);
 
   const { error } = await supabase.from("channel_connections").upsert(
@@ -115,6 +119,9 @@ export async function connectMessenger(formData: FormData) {
     return { error: "All fields are required." };
   }
 
+  const verification = await verifyMetaCredential(pageId, accessToken);
+  if (!verification.ok) return { error: verification.error };
+
   const encrypted = encryptToken(accessToken);
 
   const { error } = await supabase.from("channel_connections").upsert(
@@ -154,6 +161,9 @@ export async function connectInstagram(formData: FormData) {
   if (!igBusinessId || !accessToken) {
     return { error: "All fields are required." };
   }
+
+  const verification = await verifyMetaCredential(igBusinessId, accessToken);
+  if (!verification.ok) return { error: verification.error };
 
   const encrypted = encryptToken(accessToken);
 

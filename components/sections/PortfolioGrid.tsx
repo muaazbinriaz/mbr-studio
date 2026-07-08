@@ -112,7 +112,7 @@ function FilterTab({
       onClick={onClick}
       className={`rounded-full px-4 py-2 font-body text-sm font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
         isActive
-          ? "bg-primary text-text"
+          ? "bg-primary text-primary-foreground"
           : "border border-border bg-transparent text-muted-foreground hover:text-text"
       }`}
     >

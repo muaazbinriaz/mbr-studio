@@ -213,7 +213,7 @@ function ServiceSection({
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:gap-20">
           {/* Left: identity + description + CTA */}
           <div>
-            <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg shadow-primary/20">
               <Icon className="h-6 w-6" strokeWidth={1.75} />
             </div>
             <h2 className="mb-4 font-heading text-2xl font-bold leading-tight tracking-tight text-text sm:text-3xl">
@@ -249,7 +249,7 @@ function ServiceSection({
 
           {/* Right: what's included */}
           {detail && (
-            <div className="rounded-2xl border border-border bg-card p-8">
+            <div className="gradient-ring rounded-2xl border border-border bg-card p-8">
               <p className="mb-5 font-body text-sm font-semibold uppercase tracking-wide text-secondary-text">
                 What&apos;s included
               </p>

@@ -69,7 +69,7 @@ function ServiceCard({ service, index }: { service: Service; index: number }) {
       />
 
       <div className="relative">
-        <div className="mb-6 flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        <div className="mb-6 flex h-11 w-11 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg shadow-primary/20">
           <ResolvedIcon className="h-5 w-5" strokeWidth={1.75} />
         </div>
 
