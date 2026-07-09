@@ -107,7 +107,7 @@ function TestimonialCarousel({
                     ? { opacity: 0 }
                     : { opacity: 0, x: direction >= 0 ? -40 : 40 }
                 }
-                transition={{ duration: 0.35, ease: "easeOut" }}
+                transition={{ duration: 0.4, ease: "easeOut" }}
                 className="px-8 py-14 text-center sm:px-14"
               >
                 <Quote className="mx-auto mb-6 h-6 w-6 text-primary" />

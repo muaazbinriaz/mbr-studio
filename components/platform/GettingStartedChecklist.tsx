@@ -68,7 +68,7 @@ export function GettingStartedChecklist({ items }: { items: ChecklistItem[] }) {
             localStorage.setItem(DISMISS_KEY, "true");
             setDismissed(true);
           }}
-          className="flex-none font-body text-xs text-secondary-text underline underline-offset-2 hover:text-foreground"
+          className="flex-none rounded font-body text-xs text-secondary-text underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           Dismiss
         </button>
@@ -142,7 +142,7 @@ export function GettingStartedChecklist({ items }: { items: ChecklistItem[] }) {
                     await markEmbedAdded();
                   })
                 }
-                className="font-body text-xs font-medium text-primary hover:underline"
+                className="rounded font-body text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 Mark as done
               </button>
@@ -150,7 +150,7 @@ export function GettingStartedChecklist({ items }: { items: ChecklistItem[] }) {
               !item.done && (
                 <Link
                   href={item.href}
-                  className="font-body text-xs font-medium text-primary hover:underline"
+                  className="rounded font-body text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   Go →
                 </Link>

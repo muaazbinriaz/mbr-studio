@@ -3,13 +3,15 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { X, Send, Sparkles, AlertTriangle, MessageCircle } from "lucide-react";
-
+import { LogoMark } from "@/components/brand/Logo";
 import { useChatPanel } from "@/components/chatbot/useChat";
 import { useAIChat } from "@/hooks/useChat";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useFocusTrap } from "@/components/chatbot/useFocusTrap";
 import { MessageBubble } from "./MessageBubble";
 import { TypingIndicator } from "./TypingIndicator";
 import { OpeningOptions } from "./OpeningOptions";
+import { SuggestionChips } from "./SuggestionChips";
 import { OPENING_OPTIONS } from "./chatbot";
 import { buildWhatsAppLink } from "@/config/contact";
 import { cn } from "@/lib/utils";
@@ -26,9 +28,23 @@ const OPEN_SPRING = {
 } as const;
 const CLOSE_TWEEN = { duration: 0.16, ease: "easeIn" } as const;
 
-const panelVariants = {
+// Desktop/tablet (sm+, ≥640px): floating card pop — unchanged.
+const desktopPanelVariants = {
   hidden: { opacity: 0, y: 28, scale: 0.96, transition: CLOSE_TWEEN },
   visible: { opacity: 1, y: 0, scale: 1, transition: OPEN_SPRING },
+};
+
+// Mobile (<640px): full-screen bottom sheet — reuses the exact slide
+// pattern already established by Navbar.tsx's mobile drawer and
+// MobileNav.tsx, instead of a "card pop" on a full-screen surface.
+const SHEET_TRANSITION = {
+  type: "spring",
+  damping: 28,
+  stiffness: 320,
+} as const;
+const mobilePanelVariants = {
+  hidden: { y: "100%", transition: SHEET_TRANSITION },
+  visible: { y: 0, transition: SHEET_TRANSITION },
 };
 
 const iconVariants = {
@@ -38,12 +54,21 @@ const iconVariants = {
 };
 
 export function ChatWindow() {
-  const { isOpen, close, toggle } = useChatPanel();
+  const { isOpen, close, toggle, launcherSuppressed } = useChatPanel();
   const { messages, sendMessage, status, error, regenerate } = useAIChat();
   const shouldReduceMotion = useReducedMotion();
+  // Matches the `sm:` breakpoint (640px) already used throughout this
+  // component's className logic, so the JS-driven variant switch and
+  // the CSS layout switch (full-screen vs floating card) change at
+  // exactly the same point.
+  const isMobileViewport = useMediaQuery("(max-width: 639px)");
+  const panelVariants = isMobileViewport
+    ? mobilePanelVariants
+    : desktopPanelVariants;
 
   const panelRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState("");
 
   // Tracks whether an assistant reply has arrived while the panel was
@@ -52,12 +77,53 @@ export function ChatWindow() {
   const seenCountRef = useRef(0);
   const [hasUnread, setHasUnread] = useState(false);
 
-  useFocusTrap(panelRef, isOpen, close);
-
+  // BUGFIX: the mobile launcher used to reappear the instant `isOpen`
+  // flipped to false, while the full-screen panel was still mid-exit
+  // (CLOSE_TWEEN, ~160ms) — both rendered at the same z-50 for that
+  // window, producing the reported double-icon flash. This tracks
+  // whether the panel's own exit animation has actually finished, so
+  // the launcher stays hidden on mobile until it has.
+  const [panelExited, setPanelExited] = useState(true);
   useEffect(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: "smooth",
+    if (isOpen) setPanelExited(false);
+  }, [isOpen]);
+
+  useFocusTrap(panelRef, isOpen, close, inputRef);
+
+  // Belt-and-suspenders autofocus: useFocusTrap above already focuses
+  // inputRef on open, but on mobile the panel is still mid-slide-in
+  // (translateY animation) at that exact moment, which can eat the
+  // focus call in some browsers. Re-focusing on the next frame — after
+  // the panel has committed to the DOM at its open position — makes
+  // autofocus land reliably on every screen size.
+  useEffect(() => {
+    if (!isOpen) return;
+    const id = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [isOpen]);
+
+  // BUGFIX: this used to call smooth-scroll on every streamed token
+  // (a new `messages` reference arrives per chunk), which (a) forced
+  // the transcript to the bottom even if the user had scrolled up to
+  // reread something, and (b) restarted the smooth-scroll easing on
+  // every token, producing a stutter instead of one continuous scroll.
+  // Now: only auto-follow token-by-token growth if the user is already
+  // near the bottom, and always snap to bottom on an actual new
+  // message (new user send or new assistant turn starting).
+  const prevMessageCountRef = useRef(0);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    const isNewMessage = messages.length !== prevMessageCountRef.current;
+    prevMessageCountRef.current = messages.length;
+
+    if (!isNewMessage && !isNearBottom) return;
+
+    el.scrollTo({
+      top: el.scrollHeight,
+      behavior: isNewMessage ? "smooth" : "auto",
     });
   }, [messages, status]);
 
@@ -98,7 +164,7 @@ export function ChatWindow() {
 
   return (
     <>
-      <AnimatePresence>
+      <AnimatePresence onExitComplete={() => setPanelExited(true)}>
         {isOpen && (
           <motion.div
             key="panel"
@@ -124,8 +190,8 @@ export function ChatWindow() {
 
             <div className="flex items-center justify-between border-b border-border bg-background px-4 py-3.5">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/15 text-primary">
-                  <Sparkles className="h-4 w-4" strokeWidth={1.75} />
+                <div className="flex h-8 w-8 items-center justify-center">
+                  <LogoMark className="h-8 w-8" />
                 </div>
                 <div>
                   <p className="font-heading text-sm font-semibold text-foreground">
@@ -181,11 +247,9 @@ export function ChatWindow() {
                 {isWaiting && (
                   <div className="flex items-end gap-2">
                     <div className="w-7 flex-none">
-                      {messages[messages.length - 1]?.role !== "assistant" && (
-                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-accent/15 text-accent">
-                          <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
-                        </div>
-                      )}
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-accent/15 text-accent">
+                        <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
+                      </div>
                     </div>
                     <TypingIndicator />
                   </div>
@@ -236,18 +300,31 @@ export function ChatWindow() {
               />
             )}
 
+            {/* Persistent quick actions once the conversation has
+                started — reuses the real OPENING_OPTIONS data (no
+                fabricated per-turn suggestions; nothing in the API
+                currently produces those) so users can jump to a
+                quote/consultation/portfolio without retyping. */}
+            {hasStarted && !isBusy && (
+              <SuggestionChips
+                options={OPENING_OPTIONS}
+                onSelect={(option) => handleOptionSelect(option.label)}
+              />
+            )}
+
             <form
               onSubmit={handleSend}
               className="flex items-center gap-2 border-t border-border p-3"
             >
               <input
+                ref={inputRef}
                 type="text"
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 placeholder="Type a message..."
                 aria-label="Message"
                 disabled={isBusy}
-                className="flex-1 rounded-lg border border-border bg-background px-3.5 py-2.5 font-body text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-60"
+                className="flex-1 rounded-lg border border-border bg-background px-3.5 py-2.5 font-body text-sm text-foreground placeholder:text-muted-foreground transition-colors duration-200 focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-60"
               />
               <button
                 type="submit"
@@ -262,67 +339,69 @@ export function ChatWindow() {
         )}
       </AnimatePresence>
 
-      <motion.button
-        type="button"
-        onClick={toggle}
-        aria-label={isOpen ? "Close chat" : "Open chat with MBR Studio"}
-        aria-expanded={isOpen}
-        aria-controls="mbr-chat-panel"
-        whileHover={shouldReduceMotion ? undefined : { scale: 1.06 }}
-        whileTap={shouldReduceMotion ? undefined : { scale: 0.94 }}
-        animate={
-          !shouldReduceMotion && !isOpen
-            ? { scale: [1, 1.05, 1] }
-            : { scale: 1 }
-        }
-        transition={
-          !shouldReduceMotion && !isOpen
-            ? { duration: 2.4, repeat: Infinity, ease: "easeInOut" }
-            : { duration: 0.15 }
-        }
-        className={cn(
-          // BUGFIX: on mobile the chat panel renders full-screen
-          // (`fixed inset-0`, see panel className above) at the same
-          // z-index (z-50) as this button. Since this button always
-          // rendered afterward in the DOM, it visually floated on top
-          // of the panel's own bottom-right corner — directly over the
-          // message input's Send button — showing a second, redundant,
-          // misplaced X once the panel was open. Hidden below `sm` while
-          // open; the panel's own header X is the only close affordance
-          // there. Kept visible on `sm`+ where the panel is a bottom-right
-          // floating card that doesn't cover this screen area, so the
-          // button coexisting below it (Intercom-style) still works.
-          "fixed z-50 h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl shadow-black/30 sm:flex sm:bottom-6 sm:right-6",
-          isOpen ? "hidden" : "flex bottom-4 right-4",
-        )}
-      >
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.span
-            key={isOpen ? "close" : "chat"}
-            variants={shouldReduceMotion ? undefined : iconVariants}
-            initial={shouldReduceMotion ? undefined : "initial"}
-            animate={shouldReduceMotion ? undefined : "animate"}
-            exit={shouldReduceMotion ? undefined : "exit"}
-            transition={{ duration: 0.18, ease: "easeOut" }}
-            className="flex"
-          >
-            {isOpen ? (
-              <X className="h-6 w-6" strokeWidth={1.75} />
-            ) : (
-              <MessageCircle className="h-6 w-6" strokeWidth={1.75} />
-            )}
-          </motion.span>
-        </AnimatePresence>
+      {!launcherSuppressed && (
+        <motion.button
+          type="button"
+          onClick={toggle}
+          aria-label={isOpen ? "Close chat" : "Open chat with MBR Studio"}
+          aria-expanded={isOpen}
+          aria-controls="mbr-chat-panel"
+          whileHover={shouldReduceMotion ? undefined : { scale: 1.06 }}
+          whileTap={shouldReduceMotion ? undefined : { scale: 0.94 }}
+          animate={
+            !shouldReduceMotion && !isOpen
+              ? { scale: [1, 1.05, 1] }
+              : { scale: 1 }
+          }
+          transition={
+            !shouldReduceMotion && !isOpen
+              ? { duration: 2.4, repeat: Infinity, ease: "easeInOut" }
+              : { duration: 0.15 }
+          }
+          className={cn(
+            // BUGFIX: on mobile the chat panel renders full-screen
+            // (`fixed inset-0`, see panel className above) at the same
+            // z-index (z-50) as this button. Since this button always
+            // rendered afterward in the DOM, it visually floated on top
+            // of the panel's own bottom-right corner — directly over the
+            // message input's Send button — showing a second, redundant,
+            // misplaced X once the panel was open. Hidden below `sm` while
+            // open; the panel's own header X is the only close affordance
+            // there. Kept visible on `sm`+ where the panel is a bottom-right
+            // floating card that doesn't cover this screen area, so the
+            // button coexisting below it (Intercom-style) still works.
+            "fixed z-50 h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl shadow-black/30 sm:flex sm:bottom-6 sm:right-6",
+            isOpen || !panelExited ? "hidden" : "flex bottom-4 right-4",
+          )}
+        >
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span
+              key={isOpen ? "close" : "chat"}
+              variants={shouldReduceMotion ? undefined : iconVariants}
+              initial={shouldReduceMotion ? undefined : "initial"}
+              animate={shouldReduceMotion ? undefined : "animate"}
+              exit={shouldReduceMotion ? undefined : "exit"}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              className="flex"
+            >
+              {isOpen ? (
+                <X className="h-6 w-6" strokeWidth={1.75} />
+              ) : (
+                <MessageCircle className="h-6 w-6" strokeWidth={1.75} />
+              )}
+            </motion.span>
+          </AnimatePresence>
 
-        {hasUnread && !isOpen && (
-          <motion.span
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-background bg-error"
-            aria-hidden="true"
-          />
-        )}
-      </motion.button>
+          {hasUnread && !isOpen && (
+            <motion.span
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-background bg-error"
+              aria-hidden="true"
+            />
+          )}
+        </motion.button>
+      )}
     </>
   );
 }

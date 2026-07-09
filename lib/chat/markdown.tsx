@@ -79,7 +79,11 @@ export function renderMarkdownLite(text: string): ReactNode {
     }
     flushBullets();
     if (line.length === 0) continue; // collapse blank lines instead of empty <p>
-    blocks.push(<p key={key++}>{renderInline(line)}</p>);
+    blocks.push(
+      <p key={key++} className="text-inherit">
+        {renderInline(line)}
+      </p>,
+    );
   }
   flushBullets();
 

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { checkRateLimitFor } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
+
+const CONFIG_WINDOW_MS = 60_000;
+const CONFIG_MAX_PER_KEY_PER_MINUTE = 30;
 
 export async function GET(req: NextRequest) {
   const origin = req.headers.get("origin");
@@ -25,6 +29,14 @@ export async function GET(req: NextRequest) {
       404,
       origin,
     );
+  }
+
+  const { allowed } = checkRateLimitFor(`widget-config:${publicKey}`, {
+    windowMs: CONFIG_WINDOW_MS,
+    maxRequests: CONFIG_MAX_PER_KEY_PER_MINUTE,
+  });
+  if (!allowed) {
+    return jsonResponse({ error: "Too many requests." }, 429, origin);
   }
 
   const { data: org } = await supabase

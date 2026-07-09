@@ -105,22 +105,27 @@ export function MobileNav({
               {groups.map((group) => {
                 if (group.type === "link") {
                   const isActive = group.href === activeHref;
+                  const LinkIcon = group.icon;
                   return (
                     <Link
                       key={group.label}
                       href={group.href}
                       onClick={handleNavigate}
                       className={cn(
-                        "flex items-center justify-between rounded-lg px-3 py-3 font-body text-base font-medium transition-colors duration-150",
+                        "group flex items-center justify-between rounded-lg px-3 py-3 font-body text-base font-medium transition-colors duration-150",
                         isActive
                           ? "bg-primary/10 text-primary"
                           : "text-foreground hover:bg-background",
                       )}
                     >
-                      {group.label}
-                      {/* BUGFIX: same gap as DesktopNav — top-level links
-                          never rendered navBadges, so Inbox's unread
-                          count was computed but never shown. */}
+                      <span className="flex items-center gap-3">
+                        <LinkIcon
+                          className="h-4 w-4 flex-none transition-transform duration-500 ease-out group-hover:-translate-y-0.5 group-active:-translate-y-0.5"
+                          strokeWidth={1.75}
+                          aria-hidden="true"
+                        />
+                        {group.label}
+                      </span>
                       {!!navBadges?.[group.href] && (
                         <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 font-body text-[10px] font-semibold text-primary-foreground">
                           {navBadges[group.href]}
@@ -187,14 +192,14 @@ export function MobileNav({
                                   href={item.href}
                                   onClick={handleNavigate}
                                   className={cn(
-                                    "flex items-center gap-2.5 rounded-lg px-3 py-2.5 font-body text-sm font-medium transition-colors duration-150",
+                                    "group flex items-center gap-2.5 rounded-lg px-3 py-2.5 font-body text-sm font-medium transition-colors duration-150",
                                     isActive
                                       ? "bg-primary/10 text-primary"
                                       : "text-foreground hover:bg-background",
                                   )}
                                 >
                                   <Icon
-                                    className="h-4 w-4 flex-none"
+                                    className="h-4 w-4 flex-none transition-transform duration-500 ease-out group-hover:-translate-y-0.5 group-active:-translate-y-0.5"
                                     strokeWidth={1.75}
                                   />
                                   <span className="flex flex-1 items-center justify-between">
@@ -221,7 +226,7 @@ export function MobileNav({
               <Link
                 href="/"
                 onClick={handleNavigate}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-3 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground"
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-3 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 <ExternalLink
                   className="h-4 w-4 flex-none"
@@ -233,7 +238,7 @@ export function MobileNav({
               <button
                 type="button"
                 onClick={toggleTheme}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-3 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground"
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-3 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 {theme === "dark" ? (
                   <Sun className="h-4 w-4 flex-none" strokeWidth={1.75} />
@@ -252,7 +257,7 @@ export function MobileNav({
               <form action={signOut} onSubmit={() => start()}>
                 <button
                   type="submit"
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-3 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground"
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-3 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   <LogOut className="h-4 w-4 flex-none" strokeWidth={1.75} />
                   Log out

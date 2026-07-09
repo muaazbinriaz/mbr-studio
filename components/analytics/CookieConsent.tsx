@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { Analytics } from "@vercel/analytics/react";
-import { GoogleAnalytics } from "@next/third-parties/google";
 
 const CONSENT_KEY = "mbr-analytics-consent";
 
@@ -21,14 +20,7 @@ export function CookieConsent() {
 
   return (
     <>
-      {consent === "granted" && (
-        <>
-          <Analytics />
-          {process.env.NEXT_PUBLIC_GA_ID && (
-            <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
-          )}
-        </>
-      )}
+      {consent === "granted" && <Analytics />}
 
       {consent === null && (
         <div
@@ -44,14 +36,14 @@ export function CookieConsent() {
             <button
               type="button"
               onClick={() => decide("granted")}
-              className="flex-1 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+              className="flex-1 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               Accept
             </button>
             <button
               type="button"
               onClick={() => decide("denied")}
-              className="flex-1 rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-background"
+              className="flex-1 rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               Decline
             </button>

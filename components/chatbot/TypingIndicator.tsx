@@ -8,7 +8,7 @@ export function TypingIndicator() {
     >
       <span className="h-2 w-2 rounded-full bg-muted-foreground animate-pulse [animation-delay:0s]" />
       <span className="h-2 w-2 rounded-full bg-muted-foreground animate-pulse [animation-delay:0.2s]" />
-      <span className="h-2 w-2 rounded-full bg-muted-foreground animate-pulse [animation-delay:0.4s]" />{" "}
+      <span className="h-2 w-2 rounded-full bg-muted-foreground animate-pulse [animation-delay:0.4s]" />
     </div>
   );
 }

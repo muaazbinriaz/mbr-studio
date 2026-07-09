@@ -1,5 +1,3 @@
-"use client";
-
 import type { DailyAnalyticsPoint } from "@/lib/analytics/queries";
 
 export function AnalyticsChart({ data }: { data: DailyAnalyticsPoint[] }) {

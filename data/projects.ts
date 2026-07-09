@@ -1,14 +1,15 @@
 /**
- * CONTENT-COMPLETENESS NOTE: each project below is a REAL, shipped
- * project — only the case-study write-up sub-fields (`problem`,
- * `solution`, `outcome`) are sometimes incomplete. That's fine and
- * expected: app/(marketing)/case-studies/[slug]/page.tsx already falls
- * back to "we're finalizing this write-up" copy per missing field, and
- * the project still appears normally in FeaturedProjects/PortfolioGrid
+ * TODO (content): each project below is a REAL, shipped project — only
+ * the case-study write-up sub-fields (`problem`, `solution`, `outcome`)
+ * are sometimes incomplete, marked with bracketed placeholders like
+ * "[e.g. 40%]" below. That's fine and expected:
+ * app/(marketing)/case-studies/[slug]/page.tsx already falls back to
+ * "we're finalizing this write-up" copy per missing field, and the
+ * project still appears normally in FeaturedProjects/PortfolioGrid
  * regardless (intentional — an incomplete write-up doesn't mean the
- * project itself isn't real). Add real `problem`/`solution`/`outcome`
- * text here as case studies get written up; don't invent plausible-
- * sounding metrics or narrative to fill these fields early.
+ * project itself isn't real). Replace every bracketed value below with
+ * real numbers/copy as case studies get written up — do not invent
+ * plausible-sounding metrics or narrative to fill these fields early.
  */
 import type { Project } from "@/types";
 import type { BusinessType } from "@/lib/chat/estimator";
@@ -36,8 +37,16 @@ export const projects: Project[] = [
       "Cloudinary",
       "AI Chatbot",
     ],
-    category: "Website",
+    category: "AI Chatbot",
     link: "https://skin-clinic.vercel.app",
+    problem:
+      "[what was Lumière facing before this — e.g. no online presence, manual WhatsApp-only bookings?]",
+    solution: "[1–2 sentences on your actual approach/build]",
+    outcome: [
+      { metric: "[e.g. 40%]", label: "[e.g. increase in booking inquiries]" },
+      { metric: "[e.g. <2s]", label: "[e.g. page load time]" },
+      { metric: "[e.g. 100%]", label: "[e.g. mobile bookings]" },
+    ],
   },
 
   {
@@ -72,6 +81,11 @@ export const projects: Project[] = [
       "Job seekers spend hours manually reading their CV against dozens of listings to figure out which roles are actually a fit — a slow, repetitive process that misses relevant openings buried in irrelevant search results.",
     solution:
       "Built an end-to-end pipeline: users upload a PDF CV, the backend extracts raw text with pdf-parse, and Groq's Llama 3.1 8B model structures it into skills, experience, and education. That profile is matched against live listings pulled from JSearch (RapidAPI), with results cached for 24 hours per user to minimize API costs.",
+    outcome: [
+      { metric: "[e.g. 200+]", label: "[e.g. CVs processed]" },
+      { metric: "[e.g. <10s]", label: "[e.g. average match time]" },
+      { metric: "[e.g. 90%]", label: "[e.g. skill-extraction accuracy]" },
+    ],
   },
 
   {
@@ -109,6 +123,11 @@ export const projects: Project[] = [
       "Teams often juggle scattered task lists across chat threads and spreadsheets, with no shared, real-time view of who's doing what — leading to duplicated work and missed updates when multiple people edit the same board.",
     solution:
       "Built a real-time collaborative Kanban board where every list, card, and member change syncs instantly across all connected users via WebSockets (Socket.IO). Added automation rules — like auto-moving cards to a new list when tagged — plus email invitations, image attachments, and drag-and-drop reordering for a smooth, Trello-like workflow.",
+    outcome: [
+      { metric: "[e.g. 5+]", label: "[e.g. active boards]" },
+      { metric: "[e.g. real-time]", label: "[e.g. sync latency]" },
+      { metric: "[e.g. 0]", label: "[e.g. data-loss incidents]" },
+    ],
   },
 ];
 

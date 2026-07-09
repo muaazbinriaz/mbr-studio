@@ -37,7 +37,7 @@ export const metadata: Metadata = {
 
 export default function Home() {
   return (
-    <main>
+    <>
       <Hero />
       <ProblemStatement />
       <Services />
@@ -47,6 +47,6 @@ export default function Home() {
       <Technologies />
       {testimonials.length > 0 ? <Testimonials /> : <StatsBar />}
       <FAQ />
-    </main>
+    </>
   );
 }

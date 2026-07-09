@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dispatchPendingWebhooks } from "@/lib/webhooks/dispatch";
+import crypto from "crypto";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -12,10 +13,16 @@ export const maxDuration = 60;
  * testing with the same header.
  */
 export async function GET(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  const expected = `Bearer ${process.env.CRON_DISPATCH_SECRET}`;
+  const authHeader = req.headers.get("authorization") ?? "";
+  const secret = process.env.CRON_DISPATCH_SECRET;
+  const expected = `Bearer ${secret}`;
 
-  if (!process.env.CRON_DISPATCH_SECRET || authHeader !== expected) {
+  const authorized =
+    !!secret &&
+    authHeader.length === expected.length &&
+    crypto.timingSafeEqual(Buffer.from(authHeader), Buffer.from(expected));
+
+  if (!authorized) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

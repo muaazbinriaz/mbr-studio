@@ -5,12 +5,16 @@ import { randomBytes } from "crypto";
 
 import { createClient } from "@/lib/supabase/server";
 import { slugify } from "@/lib/formatters";
+import { requireAdmin } from "@/lib/auth/actions";
 
 function generatePublicKey() {
   return `clx_${randomBytes(16).toString("hex")}`;
 }
 
 export async function createOrganization(formData: FormData) {
+  const caller = await requireAdmin();
+  if (caller.error) return { error: caller.error };
+
   const name = String(formData.get("name") ?? "").trim();
 
   if (!name) {
@@ -18,14 +22,6 @@ export async function createOrganization(formData: FormData) {
   }
 
   const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { error: "Not authenticated." };
-  }
 
   const baseSlug = slugify(name);
   const slug = `${baseSlug}-${randomBytes(2).toString("hex")}`;
@@ -68,6 +64,9 @@ export async function createOrganization(formData: FormData) {
 }
 
 export async function toggleReseller(organizationId: string, next: boolean) {
+  const caller = await requireAdmin();
+  if (caller.error) return { error: caller.error };
+
   const supabase = await createClient();
   const { error } = await supabase
     .from("organizations")
@@ -83,6 +82,9 @@ export async function saveResellerBranding(
   organizationId: string,
   formData: FormData,
 ) {
+  const caller = await requireAdmin();
+  if (caller.error) return { error: caller.error };
+
   const supabase = await createClient();
   const brandName = String(formData.get("reseller_brand_name") ?? "").trim();
   const logoUrl = String(formData.get("reseller_logo_url") ?? "").trim();

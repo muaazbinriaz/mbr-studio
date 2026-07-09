@@ -59,13 +59,17 @@ function ServiceCard({ service, index }: { service: Service; index: number }) {
     <FadeIn
       viewport={{ once: true, amount: 0.3 }}
       transition={{ duration: 0.4, delay: Math.min(index, 5) * 0.05 }}
-      whileHover={shouldReduceMotion ? undefined : { y: -4 }}
+      whileHover={
+        shouldReduceMotion
+          ? undefined
+          : { y: -4, transition: { duration: 0.2, ease: "easeOut" } }
+      }
       className="group relative rounded-2xl border border-border bg-card p-8 transition-colors duration-200 hover:border-primary/50"
     >
       {/* Border glow — soft ring that fades in on hover, doesn't affect layout */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 shadow-[0_0_0_1px_rgba(99,102,241,0.15),0_8px_30px_-8px_rgba(99,102,241,0.35)] transition-opacity duration-300 group-hover:opacity-100"
+        className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 hover-glow-primary transition-opacity duration-300 group-hover:opacity-100"
       />
 
       <div className="relative">

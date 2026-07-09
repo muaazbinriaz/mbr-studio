@@ -15,7 +15,7 @@ export function organizationSchema() {
     "@type": "Organization",
     name: siteConfig.name,
     url: siteConfig.url,
-    logo: `${siteConfig.url}/og-images/default.png`,
+    logo: `${siteConfig.url}/opengraph-image`,
     founder: {
       "@type": "Person",
       name: siteConfig.founder,
@@ -62,12 +62,14 @@ export function caseStudySchema(
     image: string;
     client: string;
     tags: string[];
+    publishedAt?: string;
+    updatedAt?: string;
   },
   url: string,
 ) {
   return {
     "@context": "https://schema.org",
-    "@type": "CreativeWork",
+    "@type": "Article",
     headline: project.title,
     name: project.title,
     description: project.summary,
@@ -80,6 +82,11 @@ export function caseStudySchema(
       name: siteConfig.name,
       url: siteConfig.url,
     },
+    // Only included when a real date exists — omitting is safer than a
+    // fabricated one, and Google treats a missing datePublished as
+    // "recommended but not required" for Article rich results.
+    ...(project.publishedAt && { datePublished: project.publishedAt }),
+    ...(project.updatedAt && { dateModified: project.updatedAt }),
   };
 }
 
@@ -110,7 +117,7 @@ export function articleSchema(post: {
       name: siteConfig.name,
       logo: {
         "@type": "ImageObject",
-        url: `${siteConfig.url}/og-images/default.png`,
+        url: `${siteConfig.url}/opengraph-image`,
       },
     },
     image: post.image ? `${siteConfig.url}${post.image}` : undefined,

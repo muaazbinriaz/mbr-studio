@@ -17,6 +17,9 @@ import {
   Webhook,
   CreditCard,
   Radio,
+  LayoutDashboard,
+  Bot,
+  CircleUserRound,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -26,7 +29,7 @@ import { PlatformAmbient } from "@/components/platform/PlatformAmbient";
 import { useRouteLoader } from "@/components/loader/RouteLoader";
 import { DesktopNav, type NavGroup } from "@/components/platform/DesktopNav";
 import { MobileNav } from "@/components/platform/MobileNav";
-
+import { LogoMark } from "@/components/brand/Logo";
 export type PlatformVariant = "admin" | "client";
 
 const NAV_GROUPS_BY_VARIANT: Record<
@@ -34,10 +37,25 @@ const NAV_GROUPS_BY_VARIANT: Record<
   (isReseller: boolean) => NavGroup[]
 > = {
   admin: () => [
-    { type: "link", label: "Overview", href: "/admin" },
-    { type: "link", label: "Organizations", href: "/admin/organizations" },
-    { type: "link", label: "Billing", href: "/admin/billing" },
-    { type: "link", label: "Settings", href: "/admin/settings" },
+    { type: "link", label: "Overview", href: "/admin", icon: LayoutDashboard },
+    {
+      type: "link",
+      label: "Organizations",
+      href: "/admin/organizations",
+      icon: Building2,
+    },
+    {
+      type: "link",
+      label: "Billing",
+      href: "/admin/billing",
+      icon: CreditCard,
+    },
+    {
+      type: "link",
+      label: "Settings",
+      href: "/admin/settings",
+      icon: Settings,
+    },
   ],
 
   client: (isReseller) => {
@@ -47,14 +65,25 @@ const NAV_GROUPS_BY_VARIANT: Record<
     // (billing, keys, webhooks) — instead of one flat 9-item dropdown.
     // Nothing is removed, just re-prioritized and grouped by intent.
     const groups: NavGroup[] = [
-      { type: "link", label: "Overview", href: "/dashboard" },
+      {
+        type: "link",
+        label: "Overview",
+        href: "/dashboard",
+        icon: LayoutDashboard,
+      },
       {
         type: "link",
         label: "Knowledge Base",
         href: "/dashboard/knowledge-base",
+        icon: BookOpen,
       },
-      { type: "link", label: "Inbox", href: "/dashboard/inbox" },
-      { type: "link", label: "Leads", href: "/dashboard/leads" },
+      {
+        type: "link",
+        label: "Inbox",
+        href: "/dashboard/inbox",
+        icon: MessagesSquare,
+      },
+      { type: "link", label: "Leads", href: "/dashboard/leads", icon: Users },
     ];
 
     if (isReseller) {
@@ -62,12 +91,14 @@ const NAV_GROUPS_BY_VARIANT: Record<
         type: "link",
         label: "Clients",
         href: "/dashboard/clients",
+        icon: Building2,
       });
     }
 
     groups.push({
       type: "dropdown",
       label: "Agent",
+      icon: Bot,
       items: [
         {
           label: "Guardrails",
@@ -92,6 +123,7 @@ const NAV_GROUPS_BY_VARIANT: Record<
     groups.push({
       type: "dropdown",
       label: "Account",
+      icon: CircleUserRound,
       items: [
         { label: "Settings", href: "/dashboard/settings", icon: Settings },
         {
@@ -116,11 +148,10 @@ const NAV_GROUPS_BY_VARIANT: Record<
   },
 };
 
-const BRAND_BY_VARIANT: Record<PlatformVariant, string> = {
-  admin: "MBR Studio — Admin",
-  client: "MBR Studio",
+const BRAND_SUFFIX_BY_VARIANT: Record<PlatformVariant, string> = {
+  admin: "— Admin",
+  client: "",
 };
-
 function flattenHrefs(groups: NavGroup[]): { href: string }[] {
   return groups.flatMap((group) =>
     group.type === "link"
@@ -174,7 +205,7 @@ export function PlatformShell({
   const { start } = useRouteLoader();
 
   const groups = NAV_GROUPS_BY_VARIANT[variant](isReseller);
-  const brand = BRAND_BY_VARIANT[variant];
+  const brandSuffix = BRAND_SUFFIX_BY_VARIANT[variant];
   const activeHref = getActiveHref(pathname, flattenHrefs(groups));
 
   return (
@@ -187,9 +218,10 @@ export function PlatformShell({
             <Link
               href={variant === "admin" ? "/admin" : "/dashboard"}
               onClick={() => start()}
-              className="font-heading text-base font-semibold tracking-tight text-foreground"
+              className="flex items-center gap-2 font-heading text-base font-semibold tracking-tight text-foreground"
             >
-              {brand}
+              <LogoMark className="h-6 w-6" />
+              MBR Studio {brandSuffix}
             </Link>
             <Link
               href="/"

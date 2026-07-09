@@ -9,6 +9,10 @@ export function useFocusTrap(
   containerRef: RefObject<HTMLElement | null>,
   isActive: boolean,
   onClose: () => void,
+  // Optional: focus this element on activation instead of the first
+  // focusable descendant in DOM order. Existing callers (MobileNav,
+  // Navbar drawer, NavDropdown) omit this and keep the old behavior.
+  initialFocusRef?: RefObject<HTMLElement | null>,
 ) {
   useEffect(() => {
     if (!isActive || !containerRef.current) return;
@@ -19,7 +23,7 @@ export function useFocusTrap(
     const focusables = () =>
       Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
 
-    focusables()[0]?.focus();
+    (initialFocusRef?.current ?? focusables()[0])?.focus();
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -49,5 +53,5 @@ export function useFocusTrap(
       container.removeEventListener("keydown", handleKeyDown);
       previouslyFocused?.focus();
     };
-  }, [isActive, containerRef, onClose]);
+  }, [isActive, containerRef, onClose, initialFocusRef]);
 }

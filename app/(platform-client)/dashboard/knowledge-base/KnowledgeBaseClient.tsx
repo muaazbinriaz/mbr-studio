@@ -56,11 +56,31 @@ type DocumentRow = {
   chunkCount: number;
 };
 
-const STATUS_VARIANT: Record<string, "success" | "warning" | "outline"> = {
-  ready: "success",
-  processing: "warning",
-  error: "outline",
-};
+/**
+ * A document can be marked "ready" in the DB (content saved fine) while
+ * still having zero indexed chunks — e.g. seed/demo rows inserted
+ * outside the normal ingest pipeline, or a re-index that's still in
+ * flight. Showing a green "Ready" badge next to "Not yet indexed" in
+ * that case tells the client two contradictory things at once, since
+ * the agent can't actually answer from a document with 0 chunks.
+ * This derives one honest label + variant from both fields so the
+ * list row and the detail header can never disagree with each other.
+ */
+function getDisplayStatus(doc: Pick<DocumentRow, "status" | "chunkCount">): {
+  label: string;
+  variant: "success" | "warning" | "outline";
+} {
+  if (doc.status === "ready" && doc.chunkCount === 0) {
+    return { label: "Needs re-index", variant: "warning" };
+  }
+  if (doc.status === "error") {
+    return { label: "Error", variant: "outline" };
+  }
+  if (doc.status === "processing") {
+    return { label: "Processing", variant: "warning" };
+  }
+  return { label: "Ready", variant: "success" };
+}
 
 const SOURCE_ICON: Record<string, typeof Globe> = {
   url: Globe,
@@ -75,6 +95,61 @@ const SOURCE_LABEL: Record<string, string> = {
   manual_text: "Manual",
   faq_pair: "Manual",
 };
+
+const SEED_PLACEHOLDER_SUFFIX = "(example — replace with real info)";
+
+function isSeedPlaceholder(title: string): boolean {
+  return title.includes(SEED_PLACEHOLDER_SUFFIX);
+}
+
+function stripSeedSuffix(title: string): string {
+  return title.replace(` — ${SEED_PLACEHOLDER_SUFFIX}`, "").trim();
+}
+
+function formatRelativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const diffMin = Math.round(diffMs / 60000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.round(diffHr / 24);
+  if (diffDay < 7) return `${diffDay}d ago`;
+  const diffWeek = Math.round(diffDay / 7);
+  if (diffWeek < 5) return `${diffWeek}w ago`;
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function getPreview(text?: string | null, max = 72): string {
+  if (!text) return "";
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+}
+
+type ContentChunk =
+  | { type: "qa"; question: string; answer: string }
+  | { type: "text"; text: string };
+
+function parseContentChunks(raw: string): ContentChunk[] {
+  return raw
+    .split(/\n\s*\n/)
+    .map((b) => b.trim())
+    .filter(Boolean)
+    .map((block) => {
+      const match = block.match(/^Q:\s*([\s\S]*?)\nA:\s*([\s\S]*)$/i);
+      return match
+        ? {
+            type: "qa" as const,
+            question: match[1].trim(),
+            answer: match[2].trim(),
+          }
+        : { type: "text" as const, text: block };
+    });
+}
 
 const CONTENT_PLACEHOLDER = `Example:
 
@@ -188,7 +263,7 @@ export function KnowledgeBaseClient({
         <div
           className={`${
             selectedId ? "hidden lg:flex" : "flex"
-          } min-h-0 flex-col rounded-2xl border border-border bg-card`}
+          } min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card`}
         >
           <div className="min-h-0 flex-1 overflow-y-auto">
             {documents.length === 0 ? (
@@ -208,22 +283,37 @@ export function KnowledgeBaseClient({
                 {filtered.map((doc) => {
                   const isSelected = selectedId === doc.id;
                   const SourceIcon = SOURCE_ICON[doc.source_type] ?? AlignLeft;
+                  const isSeed = isSeedPlaceholder(doc.title);
+                  const displayTitle = isSeed
+                    ? stripSeedSuffix(doc.title)
+                    : doc.title;
+                  const preview = getPreview(doc.raw_content);
                   return (
                     <button
                       key={doc.id}
                       type="button"
                       onClick={() => setSelectedId(doc.id)}
-                      className={`flex w-full flex-col gap-1.5 px-4 py-3 text-left transition-colors duration-150 ${
+                      className={`flex w-full flex-col gap-1 px-4 py-3 text-left transition-colors duration-150 ${
                         isSelected ? "bg-primary/10" : "hover:bg-background"
                       }`}
                     >
                       <div className="flex items-center gap-2">
                         <SourceIcon className="h-3.5 w-3.5 flex-none text-secondary-text" />
                         <p className="min-w-0 flex-1 truncate font-body text-sm font-medium text-foreground">
-                          {doc.title}
+                          {displayTitle}
                         </p>
+                        {isSeed && (
+                          <span className="flex-none rounded-full border border-warning/30 bg-warning/10 px-1.5 py-0.5 font-body text-[9px] font-medium uppercase tracking-wide text-warning">
+                            Sample
+                          </span>
+                        )}
                       </div>
-                      <div className="flex items-center gap-1.5">
+                      {preview && (
+                        <p className="truncate pl-[22px] font-body text-xs text-secondary-text">
+                          {preview}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-1.5 pl-[22px]">
                         {doc.status === "processing" ? (
                           <span className="flex items-center gap-1.5 rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 font-body text-[10px] font-medium capitalize text-warning">
                             <span className="relative flex h-1.5 w-1.5">
@@ -234,14 +324,20 @@ export function KnowledgeBaseClient({
                           </span>
                         ) : (
                           <Badge
-                            variant={STATUS_VARIANT[doc.status] ?? "outline"}
-                            className="text-[10px] capitalize"
+                            variant={getDisplayStatus(doc).variant}
+                            className="text-[10px]"
                           >
-                            {doc.status}
+                            {getDisplayStatus(doc).label}
                           </Badge>
                         )}
                         <span className="font-body text-[10px] text-secondary-text">
                           {SOURCE_LABEL[doc.source_type] ?? "Manual"}
+                        </span>
+                        <span className="font-body text-[10px] text-secondary-text">
+                          ·
+                        </span>
+                        <span className="font-body text-[10px] text-secondary-text">
+                          {formatRelativeTime(doc.updated_at)}
                         </span>
                       </div>
                     </button>
@@ -256,7 +352,7 @@ export function KnowledgeBaseClient({
         <div
           className={`${
             selectedId ? "flex" : "hidden lg:flex"
-          } min-h-0 flex-col rounded-2xl border border-border bg-card`}
+          } min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card`}
         >
           {!selected ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center">
@@ -337,8 +433,8 @@ function DocumentDetail({
 
   return (
     <>
-      <div className="flex flex-none items-start justify-between gap-3 border-b border-border p-5">
-        <div className="flex min-w-0 items-start gap-2">
+      <div className="flex flex-none flex-col items-start gap-3 border-b border-border p-5 sm:flex-row sm:justify-between">
+        <div className="flex w-full min-w-0 items-start gap-2">
           <button
             type="button"
             onClick={onBack}
@@ -354,30 +450,40 @@ function DocumentDetail({
             </h2>
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <Badge
-                variant={STATUS_VARIANT[doc.status] ?? "outline"}
-                className="text-xs capitalize"
+                variant={getDisplayStatus(doc).variant}
+                className="text-xs"
               >
-                {doc.status}
+                {getDisplayStatus(doc).label}
               </Badge>
-              <span className="flex items-center gap-1 font-body text-xs text-secondary-text">
+              <span
+                className={`flex items-center gap-1 font-body text-xs ${
+                  doc.status === "ready" && doc.chunkCount === 0
+                    ? "text-warning"
+                    : "text-secondary-text"
+                }`}
+              >
                 <Layers className="h-3 w-3" />
-                {doc.chunkCount > 0
-                  ? `Split into ${doc.chunkCount} searchable piece${doc.chunkCount === 1 ? "" : "s"}`
-                  : "Not yet indexed"}
+                {doc.status === "processing"
+                  ? "Indexing in progress…"
+                  : doc.status === "ready" && doc.chunkCount === 0
+                    ? "No content indexed — click Re-index below"
+                    : doc.chunkCount > 0
+                      ? `Split into ${doc.chunkCount} searchable piece${doc.chunkCount === 1 ? "" : "s"}`
+                      : "Not yet indexed"}
               </span>
             </div>
           </div>
         </div>
 
-        <div className="flex flex-none gap-2">
+        <div className="flex w-full flex-none flex-wrap gap-2 sm:w-auto sm:flex-nowrap">
           {doc.source_type === "url" && (
             <button
               type="button"
               onClick={onRefresh}
               disabled={isRowPending}
-              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-body text-xs text-foreground transition-colors hover:bg-background disabled:opacity-50"
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-3 py-1.5 font-body text-xs text-foreground transition-colors hover:bg-background disabled:opacity-50"
             >
-              <Globe className="h-3.5 w-3.5" />
+              <Globe className="h-3.5 w-3.5 flex-none" />
               Refresh from source
             </button>
           )}
@@ -385,18 +491,18 @@ function DocumentDetail({
             type="button"
             onClick={onReindex}
             disabled={isRowPending}
-            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-body text-xs text-foreground transition-colors hover:bg-background disabled:opacity-50"
+            className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-3 py-1.5 font-body text-xs text-foreground transition-colors hover:bg-background disabled:opacity-50"
           >
-            <RotateCw className="h-3.5 w-3.5" />
+            <RotateCw className="h-3.5 w-3.5 flex-none" />
             Re-index
           </button>
           <button
             type="button"
             onClick={onDelete}
             disabled={isRowPending}
-            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-body text-xs text-error transition-colors hover:bg-error/10 disabled:opacity-50"
+            className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-3 py-1.5 font-body text-xs text-error transition-colors hover:bg-error/10 disabled:opacity-50"
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <Trash2 className="h-3.5 w-3.5 flex-none" />
             Delete
           </button>
         </div>
@@ -470,9 +576,36 @@ function DocumentDetail({
                 Edit content
               </button>
             </div>
-            <p className="max-w-2xl whitespace-pre-wrap font-body text-sm leading-relaxed text-foreground">
-              {doc.raw_content || "No content available."}
-            </p>
+            {doc.raw_content ? (
+              <div className="flex max-w-2xl flex-col gap-3 overflow-y-auto">
+                {parseContentChunks(doc.raw_content).map((chunk, i) =>
+                  chunk.type === "qa" ? (
+                    <div
+                      key={i}
+                      className="rounded-lg border border-border bg-background px-3.5 py-3"
+                    >
+                      <p className="font-body text-xs font-semibold text-primary">
+                        {chunk.question}
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap font-body text-sm leading-relaxed text-foreground">
+                        {chunk.answer}
+                      </p>
+                    </div>
+                  ) : (
+                    <p
+                      key={i}
+                      className="whitespace-pre-wrap font-body text-sm leading-relaxed text-foreground"
+                    >
+                      {chunk.text}
+                    </p>
+                  ),
+                )}
+              </div>
+            ) : (
+              <p className="max-w-2xl font-body text-sm leading-relaxed text-secondary-text">
+                No content available.
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -489,7 +622,7 @@ function AddKnowledgeModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="flex max-h-[85vh] w-full max-w-xl flex-col rounded-2xl border border-border bg-card">
+      <div className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-border bg-card">
         <div className="flex flex-none items-center justify-between border-b border-border p-5">
           <h2 className="font-heading text-base font-semibold text-foreground">
             Add knowledge

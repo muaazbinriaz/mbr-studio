@@ -1,13 +1,16 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ChevronDown } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFocusTrap } from "@/components/chatbot/useFocusTrap";
+import { NavIcon } from "@/components/nav/nav-icon-motion";
 
 export function NavDropdown({
   label,
+  icon,
   isActive,
   isOpen,
   onToggle,
@@ -15,6 +18,7 @@ export function NavDropdown({
   children,
 }: {
   label: string;
+  icon: LucideIcon;
   isActive: boolean;
   isOpen: boolean;
   onToggle: () => void;
@@ -24,6 +28,7 @@ export function NavDropdown({
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const shouldReduceMotion = useReducedMotion();
+  const [hovered, setHovered] = useState(false);
 
   useFocusTrap(panelRef, isOpen, onClose);
 
@@ -46,15 +51,18 @@ export function NavDropdown({
       <button
         type="button"
         onClick={onToggle}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         aria-expanded={isOpen}
         aria-haspopup="true"
         className={cn(
-          "flex items-center gap-1 rounded-lg px-3 py-2 font-body text-sm font-medium transition-colors duration-150",
+          "group relative flex items-center gap-1.5 rounded-lg px-3 py-2 font-body text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background after:absolute after:bottom-0 after:left-1/2 after:h-0.5 after:w-[55%] after:-translate-x-1/2 after:rounded-t-sm after:bg-gradient-to-r after:from-transparent after:via-primary after:to-transparent after:transition-transform after:duration-300 after:ease-out",
           isActive
-            ? "bg-primary/10 text-primary"
-            : "text-secondary-text hover:bg-card hover:text-foreground",
+            ? "bg-primary/15 text-primary font-semibold after:scale-x-100"
+            : "text-secondary-text after:scale-x-0 hover:bg-foreground/5 hover:font-semibold hover:text-foreground hover:after:scale-x-100",
         )}
       >
+        <NavIcon icon={icon} hovered={hovered} className="h-4 w-4" />
         {label}
         <ChevronDown
           className={cn(

@@ -3,23 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { isPlanId } from "@/lib/billing/plans";
-
-async function getCurrentOrgId() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("organization_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle();
-
-  return membership?.organization_id ?? null;
-}
+import { getCurrentOrgId } from "@/lib/auth/actions";
 
 export async function submitBillingRequest(formData: FormData) {
   const organizationId = await getCurrentOrgId();

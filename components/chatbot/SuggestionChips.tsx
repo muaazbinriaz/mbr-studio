@@ -26,7 +26,7 @@ export function SuggestionChips({
             key={option.id}
             href={option.href}
             onClick={onNavigate}
-            className="rounded-full border border-border bg-background px-3.5 py-2 font-body text-sm text-text transition-colors duration-200 hover:border-primary hover:text-primary"
+            className="rounded-full border border-border bg-background px-3.5 py-2 font-body text-sm text-text transition-colors duration-200 hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             {option.label}
           </Link>
@@ -35,7 +35,7 @@ export function SuggestionChips({
             key={option.id}
             type="button"
             onClick={() => onSelect(option)}
-            className="rounded-full border border-border bg-background px-3.5 py-2 font-body text-sm text-text transition-colors duration-200 hover:border-primary hover:text-primary"
+            className="rounded-full border border-border bg-background px-3.5 py-2 font-body text-sm text-text transition-colors duration-200 hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             {option.label}
           </button>

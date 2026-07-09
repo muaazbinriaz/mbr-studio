@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowRight } from "lucide-react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 
 import { projects } from "@/data/projects";
 import type { Project } from "@/types";
@@ -68,6 +68,14 @@ export default async function CaseStudyPage({ params }: CaseStudyPageProps) {
       {/* 1. Hero */}
       <section className="bg-background">
         <div className="mx-auto max-w-5xl px-6 py-24 md:px-10 md:py-32">
+          <Link
+            href="/case-studies"
+            className="mb-6 inline-flex items-center gap-1.5 font-body text-sm text-secondary-text hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to case studies
+          </Link>
+
           <div className="mb-8 flex flex-wrap items-center gap-3">
             <span className="rounded-full bg-primary/10 px-3 py-1 font-body text-xs font-medium text-primary">
               {project.category}

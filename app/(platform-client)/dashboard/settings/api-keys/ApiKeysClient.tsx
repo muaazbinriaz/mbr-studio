@@ -73,7 +73,8 @@ export function ApiKeysClient({ keys }: { keys: ApiKeyRow[] }) {
             <button
               type="button"
               onClick={copyKey}
-              className="flex-none rounded-md p-1.5 text-secondary-text hover:bg-card hover:text-foreground"
+              aria-label="Copy API key"
+              className="flex-none rounded-md p-1.5 text-secondary-text hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               <Copy className="h-3.5 w-3.5" />
             </button>

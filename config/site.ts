@@ -1,4 +1,5 @@
 import { buildWhatsAppLink } from "@/config/contact";
+import { Layers, Bot, Briefcase, Users, Newspaper, Mail } from "lucide-react";
 
 export const siteConfig = {
   name: "MBR Studio",
@@ -8,7 +9,7 @@ export const siteConfig = {
   description:
     "MBR Studio is a premium software agency building websites, AI-powered automation, and digital products for growing businesses.",
   url: "https://mbrstudio.co",
-  ogImage: "/og-images/default.png",
+  ogImage: "/opengraph-image",
   email: "mbrstudio.dev@gmail.com",
   // Added fields for the chat route
   consultationUrl: "https://cal.com/mbr-studio/consultation",
@@ -22,12 +23,12 @@ export const siteConfig = {
 } as const;
 
 export const navLinks = [
-  { label: "Services", href: "/services" },
-  { label: "AI Agent", href: "/ai-agent" },
-  { label: "Portfolio", href: "/portfolio" },
-  { label: "About", href: "/about" },
-  { label: "Blog", href: "/blog" },
-  { label: "Contact", href: "/contact" },
+  { label: "Services", href: "/services", icon: Layers },
+  { label: "AI Agent", href: "/ai-agent", icon: Bot },
+  { label: "Portfolio", href: "/portfolio", icon: Briefcase },
+  { label: "About", href: "/about", icon: Users },
+  { label: "Blog", href: "/blog", icon: Newspaper },
+  { label: "Contact", href: "/contact", icon: Mail },
 ] as const;
 
 export const primaryCta = {

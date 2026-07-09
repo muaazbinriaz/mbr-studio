@@ -3,8 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getPlan, isPlanId } from "@/lib/billing/plans";
+import { requireAdmin } from "@/lib/auth/actions";
 
 export async function approveBillingRequest(requestId: string) {
+  const caller = await requireAdmin();
+  if (caller.error) return { error: caller.error };
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -107,6 +111,9 @@ export async function approveBillingRequest(requestId: string) {
 }
 
 export async function rejectBillingRequest(requestId: string, reason: string) {
+  const caller = await requireAdmin();
+  if (caller.error) return { error: caller.error };
+
   const supabase = await createClient();
   const {
     data: { user },

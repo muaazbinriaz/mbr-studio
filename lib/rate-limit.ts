@@ -31,7 +31,10 @@ const buckets = new Map<string, Bucket>();
 
 export function checkRateLimitFor(
   key: string,
-  { windowMs = DEFAULT_WINDOW_MS, maxRequests = DEFAULT_MAX_REQUESTS }: RateLimitOptions = {},
+  {
+    windowMs = DEFAULT_WINDOW_MS,
+    maxRequests = DEFAULT_MAX_REQUESTS,
+  }: RateLimitOptions = {},
 ): { allowed: boolean; retryAfterSeconds?: number } {
   const now = Date.now();
   const bucket = buckets.get(key);
@@ -53,9 +56,19 @@ export function checkRateLimitFor(
 }
 
 export function getClientIp(request: Request): string {
+  // Vercel's edge network sets/overwrites these — a client can't spoof
+  // them on a real Vercel deployment. Plain x-forwarded-for is kept
+  // only as a last-resort fallback for local/non-Vercel environments.
+  const vercelForwarded = request.headers.get("x-vercel-forwarded-for");
+  if (vercelForwarded) return vercelForwarded.split(",")[0].trim();
+
+  const realIp = request.headers.get("x-real-ip");
+  if (realIp) return realIp.trim();
+
   const forwarded = request.headers.get("x-forwarded-for");
   if (forwarded) return forwarded.split(",")[0].trim();
-  return request.headers.get("x-real-ip") ?? "unknown";
+
+  return "unknown";
 }
 
 let pruneStarted = false;

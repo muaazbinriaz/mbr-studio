@@ -21,7 +21,7 @@
   --error: #ef4444;
   --foreground: #14141c;
   --muted-foreground: #62626f;
-  --border: rgba(20, 20, 28, 0.1);
+  --border: rgba(20, 20, 28, 0.13);
 
   --primary-foreground: #f9fafb;
   --secondary: var(--background-secondary);
@@ -459,6 +459,9 @@ nav a {
     -webkit-mask:
       linear-gradient(#000 0 0) content-box,
       linear-gradient(#000 0 0);
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
     animation: mbr-border-flow 6s linear infinite;
@@ -504,8 +507,27 @@ nav a {
     -webkit-mask:
       linear-gradient(#000 0 0) content-box,
       linear-gradient(#000 0 0);
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
     pointer-events: none;
+  }
+
+  /* Shared hover-glow shadow — replaces hardcoded rgba(99,102,241,...)
+     literals scattered across card components that duplicated
+     --color-primary's hex value (same anti-pattern already fixed once
+     for the chat-panel scrollbar above). */
+  .hover-glow-primary {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--color-primary) 15%, transparent),
+      0 8px 30px -8px color-mix(in srgb, var(--color-primary) 35%, transparent);
+  }
+
+  .hover-glow-primary-subtle {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--color-primary) 10%, transparent),
+      0 8px 24px -8px color-mix(in srgb, var(--color-primary) 20%, transparent);
   }
 }

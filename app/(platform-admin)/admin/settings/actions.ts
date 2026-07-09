@@ -3,23 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-
-async function requireAdmin() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { userId: null, error: "Not authenticated." } as const;
-
-  const { data: adminRow } = await supabase
-    .from("admins")
-    .select("user_id")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (!adminRow) return { userId: null, error: "Not authorized." } as const;
-  return { userId: user.id, error: null } as const;
-}
+import { requireAdmin } from "@/lib/auth/actions";
 
 export async function addAdminByEmail(formData: FormData) {
   const caller = await requireAdmin();

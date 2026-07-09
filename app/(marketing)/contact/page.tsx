@@ -55,6 +55,7 @@ export default function ContactPage() {
 
             {/* Contact info */}
             <div className="space-y-6">
+              <h2 className="sr-only">Other ways to reach us</h2>
               <InfoCard
                 icon={Mail}
                 title="Email"

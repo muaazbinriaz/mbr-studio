@@ -135,13 +135,17 @@ function PortfolioCard({
       layout
       initial={shouldReduceMotion ? false : { opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, delay: Math.min(index, 5) * 0.04 }}
-      whileHover={shouldReduceMotion ? undefined : { y: -4 }}
+      transition={{ duration: 0.4, delay: Math.min(index, 5) * 0.04 }}
+      whileHover={
+        shouldReduceMotion
+          ? undefined
+          : { y: -4, transition: { duration: 0.2, ease: "easeOut" } }
+      }
       className="group relative overflow-hidden rounded-2xl border border-border bg-card transition-colors duration-200 hover:border-primary/50"
     >
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-10 rounded-2xl opacity-0 shadow-[0_0_0_1px_rgba(99,102,241,0.15),0_8px_30px_-8px_rgba(99,102,241,0.35)] transition-opacity duration-300 group-hover:opacity-100"
+        className="pointer-events-none absolute inset-0 z-10 rounded-2xl opacity-0 hover-glow-primary transition-opacity duration-300 group-hover:opacity-100"
       />
 
       <Link

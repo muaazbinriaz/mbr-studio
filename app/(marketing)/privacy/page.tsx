@@ -48,7 +48,7 @@ export default function PrivacyPage() {
                 MBR Studio (&quot;we,&quot; &quot;us,&quot; or &quot;our&quot;)
                 respects your privacy. This policy explains what information we
                 collect when you use this website, how we use it, and the
-                choices you have. It applies to visitors of mbrstudio.com and
+                choices you have. It applies to visitors of mbrstudio.co and
                 anyone who submits the contact form.
               </p>
             </PolicySection>

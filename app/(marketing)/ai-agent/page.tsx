@@ -5,7 +5,6 @@ import {
   ArrowRight,
   BarChart3,
   Bot,
-  Check,
   Inbox,
   MessageCircle,
   ShieldCheck,
@@ -13,12 +12,14 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { FadeIn } from "@/components/animations/FadeIn";
+import { AiAgentFeatureCard } from "@/components/sections/AiAgentFeatureCard";
+import { AiAgentPricingCard } from "@/components/sections/AiAgentPricingCard";
+import { Testimonials } from "@/components/sections/Testimonials";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { breadcrumbSchema } from "@/lib/seo/schemas";
 import { siteConfig } from "@/config/site";
 import { PLANS } from "@/lib/billing/plans";
-import { formatCurrency } from "@/lib/formatters";
 
 export const metadata: Metadata = {
   title: "AI Agent",
@@ -29,11 +30,6 @@ export const metadata: Metadata = {
   },
 };
 
-/**
- * .env.local mein NEXT_PUBLIC_DEMO_WIDGET_KEY set karo (neeche steps
- * dekho) — jab tak set na ho, widget script load hi nahi hoga (silently
- * broken dikhne ke bajaye). okay?
- */
 const DEMO_WIDGET_PUBLIC_KEY = process.env.NEXT_PUBLIC_DEMO_WIDGET_KEY || null;
 
 const HOW_IT_WORKS = [
@@ -66,37 +62,37 @@ const HOW_IT_WORKS = [
 const FEATURES = [
   {
     icon: ShieldCheck,
-    title: "Guardrails & safety rules",
+    title: "Stays on-brand, every time",
     description:
       "Define what the agent can and can't say, and when it should stop and hand off to a human.",
   },
   {
     icon: Sparkles,
-    title: "Lead capture",
+    title: "Never lose a lead again",
     description:
       "Collects name, email, and intent mid-conversation — leads land in your dashboard automatically.",
   },
   {
     icon: MessageCircle,
-    title: "Multi-channel",
+    title: "Meets customers where they are",
     description:
       "Website live now, with WhatsApp, Instagram, and Messenger available depending on your plan.",
   },
   {
     icon: Inbox,
-    title: "Human handoff & live inbox",
+    title: "Jump in anytime, no context lost",
     description:
-      "Jump into any conversation in real time when the agent needs a human, no context lost.",
+      "Take over any conversation in real time when the agent needs a human.",
   },
   {
     icon: BarChart3,
-    title: "Analytics dashboard",
+    title: "Know exactly what's working",
     description:
       "Track conversations, leads, and channel performance in one place.",
   },
   {
     icon: Bot,
-    title: "Industry templates",
+    title: "Live in minutes, not weeks",
     description:
       "Start from a template tuned for your industry instead of a blank knowledge base.",
   },
@@ -122,7 +118,7 @@ export default function AiAgentPage() {
 
       {/* Hero */}
       <section className="bg-background">
-        <div className="mx-auto max-w-4xl px-6 py-24 text-center md:px-10 md:py-32">
+        <FadeIn className="mx-auto max-w-4xl px-6 py-24 text-center md:px-10 md:py-32">
           <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
             AI Agent Platform
           </p>
@@ -137,24 +133,30 @@ export default function AiAgentPage() {
             how it works.
           </p>
 
-          {DEMO_WIDGET_PUBLIC_KEY ? (
-            <p className="mt-8 font-body text-sm text-secondary-text">
-              Look for the chat bubble in the bottom-right corner of this page
-              👇
-            </p>
-          ) : (
-            <p className="mt-8 font-body text-sm text-secondary-text">
-              Want to try it live?{" "}
-              <Link
-                href="/contact"
-                className="text-primary underline underline-offset-2 hover:text-accent"
-              >
-                Book a free consultation
-              </Link>{" "}
-              and we&apos;ll walk you through a live demo.
+          <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
+            <Button asChild size="lg" className="rounded-lg px-7 py-6">
+              <Link href="/signup">
+                Start Free Trial
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              size="lg"
+              className="rounded-lg px-7 py-6"
+            >
+              <Link href="/contact">Book a Consultation</Link>
+            </Button>
+          </div>
+
+          {DEMO_WIDGET_PUBLIC_KEY && (
+            <p className="mt-6 font-body text-sm text-secondary-text">
+              Or just look for the chat bubble in the bottom-right corner of
+              this page 👇 — it&apos;s the same agent, live.
             </p>
           )}
-        </div>
+        </FadeIn>
       </section>
 
       {/* How it works */}
@@ -169,8 +171,13 @@ export default function AiAgentPage() {
             </h2>
           </div>
           <ol className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
-            {HOW_IT_WORKS.map((step) => (
-              <li key={step.number}>
+            {HOW_IT_WORKS.map((step, index) => (
+              <FadeIn
+                key={step.number}
+                as="li"
+                viewport={{ once: true, amount: 0.4 }}
+                transition={{ duration: 0.4, delay: index * 0.08 }}
+              >
                 <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card font-heading text-xs font-semibold text-text">
                   {step.number}
                 </div>
@@ -180,7 +187,7 @@ export default function AiAgentPage() {
                 <p className="font-body text-sm leading-relaxed text-secondary-text">
                   {step.description}
                 </p>
-              </li>
+              </FadeIn>
             ))}
           </ol>
         </div>
@@ -198,20 +205,16 @@ export default function AiAgentPage() {
             </h2>
           </div>
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {FEATURES.map((feature) => {
+            {FEATURES.map((feature, index) => {
               const Icon = feature.icon;
               return (
-                <Card key={feature.title} className="p-8">
-                  <div className="mb-6 flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <Icon className="h-5 w-5" strokeWidth={1.75} />
-                  </div>
-                  <h3 className="mb-2 font-heading text-lg font-semibold text-text">
-                    {feature.title}
-                  </h3>
-                  <p className="font-body text-sm leading-relaxed text-secondary-text">
-                    {feature.description}
-                  </p>
-                </Card>
+                <AiAgentFeatureCard
+                  key={feature.title}
+                  icon={<Icon className="h-5 w-5" strokeWidth={1.75} />}
+                  title={feature.title}
+                  description={feature.description}
+                  index={index}
+                />
               );
             })}
           </div>
@@ -229,70 +232,50 @@ export default function AiAgentPage() {
               Simple, transparent plans as your business grows.
             </h2>
           </div>
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-            {(Object.keys(PLANS) as (keyof typeof PLANS)[]).map((planId) => {
-              const plan = PLANS[planId];
-              return (
-                <Card
+          <div className="grid grid-cols-1 gap-6 pt-3 sm:grid-cols-2 lg:grid-cols-3">
+            {(Object.keys(PLANS) as (keyof typeof PLANS)[]).map(
+              (planId, index) => (
+                <AiAgentPricingCard
                   key={planId}
-                  className={`p-8 ${planId === "growth" ? "border-primary" : ""}`}
-                >
-                  <h3 className="mb-1 font-heading text-lg font-semibold text-text">
-                    {plan.label}
-                  </h3>
-                  <p className="mb-6 font-heading text-3xl font-bold text-text">
-                    {formatCurrency(plan.priceMonthlyPKR, "PKR")}
-                    <span className="ml-1 font-body text-sm font-normal text-secondary-text">
-                      /month
-                    </span>
-                  </p>
-                  <ul className="space-y-3">
-                    <li className="flex items-start gap-3">
-                      <Check
-                        className="mt-0.5 h-4 w-4 flex-none text-accent"
-                        strokeWidth={2.5}
-                      />
-                      <span className="font-body text-sm text-text">
-                        {plan.monthlyMessageLimit.toLocaleString()} messages /
-                        month
-                      </span>
-                    </li>
-                    <li className="flex items-start gap-3">
-                      <Check
-                        className="mt-0.5 h-4 w-4 flex-none text-accent"
-                        strokeWidth={2.5}
-                      />
-                      <span className="font-body text-sm text-text">
-                        Up to {plan.maxAgents} agent
-                        {plan.maxAgents > 1 ? "s" : ""}
-                      </span>
-                    </li>
-                    <li className="flex items-start gap-3">
-                      <Check
-                        className="mt-0.5 h-4 w-4 flex-none text-accent"
-                        strokeWidth={2.5}
-                      />
-                      <span className="font-body text-sm text-text capitalize">
-                        {plan.channels.join(", ")}
-                      </span>
-                    </li>
-                  </ul>
-                </Card>
-              );
-            })}
+                  plan={PLANS[planId]}
+                  featured={planId === "growth"}
+                  index={index}
+                />
+              ),
+            )}
           </div>
         </div>
       </section>
 
+      {/* Social proof */}
+      <Testimonials />
+
+      <section className="bg-background">
+        <div className="mx-auto max-w-3xl px-6 py-16 text-center md:px-10">
+          <p className="font-body text-sm text-secondary-text">
+            Want to see it in a real business?{" "}
+            <Link
+              href="/case-studies"
+              className="font-medium text-primary underline underline-offset-2 hover:text-accent"
+            >
+              Read our case studies
+            </Link>
+          </p>
+        </div>
+      </section>
+
       {/* Closing CTA */}
-      <section className="border-t border-border bg-background">
-        <div className="mx-auto max-w-3xl px-6 py-24 text-center md:px-10 md:py-32">
+      <section className="bg-background">
+        <FadeIn
+          viewport={{ once: true, amount: 0.5 }}
+          className="mx-auto max-w-3xl px-6 py-24 text-center md:px-10 md:py-32"
+        >
           <h2 className="font-heading text-[28px] font-bold leading-tight tracking-tight text-text sm:text-[36px]">
-            Want this for your business?
+            Ready to give your business its own AI agent?
           </h2>
           <p className="mx-auto mt-4 max-w-xl font-body text-base text-secondary-text">
-            Ready to set this up for your own business? Start free and configure
-            it yourself, or book a call and we&apos;ll set it up with you.
+            Start free and configure it yourself, or book a call and we&apos;ll
+            set it up with you.
           </p>
           <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
             <Button asChild size="lg" className="rounded-lg px-7 py-6">
@@ -310,7 +293,7 @@ export default function AiAgentPage() {
               <Link href="/contact">Book a Consultation</Link>
             </Button>
           </div>
-        </div>
+        </FadeIn>
       </section>
     </>
   );

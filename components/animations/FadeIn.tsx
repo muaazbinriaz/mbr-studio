@@ -2,28 +2,15 @@
 
 import { motion, useReducedMotion, type HTMLMotionProps } from "framer-motion";
 
-/**
- * Shared "fade in + slide up on scroll into view" wrapper.
- *
- * Beyond the original `delay`/`className` props, this now accepts:
- * - `viewport` — override the default `{ once: true, margin: "-80px" }`
- *   trigger point (some call sites used `amount: 0.3/0.4/0.6` instead).
- * - `transition` — override the default duration/easing entirely.
- * - `y` — vertical slide distance in px (default 16, matches the most
- *   common call site; some sections used a smaller offset).
- * - any other HTMLMotionProps (`whileHover`, `layout`, etc.) are
- *   forwarded to the underlying motion.div, so call sites that need a
- *   hover effect alongside the entry fade don't have to hand-roll their
- *   own motion.div.
- *
- * Respects prefers-reduced-motion internally (disables the entry
- * animation via `initial={false}`), matching the pattern every section
- * component in this codebase already followed individually — so
- * converting a call site to FadeIn doesn't regress that behavior.
- */
+const MOTION_TAGS = {
+  div: motion.div,
+  li: motion.li,
+} as const;
+
 type FadeInProps = Omit<HTMLMotionProps<"div">, "initial" | "whileInView"> & {
   delay?: number;
   y?: number;
+  as?: keyof typeof MOTION_TAGS;
 };
 
 export function FadeIn({
@@ -33,12 +20,15 @@ export function FadeIn({
   className,
   viewport,
   transition,
+  as = "div",
   ...rest
 }: FadeInProps) {
   const shouldReduceMotion = useReducedMotion();
+  // Cast to any to avoid union-of-components type conflict (e.g. onCopy)
+  const MotionTag = MOTION_TAGS[as] as any;
 
   return (
-    <motion.div
+    <MotionTag
       className={className}
       initial={shouldReduceMotion ? false : { opacity: 0, y }}
       whileInView={{ opacity: 1, y: 0 }}
@@ -47,6 +37,6 @@ export function FadeIn({
       {...rest}
     >
       {children}
-    </motion.div>
+    </MotionTag>
   );
 }

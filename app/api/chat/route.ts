@@ -12,6 +12,17 @@ import { searchProjects } from "@/data/projects";
 import { getWhatsappLink, siteConfig } from "@/config/site";
 import { NextRequest } from "next/server";
 
+const uiMessageSchema = z.object({
+  id: z.string().optional(),
+  role: z.enum(["user", "assistant", "system"]),
+  parts: z.array(z.object({}).passthrough()).max(20).optional(),
+  content: z.string().max(4000).optional(),
+});
+
+const chatRequestSchema = z.object({
+  messages: z.array(uiMessageSchema).min(1).max(50),
+});
+
 // Node.js runtime (not edge) — required per project decision.
 export const runtime = "nodejs";
 
@@ -93,7 +104,25 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { messages }: { messages: UIMessage[] } = await req.json();
+  let rawBody: unknown;
+  try {
+    rawBody = await req.json();
+  } catch {
+    return new Response(JSON.stringify({ error: "Invalid JSON body." }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const parsed = chatRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return new Response(JSON.stringify({ error: "Invalid request." }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const messages = parsed.data.messages as UIMessage[];
 
   const result = streamText({
     model: chatModel,

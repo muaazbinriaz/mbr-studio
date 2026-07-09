@@ -6,6 +6,8 @@ import { formatDate } from "@/lib/formatters";
 import { articleSchema } from "@/lib/seo/schemas";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 
 interface BlogPostPageProps {
   params: Promise<{ slug: string }>; // ✅ params is async, per Next.js 15
@@ -50,46 +52,52 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
           publishedAt: post.publishedAt,
           updatedAt: post.updatedAt,
           authorName: post.authorName,
+          image: post.coverImage,
         })}
       />
-      <main id="main-content">
-        <article className="mx-auto max-w-3xl px-6 py-24 md:px-10 md:py-32">
-          <div className="mb-8">
-            <Badge variant="outline" className="mb-3">
-              {post.category}
-            </Badge>
-            <h1 className="font-heading text-[32px] font-bold leading-tight text-text sm:text-[44px]">
-              {post.title}
-            </h1>
-            <div className="mt-4 flex items-center gap-2 text-sm text-secondary-text">
-              <span>{post.authorName}</span>
-              <span>·</span>
-              <time dateTime={post.publishedAt}>
-                {formatDate(post.publishedAt)}
-              </time>
-              {post.updatedAt && (
-                <>
-                  <span>·</span>
-                  <time dateTime={post.updatedAt}>
-                    Updated {formatDate(post.updatedAt)}
-                  </time>
-                </>
-              )}
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {post.tags.map((tag) => (
-                <Badge key={tag} variant="secondary" className="text-xs">
-                  {tag}
-                </Badge>
-              ))}
-            </div>
+      <article className="mx-auto max-w-3xl px-6 py-24 md:px-10 md:py-32">
+        <div className="mb-8">
+          <Link
+            href="/blog"
+            className="mb-4 inline-flex items-center gap-1.5 font-body text-sm text-secondary-text hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to blog
+          </Link>
+          <Badge variant="outline" className="mb-3">
+            {post.category}
+          </Badge>
+          <h1 className="font-heading text-[32px] font-bold leading-tight text-text sm:text-[44px]">
+            {post.title}
+          </h1>
+          <div className="mt-4 flex items-center gap-2 text-sm text-secondary-text">
+            <span>{post.authorName}</span>
+            <span>·</span>
+            <time dateTime={post.publishedAt}>
+              {formatDate(post.publishedAt)}
+            </time>
+            {post.updatedAt && (
+              <>
+                <span>·</span>
+                <time dateTime={post.updatedAt}>
+                  Updated {formatDate(post.updatedAt)}
+                </time>
+              </>
+            )}
           </div>
-          <div
-            className="prose prose-invert max-w-none"
-            dangerouslySetInnerHTML={{ __html: post.content }}
-          />
-        </article>
-      </main>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {post.tags.map((tag) => (
+              <Badge key={tag} variant="secondary" className="text-xs">
+                {tag}
+              </Badge>
+            ))}
+          </div>
+        </div>
+        <div
+          className="prose prose-invert max-w-none"
+          dangerouslySetInnerHTML={{ __html: post.content }}
+        />
+      </article>
     </>
   );
 }

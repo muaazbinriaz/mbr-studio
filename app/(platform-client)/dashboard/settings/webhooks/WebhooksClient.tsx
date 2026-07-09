@@ -97,7 +97,8 @@ export function WebhooksClient({
             <button
               type="button"
               onClick={copySecret}
-              className="flex-none rounded-md p-1.5 text-secondary-text hover:bg-card hover:text-foreground"
+              aria-label="Copy signing secret"
+              className="flex-none rounded-md p-1.5 text-secondary-text hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               <Copy className="h-3.5 w-3.5" />
             </button>

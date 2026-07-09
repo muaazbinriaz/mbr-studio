@@ -43,24 +43,17 @@ export function getPlan(planId: string) {
 }
 
 // Manual payment instructions shown to clients on the billing page.
-// TODO: replace bracketed placeholders with real account details
-// before taking a real payment.
 export const MANUAL_PAYMENT_METHODS = [
   {
     id: "bank_transfer",
     label: "Bank Transfer",
     instructions:
-      "Account title: [TODO]\nBank: [TODO]\nAccount #: [TODO]\nIBAN: [TODO]",
-  },
-  {
-    id: "jazzcash",
-    label: "JazzCash",
-    instructions: "JazzCash number: [TODO]",
+      "Account title: MUAAZ BIN RIAZ\nBank: Faysal Bank\nBranch: IBB The Mall, Rawalpindi\nAccount #: 3005301000005608\nIBAN: PK19FAYS3005301000005608",
   },
   {
     id: "easypaisa",
     label: "Easypaisa",
-    instructions: "Easypaisa number: [TODO]",
+    instructions: "Easypaisa number: 0334-0819120",
   },
 ] as const;
 

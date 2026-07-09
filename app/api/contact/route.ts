@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 
 import { contactFormSchema } from "@/lib/validations/contact";
+import { getClientIp } from "@/lib/rate-limit";
 import {
   CONTACT_EMAIL,
   SERVICE_OPTIONS,
@@ -32,11 +33,21 @@ function labelFor(
   return options.find((o) => o.value === value)?.label ?? "—";
 }
 
+// Visitor-supplied fields get interpolated into HTML emails below —
+// escape them so a message containing markup/links can't inject into
+// the internal notification or the visitor's own auto-reply.
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export async function POST(request: Request) {
   try {
-    const ip =
-      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-      "unknown";
+    const ip = getClientIp(request);
 
     if (isRateLimited(ip)) {
       return NextResponse.json(
@@ -75,6 +86,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true });
     }
 
+    const safeName = escapeHtml(name);
+    const safeEmail = escapeHtml(email);
+    const safeCompany = company ? escapeHtml(company) : "";
+    const safePhone = phone ? escapeHtml(phone) : "";
+    const safeMessage = escapeHtml(message);
+
     if (!process.env.RESEND_API_KEY) {
       console.error("RESEND_API_KEY is not set.");
       return NextResponse.json(
@@ -101,27 +118,28 @@ export async function POST(request: Request) {
           <h2 style="margin-bottom: 4px;">New contact form submission</h2>
           <p style="color: #667085; margin-top: 0;">via mbrstudio.dev</p>
           <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-            <tr><td style="padding: 8px 0; color: #667085; width: 140px;">Name</td><td style="padding: 8px 0;">${name}</td></tr>
-            <tr><td style="padding: 8px 0; color: #667085;">Email</td><td style="padding: 8px 0;">${email}</td></tr>
-            <tr><td style="padding: 8px 0; color: #667085;">Company</td><td style="padding: 8px 0;">${company || "—"}</td></tr>
-            <tr><td style="padding: 8px 0; color: #667085;">Phone</td><td style="padding: 8px 0;">${phone || "—"}</td></tr>
+            <tr><td style="padding: 8px 0; color: #667085; width: 140px;">Name</td><td style="padding: 8px 0;">${safeName}</td></tr>
+            <tr><td style="padding: 8px 0; color: #667085;">Email</td><td style="padding: 8px 0;">${safeEmail}</td></tr>
+            <tr><td style="padding: 8px 0; color: #667085;">Company</td><td style="padding: 8px 0;">${safeCompany || "—"}</td></tr>
+            <tr><td style="padding: 8px 0; color: #667085;">Phone</td><td style="padding: 8px 0;">${safePhone || "—"}</td></tr>
             <tr><td style="padding: 8px 0; color: #667085;">Service</td><td style="padding: 8px 0;">${serviceLabel}</td></tr>
             <tr><td style="padding: 8px 0; color: #667085;">Budget</td><td style="padding: 8px 0;">${budgetLabel}</td></tr>
           </table>
           <p style="color: #667085; margin-bottom: 4px;">Message</p>
-          <p style="white-space: pre-wrap; line-height: 1.6;">${message}</p>
+          <p style="white-space: pre-wrap; line-height: 1.6;">${safeMessage}</p>
         </div>
       `,
     });
 
     // Auto-reply to the visitor.
     await resend.emails.send({
-      from: `MBR Studio <${CONTACT_EMAIL}>`,
+      from: `MBR Studio <notifications@mbrstudio.dev>`,
       to: email,
+      replyTo: CONTACT_EMAIL,
       subject: "We've received your message — MBR Studio",
       html: `
         <div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto;">
-          <p>Hi ${name.split(" ")[0]},</p>
+          <p>Hi ${safeName.split(" ")[0]},</p>
           <p>
             Thanks for reaching out to MBR Studio. We've received your message
             about <strong>${serviceLabel}</strong> and will follow up within

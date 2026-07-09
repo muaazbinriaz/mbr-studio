@@ -6,31 +6,7 @@ import { encryptToken } from "@/lib/channels/encryption";
 import { verifyMetaCredential } from "@/lib/channels/verify-credential";
 import { sendWhatsAppMessage } from "@/lib/channels/send";
 import { isChannelAllowedForPlan } from "@/lib/billing/limits";
-
-async function getActiveAgentForCurrentUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("organization_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle();
-  if (!membership) return null;
-
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("id, organization_id")
-    .eq("organization_id", membership.organization_id)
-    .eq("is_active", true)
-    .limit(1)
-    .maybeSingle();
-  return agent;
-}
+import { getActiveAgentForCurrentUser } from "@/lib/auth/actions";
 
 /**
  * Plan gate — checked before any channel connect goes through. Returns

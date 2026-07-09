@@ -23,6 +23,11 @@ type ChatPanelContextValue = {
   open: () => void;
   close: () => void;
   toggle: () => void;
+  // Lets other fixed/floating UI (e.g. Navbar's mobile drawer) tell the
+  // launcher button to hide itself while they're open, so two z-50
+  // floating elements don't stack on top of each other.
+  launcherSuppressed: boolean;
+  setLauncherSuppressed: (suppressed: boolean) => void;
 };
 
 const ChatPanelContext = createContext<ChatPanelContextValue | null>(null);
@@ -34,7 +39,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const close = useCallback(() => setIsOpen(false), []);
   const toggle = useCallback(() => setIsOpen((v) => !v), []);
 
-  const value: ChatPanelContextValue = { isOpen, open, close, toggle };
+  const [launcherSuppressed, setLauncherSuppressed] = useState(false);
+
+  const value: ChatPanelContextValue = {
+    isOpen,
+    open,
+    close,
+    toggle,
+    launcherSuppressed,
+    setLauncherSuppressed,
+  };
 
   return (
     <ChatPanelContext.Provider value={value}>

@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { AlertTriangle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,8 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const shouldReduceMotion = useReducedMotion();
+
   // Close on Escape.
   useEffect(() => {
     if (!open) return;
@@ -79,9 +81,17 @@ export function ConfirmDialog({
             aria-modal="true"
             aria-labelledby="confirm-dialog-title"
             aria-describedby="confirm-dialog-description"
-            initial={{ opacity: 0, scale: 0.95, y: 8 }}
+            initial={
+              shouldReduceMotion
+                ? { opacity: 0 }
+                : { opacity: 0, scale: 0.95, y: 8 }
+            }
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 8 }}
+            exit={
+              shouldReduceMotion
+                ? { opacity: 0 }
+                : { opacity: 0, scale: 0.95, y: 8 }
+            }
             transition={{ duration: 0.15, ease: "easeOut" }}
             className="relative w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-lg"
           >

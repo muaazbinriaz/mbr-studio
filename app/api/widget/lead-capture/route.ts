@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { triggerWebhookDispatch } from "@/lib/webhooks/trigger";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { checkRateLimitFor } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
+
+const LEAD_CAPTURE_WINDOW_MS = 60_000;
+const LEAD_CAPTURE_MAX_PER_ORG_PER_MINUTE = 10;
 
 const leadCaptureSchema = z.object({
   publicKey: z.string().trim().min(1),
@@ -50,6 +54,19 @@ export async function POST(req: NextRequest) {
 
   if (!embedKey || embedKey.revoked_at) {
     return fail(404, "Invalid or revoked client key.");
+  }
+
+  // Rate-limit per organization — each submission also fires a webhook
+  // dispatch, so unlimited calls = free write + webhook amplification.
+  const { allowed } = checkRateLimitFor(
+    `lead-capture-org:${embedKey.organization_id}`,
+    {
+      windowMs: LEAD_CAPTURE_WINDOW_MS,
+      maxRequests: LEAD_CAPTURE_MAX_PER_ORG_PER_MINUTE,
+    },
+  );
+  if (!allowed) {
+    return fail(429, "Too many submissions — please try again shortly.");
   }
 
   // If a conversationId was supplied, confirm it actually belongs to

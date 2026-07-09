@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, Check } from "lucide-react";
 
 import { Technologies } from "@/components/sections/Technologies";
 import { Button } from "@/components/ui/button";
-import { LogoMark } from "@/components/brand/Logo";
+import { StatsBar } from "@/components/sections/StatsBar";
 
 /**
  * About Page — Prompt 15, SEO pass in Prompt 20.
@@ -80,10 +81,20 @@ export default function AboutPage() {
               "A studio built around one engineer's standards, not a growing headcount."
             }
           </h1>
+          <p className="mt-4 max-w-2xl font-body text-lg text-secondary-text">
+            Muaaz Bin Riaz builds websites, AI chatbots, and automation for
+            growing businesses — no account managers, no bench of juniors.
+          </p>
 
           <div className="mt-14 grid grid-cols-1 gap-10 md:grid-cols-[auto_1fr] md:items-start md:gap-12">
-            <div className="flex h-20 w-20 flex-none items-center justify-center rounded-2xl border border-border bg-card md:h-24 md:w-24">
-              <LogoMark className="h-10 w-10 md:h-12 md:w-12" />
+            <div className="relative h-20 w-20 flex-none overflow-hidden rounded-2xl border border-border bg-card md:h-24 md:w-24">
+              <Image
+                src="/images/muaaz.jpg"
+                alt="Muaaz Bin Riaz, founder of MBR Studio"
+                fill
+                sizes="96px"
+                className="object-cover"
+              />
             </div>
 
             <div className="max-w-2xl">
@@ -115,6 +126,8 @@ export default function AboutPage() {
           </div>
         </div>
       </section>
+
+      <StatsBar />
 
       {/* Philosophy */}
       <section className="border-t border-border bg-secondary-background">

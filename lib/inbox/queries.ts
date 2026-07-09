@@ -136,29 +136,6 @@ export interface InboxMessageRow {
   createdAt: string;
 }
 
-export async function getConversationMessages(
-  supabase: SupabaseServerClient,
-  conversationId: string,
-): Promise<InboxMessageRow[]> {
-  const { data, error } = await supabase
-    .from("messages")
-    .select("id, role, content, created_at")
-    .eq("conversation_id", conversationId)
-    .order("created_at", { ascending: true });
-
-  if (error) {
-    console.error("[inbox] getConversationMessages failed:", error);
-    return [];
-  }
-
-  return (data ?? []).map((m) => ({
-    id: m.id,
-    role: m.role,
-    content: m.content,
-    createdAt: m.created_at,
-  }));
-}
-
 /**
  * Unread badge count (Section 5) — granularity is per user, per
  * organization (see migration 0009's comment). Counts conversations

@@ -43,7 +43,7 @@ export function StatCard({
       {/* Corner glow, fades in on hover — same technique as Services.tsx cards */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 shadow-[0_0_0_1px_rgba(99,102,241,0.12),0_8px_30px_-8px_rgba(99,102,241,0.3)] transition-opacity duration-300 group-hover:opacity-100"
+        className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 hover-glow-primary transition-opacity duration-300 group-hover:opacity-100"
       />
 
       <div className="relative flex items-start justify-between">

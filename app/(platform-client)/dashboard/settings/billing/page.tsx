@@ -83,7 +83,7 @@ export default async function BillingPage() {
       <p className="mt-2 font-body text-sm text-secondary-text">
         {org?.parent_organization_id
           ? "Your plan is managed by your reseller."
-          : "Pick a plan and confirm payment via bank transfer, JazzCash, or Easypaisa — an MBR Studio admin activates your plan once payment is confirmed, usually within a few hours."}
+          : "Pick a plan and confirm payment via bank transfer or Easypaisa — an MBR Studio admin activates your plan once payment is confirmed, usually within a few hours."}
       </p>
 
       <div className="mt-8">

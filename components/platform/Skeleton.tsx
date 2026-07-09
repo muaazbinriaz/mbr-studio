@@ -90,6 +90,48 @@ export function SkeletonPanel({ className = "h-64" }: { className?: string }) {
   );
 }
 
+// Matches the icon-less inline stat cards used directly in a page (not
+// the shared StatCard component) — e.g. clients/[id]/page.tsx's
+// "Agent / KB documents / Conversations" cards, which are just a label
+// + value with no icon chip. Kept separate from SkeletonStatCard so we
+// don't overshoot height on pages that don't have an icon.
+export function SkeletonMiniStatCard() {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-6">
+      <SkeletonBlock className="h-3 w-16" />
+      <SkeletonBlock className="mt-2 h-5 w-12" />
+    </div>
+  );
+}
+
+export function SkeletonMiniStatGrid({
+  count = 3,
+  gridClassName = "grid-cols-1 gap-4 sm:grid-cols-3",
+}: {
+  count?: number;
+  gridClassName?: string;
+}) {
+  return (
+    <div className={cn("mt-8 grid", gridClassName)}>
+      {Array.from({ length: count }).map((_, i) => (
+        <SkeletonMiniStatCard key={i} />
+      ))}
+    </div>
+  );
+}
+
+// Row of action buttons, matching CTA rows like the dashboard overview's
+// "Manage Knowledge Base / Go to Inbox" links.
+export function SkeletonButtonRow({ count = 2 }: { count?: number }) {
+  return (
+    <div className="flex flex-wrap gap-3">
+      {Array.from({ length: count }).map((_, i) => (
+        <SkeletonBlock key={i} className="h-9 w-40 rounded-lg" />
+      ))}
+    </div>
+  );
+}
+
 // Back link + h1 + badge, for detail pages (clients/[id], organizations/[id]).
 export function SkeletonDetailHeader() {
   return (

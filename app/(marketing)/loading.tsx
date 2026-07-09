@@ -1,18 +1,24 @@
 // app/(marketing)/loading.tsx
+import { SkeletonBlock, SkeletonPanel } from "@/components/platform/Skeleton";
+
+// In-flow skeleton (not a full-screen overlay) so it renders inside
+// (marketing)/layout.tsx's <main> exactly like every real marketing page
+// does — Navbar and Footer stay visible and unblocked during navigation,
+// matching the same pattern already used by every dashboard/admin
+// loading.tsx (see components/platform/Skeleton.tsx).
 export default function Loading() {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-      <div className="flex flex-col items-center gap-6">
-        {/* MBR Studio logo mark */}
-        <div className="flex h-20 w-26 items-center justify-center rounded-2xl border border-border bg-card text-2xl font-bold text-foreground animate-pulse">
-          MBR
-        </div>
-        <div className="flex items-center gap-1">
-          <span className="h-2 w-2 rounded-full bg-primary animate-bounce [animation-delay:-0.3s]" />
-          <span className="h-2 w-2 rounded-full bg-primary animate-bounce [animation-delay:-0.15s]" />
-          <span className="h-2 w-2 rounded-full bg-primary animate-bounce" />
-        </div>
-        <p className="text-sm text-secondary-text font-medium">Loading…</p>
+    <div className="mx-auto max-w-6xl px-6 py-20 md:px-10 md:py-24">
+      <div className="mx-auto max-w-2xl text-center">
+        <SkeletonBlock className="mx-auto h-4 w-32" />
+        <SkeletonBlock className="mx-auto mt-5 h-10 w-full max-w-md" />
+        <SkeletonBlock className="mx-auto mt-3 h-4 w-full max-w-sm" />
+      </div>
+
+      <div className="mt-14 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <SkeletonPanel className="h-48" />
+        <SkeletonPanel className="h-48" />
+        <SkeletonPanel className="h-48" />
       </div>
     </div>
   );

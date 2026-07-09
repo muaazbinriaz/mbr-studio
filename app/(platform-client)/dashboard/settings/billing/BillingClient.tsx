@@ -222,8 +222,8 @@ export function BillingClient({
                   onClick={() => setSelectedPlan(id)}
                   className={`flex flex-col rounded-2xl border p-6 text-left transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.99] ${
                     selectedPlan === id
-                      ? "border-primary bg-primary/5 shadow-[0_0_0_1px_rgba(99,102,241,0.15),0_8px_30px_-8px_rgba(99,102,241,0.35)]"
-                      : "border-border bg-card hover:border-primary/40 hover:shadow-[0_0_0_1px_rgba(99,102,241,0.1),0_8px_24px_-8px_rgba(99,102,241,0.2)]"
+                      ? "border-primary bg-primary/5 hover-glow-primary"
+                      : "border-border bg-card hover:border-primary/40 hover:hover-glow-primary-subtle"
                   }`}
                 >
                   <p className="font-heading text-base font-semibold text-foreground">

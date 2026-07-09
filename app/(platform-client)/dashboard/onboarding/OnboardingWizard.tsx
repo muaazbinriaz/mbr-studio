@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, Copy, Loader2, ArrowRight, ArrowLeft } from "lucide-react";
-
+import { WidgetPreview } from "@/components/platform/WidgetPreview";
 import type { AgentTemplate } from "@/lib/agents/templates";
 import { applyTemplate } from "@/app/(platform-client)/dashboard/agent/templates/actions";
 import { addKnowledgeBaseDocument } from "@/app/(platform-client)/dashboard/knowledge-base/actions";
@@ -340,29 +340,11 @@ export function OnboardingWizard({
                 <p className="mb-3 font-body text-sm font-medium text-foreground">
                   Preview
                 </p>
-                <div className="relative flex h-80 items-end justify-end rounded-2xl border border-border bg-background p-4">
-                  <div
-                    className="flex h-14 w-14 items-center justify-center rounded-full shadow-lg"
-                    style={{ backgroundColor: primaryColor }}
-                  >
-                    <div className="h-6 w-6 rounded-full border-2 border-white" />
-                  </div>
-                  <div className="absolute bottom-24 right-4 w-64 overflow-hidden rounded-2xl bg-white shadow-2xl">
-                    <div
-                      className="p-3 text-white"
-                      style={{ backgroundColor: primaryColor }}
-                    >
-                      <p className="font-body text-xs font-semibold">
-                        {businessName || "Your Business"}
-                      </p>
-                    </div>
-                    <div className="flex flex-col gap-2 p-3">
-                      <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#f1f2f6] px-3 py-2 font-body text-xs text-[#14141c]">
-                        {welcomeMessage}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <WidgetPreview
+                  primaryColor={primaryColor}
+                  businessName={businessName || "Your Business"}
+                  welcomeMessage={welcomeMessage}
+                />
               </div>
             </div>
           )}
@@ -402,7 +384,8 @@ export function OnboardingWizard({
                     <button
                       type="button"
                       onClick={copyEmbed}
-                      className="flex-none rounded-md p-1.5 text-secondary-text hover:bg-card hover:text-foreground"
+                      aria-label="Copy embed snippet"
+                      className="flex-none rounded-md p-1.5 text-secondary-text hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                     >
                       <Copy className="h-4 w-4" />
                     </button>

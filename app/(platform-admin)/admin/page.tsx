@@ -24,7 +24,6 @@ export default async function AdminOverviewPage() {
     supabase.from("admins").select("*", { count: "exact", head: true }),
     getAdminPlatformSummary(supabase),
   ]);
-
   return (
     <div>
       <h1 className="font-heading text-2xl font-bold text-foreground">

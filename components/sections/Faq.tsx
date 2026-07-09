@@ -108,15 +108,15 @@ function FAQItemRow({
           aria-expanded={isOpen}
           aria-controls={panelId}
           onClick={onToggle}
-          className="flex w-full items-center justify-between gap-4 py-6 text-left font-body focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          className="group flex w-full items-center justify-between gap-4 py-6 text-left font-body transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
-          <span className="font-heading text-base font-semibold text-text sm:text-lg">
+          <span className="font-heading text-base font-semibold text-text transition-colors duration-200 group-hover:text-primary sm:text-lg">
             {item.question}
           </span>
           <ChevronDown
             aria-hidden="true"
             className={`h-5 w-5 flex-none text-secondary-text
- transition-transform duration-300 ${isOpen ? "rotate-180" : ""}`}
+ transition-transform duration-300 group-hover:text-primary ${isOpen ? "rotate-180" : ""}`}
           />
         </button>
       </h3>

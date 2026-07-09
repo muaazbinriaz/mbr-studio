@@ -7,6 +7,7 @@ import type { Project } from "@/types";
 import { siteConfig } from "@/config/site";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { breadcrumbSchema } from "@/lib/seo/schemas";
+import { Button } from "@/components/ui/button";
 
 /**
  * Case Studies index — the write-up-oriented counterpart to /portfolio.
@@ -103,6 +104,27 @@ export default function CaseStudiesPage() {
               })}
             </div>
           )}
+        </div>
+      </section>
+
+      {/* Closing CTA — reused pattern from about/page.tsx & portfolio/page.tsx */}
+      <section className="border-t border-border bg-secondary-background">
+        <div className="mx-auto max-w-3xl px-6 py-24 text-center md:px-10 md:py-32">
+          <h2 className="font-heading text-[28px] font-bold leading-tight tracking-tight text-text sm:text-[36px]">
+            Have a project like these in mind?
+          </h2>
+          <p className="mx-auto mt-4 max-w-xl font-body text-base text-secondary-text">
+            Let&apos;s talk about what you&apos;re building and whether
+            it&apos;s a fit for MBR Studio.
+          </p>
+          <div className="mt-8 flex justify-center">
+            <Button asChild size="lg" className="rounded-lg px-7 py-6">
+              <Link href="/contact">
+                Book a Free Consultation
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
         </div>
       </section>
     </>

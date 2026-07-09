@@ -1,8 +1,7 @@
-"use client";
-
 import Link from "next/link";
 import { Sparkles, ShieldCheck, Zap } from "lucide-react";
 import { PlatformAmbient } from "./PlatformAmbient";
+import { Logo } from "@/components/brand/Logo";
 
 const HIGHLIGHTS = [
   {
@@ -46,8 +45,8 @@ export function AuthSplitLayout({
               className="h-6 w-auto object-contain"
             />
           ) : (
-            brandName
-          )}
+            <Logo />
+          )}{" "}
           <span className="font-normal text-secondary-text">/ Platform</span>
         </Link>
 
@@ -94,8 +93,8 @@ export function AuthSplitLayout({
               className="h-6 w-auto object-contain"
             />
           ) : (
-            brandName
-          )}
+            <Logo />
+          )}{" "}
         </Link>
         <div className="w-full max-w-sm">{children}</div>
       </div>

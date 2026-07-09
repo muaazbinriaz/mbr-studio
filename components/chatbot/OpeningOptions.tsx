@@ -42,7 +42,7 @@ export function OpeningOptions({
             <Link
               key={option.id}
               href={option.href}
-              className="flex flex-col items-start gap-2 rounded-xl border border-border bg-background p-3 text-left transition-colors duration-200 hover:border-primary"
+              className="flex flex-col items-start gap-2 rounded-xl border border-border bg-background p-3 text-left transition-colors duration-200 hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               <Icon className="h-4 w-4 text-primary" strokeWidth={1.75} />
               <span className="font-body text-sm text-text">
@@ -57,7 +57,7 @@ export function OpeningOptions({
             key={option.id}
             type="button"
             onClick={() => onSelect(option)}
-            className="flex flex-col items-start gap-2 rounded-xl border border-border bg-background p-3 text-left transition-colors duration-200 hover:border-primary"
+            className="flex flex-col items-start gap-2 rounded-xl border border-border bg-background p-3 text-left transition-colors duration-200 hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <Icon className="h-4 w-4 text-primary" strokeWidth={1.75} />
             <span className="font-body text-sm text-text">{option.label}</span>

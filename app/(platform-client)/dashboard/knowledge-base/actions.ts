@@ -6,40 +6,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { ingestDocument } from "@/lib/knowledge-base/ingest";
 import { discoverPages, scrapePage } from "@/lib/knowledge-base/scrape";
 import { extractPdfText } from "@/lib/knowledge-base/pdf";
+import { getActiveAgentForCurrentUser } from "@/lib/auth/actions";
 
-/**
- * Resolves the current user's active agent using the RLS-scoped
- * server client — this is what makes ownership checks below actually
- * safe. ingestDocument() itself uses the service-role client and
- * bypasses RLS entirely, so every call site in this file must verify
- * ownership via a plain (non-admin) select/update BEFORE calling it.
- */
-async function getActiveAgentForCurrentUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("organization_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle();
-
-  if (!membership) return null;
-
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("id, organization_id")
-    .eq("organization_id", membership.organization_id)
-    .eq("is_active", true)
-    .limit(1)
-    .maybeSingle();
-
-  return agent;
-}
+// NOTE: ingestDocument() uses the service-role client and bypasses RLS
+// entirely, so every call site in this file must verify ownership via
+// a plain (non-admin) select/update — using getActiveAgentForCurrentUser()
+// above, which is RLS-scoped — BEFORE calling it.
 
 export async function addKnowledgeBaseDocument(formData: FormData) {
   const title = String(formData.get("title") ?? "").trim();
@@ -72,10 +44,6 @@ export async function addKnowledgeBaseDocument(formData: FormData) {
   }
 
   try {
-    // Ran synchronously per Prompt 02 Section 4.2 — manual-text FAQ
-    // documents are short enough that this won't time out. ingestDocument
-    // itself doesn't touch request/response objects, so it can move to a
-    // background queue later without changing its internals.
     await ingestDocument(doc.id);
   } catch (err) {
     console.error("[knowledge-base] ingestion failed:", err);
@@ -121,12 +89,6 @@ export async function discoverKnowledgeBaseUrls(rootUrl: string) {
   }
 }
 
-/**
- * Scrapes and ingests a SINGLE url. Deliberately singular (not a bulk
- * `urls[]` action) so the client can loop over selected pages one at a
- * time and show real "Scraping page 3 of 8..." progress between calls,
- * per Section 2.2's sequential-processing requirement.
- */
 export async function scrapeAndIngestUrl(url: string) {
   const agent = await getActiveAgentForCurrentUser();
   if (!agent) return { error: "No active agent found for your organization." };
@@ -261,9 +223,6 @@ export async function ingestUploadedPdf(storagePath: string, fileName: string) {
   const agent = await getActiveAgentForCurrentUser();
   if (!agent) return { error: "No active agent found for your organization." };
 
-  // The signed upload URL only proves *a* logged-in user uploaded this
-  // file — this path-prefix check is the actual ownership guard before
-  // we touch knowledge_base_documents.
   if (!storagePath.startsWith(`${agent.organization_id}/`)) {
     return { error: "This file does not belong to your organization." };
   }
@@ -340,8 +299,6 @@ export async function ingestUploadedPdf(storagePath: string, fileName: string) {
 }
 
 export async function deleteKnowledgeBaseDocument(documentId: string) {
-  // RLS-scoped client — a delete on a document outside the caller's org
-  // simply matches zero rows, no explicit ownership check needed.
   const supabase = await createClient();
   const { error } = await supabase
     .from("knowledge_base_documents")
@@ -351,12 +308,10 @@ export async function deleteKnowledgeBaseDocument(documentId: string) {
   revalidatePath("/dashboard/knowledge-base");
   return { error: error?.message ?? null };
 }
+
 export async function reindexKnowledgeBaseDocument(documentId: string) {
   const supabase = await createClient();
 
-  // Ownership check via the RLS-scoped client — required here because
-  // ingestDocument() below uses the service-role client, which would
-  // happily process ANY document id regardless of who's calling.
   const { data: doc } = await supabase
     .from("knowledge_base_documents")
     .select("id")
@@ -385,7 +340,7 @@ export async function reindexKnowledgeBaseDocument(documentId: string) {
 }
 
 // ============================================================
-// Inline edit (Prompt 18) — fixes a typo/fact without delete+recreate
+// Inline edit (Prompt 18)
 // ============================================================
 
 export async function updateKnowledgeBaseDocument(

@@ -19,11 +19,3 @@ export function isChannelAllowedForPlan(
   const plan = getPlan(planId);
   return (plan.channels as readonly string[]).includes(channel);
 }
-
-export function isAgentCountWithinPlan(
-  planId: string,
-  currentAgentCount: number,
-): boolean {
-  const plan = getPlan(planId);
-  return currentAgentCount < plan.maxAgents;
-}

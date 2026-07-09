@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CheckCircle2, Loader2, Send } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { FadeIn } from "@/components/animations/FadeIn";
 
 import {
@@ -124,6 +125,7 @@ export function ContactForm() {
             placeholder="Jane Doe"
             {...register("name")}
             aria-invalid={!!errors.name}
+            aria-describedby={errors.name ? "name-error" : undefined}
             className={textFieldClassName(!!errors.name)}
           />
         </Field>
@@ -136,6 +138,7 @@ export function ContactForm() {
             placeholder="jane@company.com"
             {...register("email")}
             aria-invalid={!!errors.email}
+            aria-describedby={errors.email ? "email-error" : undefined}
             className={textFieldClassName(!!errors.email)}
           />
         </Field>
@@ -171,6 +174,7 @@ export function ContactForm() {
             id="service"
             {...register("service")}
             aria-invalid={!!errors.service}
+            aria-describedby={errors.service ? "service-error" : undefined}
             className={inputClass(!!errors.service)}
           >
             {SERVICE_OPTIONS.map((opt) => (
@@ -208,6 +212,7 @@ export function ContactForm() {
           placeholder="Tell us about your business, timeline, and what you're trying to build."
           {...register("message")}
           aria-invalid={!!errors.message}
+          aria-describedby={errors.message ? "message-error" : undefined}
           className={`${inputClass(!!errors.message)} resize-none`}
         />
       </Field>
@@ -218,23 +223,22 @@ export function ContactForm() {
         </p>
       )}
 
-      <button
+      <Button
         type="submit"
-        disabled={!isValid || submitState === "submitting"}
-        className="mt-1 inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-6 py-3 font-body text-sm font-medium text-text transition-opacity duration-200 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        size="lg"
+        disabled={!isValid}
+        loading={submitState === "submitting"}
+        className="mt-1"
       >
         {submitState === "submitting" ? (
-          <>
-            <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
-            Sending...
-          </>
+          "Sending..."
         ) : (
           <>
             <Send className="h-4 w-4" strokeWidth={1.75} />
             Send message
           </>
         )}
-      </button>
+      </Button>
 
       <p className="font-body text-xs text-secondary-text">
         By submitting this form, you agree to our{" "}
@@ -303,7 +307,11 @@ function Field({
       </Label>
       {children}
       {error && (
-        <p className="font-body text-xs text-error" role="alert">
+        <p
+          id={`${htmlFor}-error`}
+          className="font-body text-xs text-error"
+          role="alert"
+        >
           {error}
         </p>
       )}

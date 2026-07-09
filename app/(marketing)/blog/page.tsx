@@ -40,7 +40,7 @@ export default async function BlogPage({
   }
 
   return (
-    <main id="main-content">
+    <>
       <section className="bg-background">
         <div className="mx-auto max-w-6xl px-6 py-24 md:px-10 md:py-32">
           <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
@@ -133,6 +133,6 @@ export default async function BlogPage({
           )}
         </div>
       </section>
-    </main>
+    </>
   );
 }

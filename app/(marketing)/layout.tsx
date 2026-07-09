@@ -1,7 +1,7 @@
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { ChatProvider } from "@/components/chatbot/useChat";
-import { ChatWindow } from "@/components/chatbot/ChatWindow";
+import { LazyChatWindow } from "@/components/chatbot/LazyChatWindow";
 
 export default function MarketingLayout({
   children,
@@ -13,7 +13,7 @@ export default function MarketingLayout({
       <Navbar />
       <main id="main-content">{children}</main>
       <Footer />
-      <ChatWindow />
+      <LazyChatWindow />
     </ChatProvider>
   );
 }
