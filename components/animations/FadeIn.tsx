@@ -24,8 +24,9 @@ export function FadeIn({
   ...rest
 }: FadeInProps) {
   const shouldReduceMotion = useReducedMotion();
-  // Cast to any to avoid union-of-components type conflict (e.g. onCopy)
-  const MotionTag = MOTION_TAGS[as] as any;
+  // Cast to a concrete motion component type to avoid the union-of-components
+  // type conflict (e.g. onCopy) without using `any`.
+  const MotionTag = MOTION_TAGS[as] as typeof motion.div;
 
   return (
     <MotionTag

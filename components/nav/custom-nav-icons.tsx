@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, type Transition } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
@@ -46,12 +46,17 @@ const GEAR_TURN = { duration: 0.55, ease: "easeInOut" as const };
 // damped spring just eases in with no character; low damping + higher
 // stiffness overshoots slightly and settles, which is what reads as
 // "Resend snap" rather than a generic hover fade.
-const SNAP: any = { type: "spring", stiffness: 300, damping: 11, mass: 0.6 };
+const SNAP: Transition = {
+  type: "spring",
+  stiffness: 300,
+  damping: 11,
+  mass: 0.6,
+};
 
 // Calmer spring for secondary/structural motion (a card tilting, a
 // handle lifting) where a big overshoot would look sloppy rather than
 // playful.
-const SOFT_SPRING: any = {
+const SOFT_SPRING: Transition = {
   type: "spring",
   stiffness: 220,
   damping: 13,
