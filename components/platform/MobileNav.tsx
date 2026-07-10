@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ChevronDown, LogOut, Sun, Moon, X, ExternalLink } from "lucide-react";
+import { ChevronDown, LogOut, Sun, Moon, X, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/auth/actions";
 import { useTheme } from "@/components/theme/ThemeProvider";
@@ -228,11 +228,8 @@ export function MobileNav({
                 onClick={handleNavigate}
                 className="flex w-full items-center gap-3 rounded-lg px-3 py-3 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
-                <ExternalLink
-                  className="h-4 w-4 flex-none"
-                  strokeWidth={1.75}
-                />
-                View live site
+                <ArrowLeft className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                Back to website
               </Link>
 
               <button

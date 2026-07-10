@@ -37,7 +37,7 @@ export const primaryCta = {
 } as const;
 
 export const secondaryCta = {
-  label: "Start Free",
+  label: "Start Free Trial",
   href: "/signup",
 } as const;
 

@@ -20,6 +20,7 @@ import { JsonLd } from "@/components/seo/JsonLd";
 import { breadcrumbSchema } from "@/lib/seo/schemas";
 import { siteConfig } from "@/config/site";
 import { PLANS } from "@/lib/billing/plans";
+import { SuppressLauncherOnMount } from "@/components/chatbot/SuppressLauncherOnMount";
 
 export const metadata: Metadata = {
   title: "AI Agent",
@@ -109,11 +110,14 @@ export default function AiAgentPage() {
       />
 
       {DEMO_WIDGET_PUBLIC_KEY && (
-        <Script
-          src="/chatbot.js"
-          data-client={DEMO_WIDGET_PUBLIC_KEY}
-          strategy="lazyOnload"
-        />
+        <>
+          <Script
+            src="/chatbot.js"
+            data-client={DEMO_WIDGET_PUBLIC_KEY}
+            strategy="lazyOnload"
+          />
+          <SuppressLauncherOnMount />
+        </>
       )}
 
       {/* Hero */}

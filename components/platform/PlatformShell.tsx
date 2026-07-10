@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, LogOut, Sun, Moon, ExternalLink } from "lucide-react";
+import { Menu, LogOut, Sun, Moon, ArrowLeft } from "lucide-react";
 import {
   Building2,
   Settings,
@@ -29,7 +29,7 @@ import { PlatformAmbient } from "@/components/platform/PlatformAmbient";
 import { useRouteLoader } from "@/components/loader/RouteLoader";
 import { DesktopNav, type NavGroup } from "@/components/platform/DesktopNav";
 import { MobileNav } from "@/components/platform/MobileNav";
-import { LogoMark } from "@/components/brand/Logo";
+import { Logo } from "@/components/brand/Logo";
 export type PlatformVariant = "admin" | "client";
 
 const NAV_GROUPS_BY_VARIANT: Record<
@@ -220,16 +220,20 @@ export function PlatformShell({
               onClick={() => start()}
               className="flex items-center gap-2 font-heading text-base font-semibold tracking-tight text-foreground"
             >
-              <LogoMark className="h-6 w-6" />
-              MBR Studio {brandSuffix}
+              <Logo markClassName="h-6 w-6" />
+              {brandSuffix && (
+                <span className="font-body text-sm font-normal text-secondary-text">
+                  {brandSuffix}
+                </span>
+              )}
             </Link>
             <Link
               href="/"
               onClick={() => start()}
               className="hidden items-center gap-1 rounded-full border border-border px-2.5 py-1 font-body text-xs text-secondary-text transition-colors duration-150 hover:border-primary/40 hover:text-foreground sm:inline-flex"
             >
-              <ExternalLink className="h-3 w-3" strokeWidth={1.75} />
-              View live site
+              <ArrowLeft className="h-3 w-3" strokeWidth={1.75} />
+              Back to website
             </Link>
           </div>
 
@@ -323,15 +327,6 @@ function UserMenu({ userEmail }: { userEmail?: string | null }) {
                 {userEmail}
               </p>
             )}
-            <Link
-              href="/"
-              role="menuitem"
-              onClick={() => start()}
-              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground"
-            >
-              <ExternalLink className="h-4 w-4 flex-none" strokeWidth={1.75} />
-              View live site
-            </Link>
             <form action={signOut} onSubmit={() => start()}>
               <button
                 type="submit"
