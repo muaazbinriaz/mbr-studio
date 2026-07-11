@@ -192,6 +192,7 @@ components/chatbot/MessageBubble.tsx
 components/chatbot/OpeningOptions.tsx
 components/chatbot/PortfolioResults.tsx
 components/chatbot/SuggestionChips.tsx
+components/chatbot/SuppressLauncherOnMount.tsx
 components/chatbot/TypingIndicator.tsx
 components/chatbot/useChat.tsx
 components/chatbot/useFocusTrap.ts
@@ -3600,6 +3601,28 @@ export function PortfolioResults({
       ))}
     </motion.div>
   );
+}
+</file>
+
+<file path="components/chatbot/SuppressLauncherOnMount.tsx">
+"use client";
+import { useEffect } from "react";
+import { useChatPanel } from "@/components/chatbot/useChat";
+
+/**
+ * Hides the site's native floating chat launcher while mounted.
+ * Used on /ai-agent, which injects its own demo widget script —
+ * without this, two floating chat bubbles stack bottom-right.
+ */
+export function SuppressLauncherOnMount() {
+  const { setLauncherSuppressed } = useChatPanel();
+
+  useEffect(() => {
+    setLauncherSuppressed(true);
+    return () => setLauncherSuppressed(false);
+  }, [setLauncherSuppressed]);
+
+  return null;
 }
 </file>
 
@@ -24571,281 +24594,6 @@ export function DesktopNav({
 }
 </file>
 
-<file path="components/platform/MobileNav.tsx">
-"use client";
-
-import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ChevronDown, LogOut, Sun, Moon, X, ExternalLink } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { signOut } from "@/lib/auth/actions";
-import { useTheme } from "@/components/theme/ThemeProvider";
-import { useRouteLoader } from "@/components/loader/RouteLoader";
-import { useFocusTrap } from "@/components/chatbot/useFocusTrap";
-import type { NavGroup } from "./DesktopNav";
-
-export function MobileNav({
-  open,
-  onClose,
-  groups,
-  activeHref,
-  navBadges,
-  userEmail,
-}: {
-  open: boolean;
-  onClose: () => void;
-  groups: NavGroup[];
-  activeHref: string | null;
-  navBadges?: Record<string, number>;
-  userEmail?: string | null;
-}) {
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const { theme, toggleTheme } = useTheme();
-  const { start } = useRouteLoader();
-  const shouldReduceMotion = useReducedMotion();
-
-  useFocusTrap(sheetRef, open, onClose);
-
-  useEffect(() => {
-    if (!open) return;
-    const scrollbarWidth =
-      window.innerWidth - document.documentElement.clientWidth;
-    document.body.style.overflow = "hidden";
-    document.body.style.paddingRight = `${scrollbarWidth}px`;
-    return () => {
-      document.body.style.overflow = "";
-      document.body.style.paddingRight = "";
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (open) setExpanded(null);
-  }, [open]);
-
-  const handleNavigate = () => {
-    start();
-    onClose();
-  };
-
-  return (
-    <AnimatePresence>
-      {open && (
-        <>
-          <motion.div
-            aria-hidden="true"
-            onClick={onClose}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: shouldReduceMotion ? 0 : 0.2 }}
-            className="fixed inset-0 z-40 bg-black/60 md:hidden"
-          />
-          <motion.div
-            ref={sheetRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Navigation menu"
-            initial={shouldReduceMotion ? false : { y: "100%" }}
-            animate={{ y: 0 }}
-            exit={{ y: "100%" }}
-            transition={
-              shouldReduceMotion
-                ? { duration: 0 }
-                : { type: "spring", damping: 28, stiffness: 320 }
-            }
-            className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-border bg-card px-4 pb-6 pt-3 md:hidden"
-          >
-            <div
-              className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-border"
-              aria-hidden="true"
-            />
-            <div className="mb-2 flex items-center justify-between">
-              <span className="font-heading text-sm font-semibold text-foreground">
-                Menu
-              </span>
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close menu"
-                className="rounded-lg p-3 text-foreground hover:bg-background"
-              >
-                <X className="h-5 w-5" strokeWidth={1.75} />
-              </button>
-            </div>
-
-            <nav aria-label="Mobile" className="flex flex-col gap-1">
-              {groups.map((group) => {
-                if (group.type === "link") {
-                  const isActive = group.href === activeHref;
-                  const LinkIcon = group.icon;
-                  return (
-                    <Link
-                      key={group.label}
-                      href={group.href}
-                      onClick={handleNavigate}
-                      className={cn(
-                        "group flex items-center justify-between rounded-lg px-3 py-3 font-body text-base font-medium transition-colors duration-150",
-                        isActive
-                          ? "bg-primary/10 text-primary"
-                          : "text-foreground hover:bg-background",
-                      )}
-                    >
-                      <span className="flex items-center gap-3">
-                        <LinkIcon
-                          className="h-4 w-4 flex-none transition-transform duration-500 ease-out group-hover:-translate-y-0.5 group-active:-translate-y-0.5"
-                          strokeWidth={1.75}
-                          aria-hidden="true"
-                        />
-                        {group.label}
-                      </span>
-                      {!!navBadges?.[group.href] && (
-                        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 font-body text-[10px] font-semibold text-primary-foreground">
-                          {navBadges[group.href]}
-                        </span>
-                      )}
-                    </Link>
-                  );
-                }
-
-                const isSectionOpen = expanded === group.label;
-                const isGroupActive = group.items.some(
-                  (item) => item.href === activeHref,
-                );
-
-                return (
-                  <div
-                    key={group.label}
-                    className="border-b border-border/60 pb-1 last:border-none"
-                  >
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setExpanded(isSectionOpen ? null : group.label)
-                      }
-                      aria-expanded={isSectionOpen}
-                      className={cn(
-                        "flex w-full items-center justify-between rounded-lg px-3 py-3 font-body text-xs font-semibold uppercase tracking-wide transition-colors duration-150",
-                        isGroupActive ? "text-primary" : "text-secondary-text",
-                      )}
-                    >
-                      {group.label}
-                      <ChevronDown
-                        className={cn(
-                          "h-4 w-4 transition-transform duration-150",
-                          isSectionOpen && "rotate-180",
-                        )}
-                        strokeWidth={1.75}
-                      />
-                    </button>
-
-                    <AnimatePresence initial={false}>
-                      {isSectionOpen && (
-                        <motion.div
-                          initial={
-                            shouldReduceMotion
-                              ? false
-                              : { height: 0, opacity: 0 }
-                          }
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{
-                            duration: shouldReduceMotion ? 0 : 0.18,
-                            ease: "easeOut",
-                          }}
-                          className="overflow-hidden"
-                        >
-                          <div className="flex flex-col gap-1 pb-2 pl-2 pt-1">
-                            {group.items.map((item) => {
-                              const Icon = item.icon;
-                              const isActive = item.href === activeHref;
-                              return (
-                                <Link
-                                  key={item.href}
-                                  href={item.href}
-                                  onClick={handleNavigate}
-                                  className={cn(
-                                    "group flex items-center gap-2.5 rounded-lg px-3 py-2.5 font-body text-sm font-medium transition-colors duration-150",
-                                    isActive
-                                      ? "bg-primary/10 text-primary"
-                                      : "text-foreground hover:bg-background",
-                                  )}
-                                >
-                                  <Icon
-                                    className="h-4 w-4 flex-none transition-transform duration-500 ease-out group-hover:-translate-y-0.5 group-active:-translate-y-0.5"
-                                    strokeWidth={1.75}
-                                  />
-                                  <span className="flex flex-1 items-center justify-between">
-                                    {item.label}
-                                    {!!navBadges?.[item.href] && (
-                                      <span className="ml-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 font-body text-[10px] font-semibold text-primary-foreground">
-                                        {navBadges[item.href]}
-                                      </span>
-                                    )}
-                                  </span>
-                                </Link>
-                              );
-                            })}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                );
-              })}
-            </nav>
-
-            <div className="mt-3 border-t border-border pt-3">
-              <Link
-                href="/"
-                onClick={handleNavigate}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-3 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              >
-                <ExternalLink
-                  className="h-4 w-4 flex-none"
-                  strokeWidth={1.75}
-                />
-                View live site
-              </Link>
-
-              <button
-                type="button"
-                onClick={toggleTheme}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-3 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              >
-                {theme === "dark" ? (
-                  <Sun className="h-4 w-4 flex-none" strokeWidth={1.75} />
-                ) : (
-                  <Moon className="h-4 w-4 flex-none" strokeWidth={1.75} />
-                )}
-                {theme === "dark" ? "Light mode" : "Dark mode"}
-              </button>
-
-              {userEmail && (
-                <p className="truncate px-3 pb-1 pt-2 font-body text-xs text-secondary-text">
-                  {userEmail}
-                </p>
-              )}
-
-              <form action={signOut} onSubmit={() => start()}>
-                <button
-                  type="submit"
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-3 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                >
-                  <LogOut className="h-4 w-4 flex-none" strokeWidth={1.75} />
-                  Log out
-                </button>
-              </form>
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
-  );
-}
-</file>
-
 <file path="data/blog.ts">
 // data/blog.ts
 /**
@@ -24919,181 +24667,6 @@ export const blogPosts: BlogPost[] = [
     published: false,
   },
 ];
-</file>
-
-<file path="data/projects.ts">
-/**
- * TODO (content): each project below is a REAL, shipped project — only
- * the case-study write-up sub-fields (`problem`, `solution`, `outcome`)
- * are sometimes incomplete, marked with bracketed placeholders like
- * "[e.g. 40%]" below. That's fine and expected:
- * app/(marketing)/case-studies/[slug]/page.tsx already falls back to
- * "we're finalizing this write-up" copy per missing field, and the
- * project still appears normally in FeaturedProjects/PortfolioGrid
- * regardless (intentional — an incomplete write-up doesn't mean the
- * project itself isn't real). Replace every bracketed value below with
- * real numbers/copy as case studies get written up — do not invent
- * plausible-sounding metrics or narrative to fill these fields early.
- */
-import type { Project } from "@/types";
-import type { BusinessType } from "@/lib/chat/estimator";
-
-export const projects: Project[] = [
-  {
-    slug: "lumiere-skin-clinic",
-    title: "Lumière Skin Clinic Website",
-    client: "Lumière Skin Clinic, Rawalpindi",
-    industry: "Healthcare / Aesthetic Clinic",
-    summary:
-      "A full-stack web application for Lumière Skin Clinic, delivering a complete digital presence with AI chatbot, online booking, and admin dashboard. Built with Next.js, TypeScript, and MongoDB.",
-    image: "/images/projects/skin-clinic/skin-clinic.png",
-    images: [
-      "/images/projects/skin-clinic/skin-clinic-services.png",
-      "/images/projects/skin-clinic/skin-clinic-blog.png",
-      "/images/projects/skin-clinic/skin-clinic-footer.png",
-    ],
-    tags: [
-      "Next.js",
-      "TypeScript",
-      "TailwindCSS",
-      "MongoDB",
-      "NextAuth",
-      "Cloudinary",
-      "AI Chatbot",
-    ],
-    category: "AI Chatbot",
-    link: "https://skin-clinic.vercel.app",
-    problem:
-      "[what was Lumière facing before this — e.g. no online presence, manual WhatsApp-only bookings?]",
-    solution: "[1–2 sentences on your actual approach/build]",
-    outcome: [
-      { metric: "[e.g. 40%]", label: "[e.g. increase in booking inquiries]" },
-      { metric: "[e.g. <2s]", label: "[e.g. page load time]" },
-      { metric: "[e.g. 100%]", label: "[e.g. mobile bookings]" },
-    ],
-  },
-
-  {
-    slug: "jobmatch-ai-job-matching",
-    title: "JobMatch — AI-Powered CV Analysis & Job Matching",
-    client: "Personal / SaaS Project",
-    industry: "Startup / SaaS",
-    summary:
-      "An AI-powered job matching platform where users upload their CV as a PDF and get matched against live job listings. The app extracts skills, experience, and education using an LLM, then searches real-time job data to surface relevant openings — all behind secure email/password authentication.",
-    image: "/images/projects/jobmatch/hero.png",
-    images: [
-      "/images/projects/jobmatch/login.png",
-      "/images/projects/jobmatch/mobile.png",
-    ],
-    tags: [
-      "Next.js",
-      "React",
-      "NextAuth.js",
-      "TailwindCSS",
-      "Node.js",
-      "Express",
-      "MongoDB",
-      "Mongoose",
-      "JWT",
-      "Groq (Llama 3.1)",
-      "pdf-parse",
-      "JSearch API",
-    ],
-    category: "Website",
-    link: "https://job-hunt-frontend-green.vercel.app/",
-    problem:
-      "Job seekers spend hours manually reading their CV against dozens of listings to figure out which roles are actually a fit — a slow, repetitive process that misses relevant openings buried in irrelevant search results.",
-    solution:
-      "Built an end-to-end pipeline: users upload a PDF CV, the backend extracts raw text with pdf-parse, and Groq's Llama 3.1 8B model structures it into skills, experience, and education. That profile is matched against live listings pulled from JSearch (RapidAPI), with results cached for 24 hours per user to minimize API costs.",
-    outcome: [
-      { metric: "[e.g. 200+]", label: "[e.g. CVs processed]" },
-      { metric: "[e.g. <10s]", label: "[e.g. average match time]" },
-      { metric: "[e.g. 90%]", label: "[e.g. skill-extraction accuracy]" },
-    ],
-  },
-
-  {
-    slug: "mern-trello-task-board",
-    title: "MERN Trello-Style Collaborative Task Board",
-    client: "Personal / SaaS Project",
-    industry: "Startup / SaaS",
-    summary:
-      "A full-stack collaborative Kanban board app inspired by Trello. Users create boards, invite teammates by email, and manage drag-and-drop lists and cards with real-time updates powered by WebSockets — complete with image uploads, tagging, and automation rules.",
-    image: "/images/projects/task-board/hero.png",
-    images: [
-      "/images/projects/task-board/workflow.png",
-      "/images/projects/task-board/card-modal.png",
-      "/images/projects/task-board/invitation-modal.png",
-      "/images/projects/task-board/automation-modal.png",
-    ],
-    tags: [
-      "React 19",
-      "Redux Toolkit",
-      "TailwindCSS",
-      "Vite",
-      "React DnD",
-      "Socket.IO",
-      "Node.js",
-      "Express",
-      "MongoDB",
-      "Mongoose",
-      "JWT",
-      "Cloudinary",
-      "Nodemailer",
-    ],
-    category: "SaaS",
-    link: "https://notes-frontend-rouge.vercel.app/",
-    problem:
-      "Teams often juggle scattered task lists across chat threads and spreadsheets, with no shared, real-time view of who's doing what — leading to duplicated work and missed updates when multiple people edit the same board.",
-    solution:
-      "Built a real-time collaborative Kanban board where every list, card, and member change syncs instantly across all connected users via WebSockets (Socket.IO). Added automation rules — like auto-moving cards to a new list when tagged — plus email invitations, image attachments, and drag-and-drop reordering for a smooth, Trello-like workflow.",
-    outcome: [
-      { metric: "[e.g. 5+]", label: "[e.g. active boards]" },
-      { metric: "[e.g. real-time]", label: "[e.g. sync latency]" },
-      { metric: "[e.g. 0]", label: "[e.g. data-loss incidents]" },
-    ],
-  },
-];
-
-/**
- * BUGFIX: this used to compare `project.industry.toLowerCase()` (free
- * text like "Healthcare / Aesthetic Clinic") for strict equality against
- * `category`, which is a BusinessType enum value (e.g. "healthcare").
- * "healthcare / aesthetic clinic" !== "healthcare", so matchCategory was
- * false for every real project whenever a category was supplied — the
- * AI's searchPortfolio tool would silently return zero results any time
- * the model passed a category, even when a matching project existed.
- * Fixed by matching each BusinessType against keywords that can appear
- * inside the free-text `industry` field instead of requiring equality.
- */
-const CATEGORY_KEYWORDS: Record<BusinessType, string[]> = {
-  restaurant: ["restaurant", "food", "cafe"],
-  retail: ["retail", "e-commerce", "ecommerce", "shop"],
-  services: ["services", "agency"],
-  real_estate: ["real estate", "property"],
-  healthcare: ["healthcare", "clinic", "medical"],
-  startup_saas: ["startup", "saas"],
-  other: [],
-};
-
-export function searchProjects(
-  category?: BusinessType,
-  keyword?: string,
-): Project[] {
-  // Simple in-memory search – replace with real data when you add more projects.
-  return projects.filter((project) => {
-    const industryLower = project.industry.toLowerCase();
-    const matchCategory =
-      !category ||
-      category === "other" ||
-      CATEGORY_KEYWORDS[category].some((kw) => industryLower.includes(kw));
-    const matchKeyword =
-      !keyword ||
-      project.title.toLowerCase().includes(keyword.toLowerCase()) ||
-      project.summary.toLowerCase().includes(keyword.toLowerCase());
-    return matchCategory && matchKeyword;
-  });
-}
 </file>
 
 <file path="app/(marketing)/about/page.tsx">
@@ -25305,309 +24878,6 @@ export default function AboutPage() {
             </Button>
           </div>
         </div>
-      </section>
-    </>
-  );
-}
-</file>
-
-<file path="app/(marketing)/ai-agent/page.tsx">
-import type { Metadata } from "next";
-import Link from "next/link";
-import Script from "next/script";
-import {
-  ArrowRight,
-  BarChart3,
-  Bot,
-  Inbox,
-  MessageCircle,
-  ShieldCheck,
-  Sparkles,
-} from "lucide-react";
-
-import { Button } from "@/components/ui/button";
-import { FadeIn } from "@/components/animations/FadeIn";
-import { AiAgentFeatureCard } from "@/components/sections/AiAgentFeatureCard";
-import { AiAgentPricingCard } from "@/components/sections/AiAgentPricingCard";
-import { Testimonials } from "@/components/sections/Testimonials";
-import { JsonLd } from "@/components/seo/JsonLd";
-import { breadcrumbSchema } from "@/lib/seo/schemas";
-import { siteConfig } from "@/config/site";
-import { PLANS } from "@/lib/billing/plans";
-
-export const metadata: Metadata = {
-  title: "AI Agent",
-  description:
-    "Try the exact AI agent MBR Studio builds for businesses — a live, working chatbot demo covering pricing, guardrails, lead capture, and setup.",
-  alternates: {
-    canonical: "/ai-agent",
-  },
-};
-
-const DEMO_WIDGET_PUBLIC_KEY = process.env.NEXT_PUBLIC_DEMO_WIDGET_KEY || null;
-
-const HOW_IT_WORKS = [
-  {
-    number: "01",
-    title: "Knowledge base",
-    description:
-      "Upload your docs, FAQs, or website content — the agent learns your business, not a generic script.",
-  },
-  {
-    number: "02",
-    title: "Guardrails",
-    description:
-      "Set rules for tone, topics to avoid, and when to hand off — so it only says what you'd approve.",
-  },
-  {
-    number: "03",
-    title: "Embed on your site",
-    description:
-      "One script tag. Works on any website, no developer required beyond pasting a line of code.",
-  },
-  {
-    number: "04",
-    title: "Conversations flow into your inbox",
-    description:
-      "Every chat lands in your dashboard — reply directly, or let the agent keep handling it.",
-  },
-] as const;
-
-const FEATURES = [
-  {
-    icon: ShieldCheck,
-    title: "Stays on-brand, every time",
-    description:
-      "Define what the agent can and can't say, and when it should stop and hand off to a human.",
-  },
-  {
-    icon: Sparkles,
-    title: "Never lose a lead again",
-    description:
-      "Collects name, email, and intent mid-conversation — leads land in your dashboard automatically.",
-  },
-  {
-    icon: MessageCircle,
-    title: "Meets customers where they are",
-    description:
-      "Website live now, with WhatsApp, Instagram, and Messenger available depending on your plan.",
-  },
-  {
-    icon: Inbox,
-    title: "Jump in anytime, no context lost",
-    description:
-      "Take over any conversation in real time when the agent needs a human.",
-  },
-  {
-    icon: BarChart3,
-    title: "Know exactly what's working",
-    description:
-      "Track conversations, leads, and channel performance in one place.",
-  },
-  {
-    icon: Bot,
-    title: "Live in minutes, not weeks",
-    description:
-      "Start from a template tuned for your industry instead of a blank knowledge base.",
-  },
-] as const;
-
-export default function AiAgentPage() {
-  return (
-    <>
-      <JsonLd
-        data={breadcrumbSchema([
-          { name: "Home", url: siteConfig.url },
-          { name: "AI Agent", url: `${siteConfig.url}/ai-agent` },
-        ])}
-      />
-
-      {DEMO_WIDGET_PUBLIC_KEY && (
-        <Script
-          src="/chatbot.js"
-          data-client={DEMO_WIDGET_PUBLIC_KEY}
-          strategy="lazyOnload"
-        />
-      )}
-
-      {/* Hero */}
-      <section className="bg-background">
-        <FadeIn className="mx-auto max-w-4xl px-6 py-24 text-center md:px-10 md:py-32">
-          <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
-            AI Agent Platform
-          </p>
-          <h1 className="font-heading text-[36px] font-bold leading-tight tracking-tight text-text sm:text-[48px] md:text-[56px]">
-            Give your business a 24/7 AI agent — try the exact one your
-            customers would talk to, right now.
-          </h1>
-          <p className="mx-auto mt-5 max-w-2xl font-body text-base text-secondary-text sm:text-lg">
-            This isn&apos;t a mockup. The chat bubble on this page is the same
-            widget technology we ship to real clients — configured here as our
-            own demo agent. Open it and ask it anything about pricing, setup, or
-            how it works.
-          </p>
-
-          <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <Button asChild size="lg" className="rounded-lg px-7 py-6">
-              <Link href="/signup">
-                Start Free Trial
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
-            <Button
-              asChild
-              variant="outline"
-              size="lg"
-              className="rounded-lg px-7 py-6"
-            >
-              <Link href="/contact">Book a Consultation</Link>
-            </Button>
-          </div>
-
-          {DEMO_WIDGET_PUBLIC_KEY && (
-            <p className="mt-6 font-body text-sm text-secondary-text">
-              Or just look for the chat bubble in the bottom-right corner of
-              this page 👇 — it&apos;s the same agent, live.
-            </p>
-          )}
-        </FadeIn>
-      </section>
-
-      {/* How it works */}
-      <section className="border-t border-border bg-secondary-background">
-        <div className="mx-auto max-w-6xl px-6 py-24 md:px-10 md:py-32">
-          <div className="mb-14 max-w-2xl">
-            <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
-              How it works
-            </p>
-            <h2 className="font-heading text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[40px]">
-              From knowledge base to live conversations, in four steps.
-            </h2>
-          </div>
-          <ol className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
-            {HOW_IT_WORKS.map((step, index) => (
-              <FadeIn
-                key={step.number}
-                as="li"
-                viewport={{ once: true, amount: 0.4 }}
-                transition={{ duration: 0.4, delay: index * 0.08 }}
-              >
-                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card font-heading text-xs font-semibold text-text">
-                  {step.number}
-                </div>
-                <h3 className="mb-2 font-heading text-lg font-semibold text-text">
-                  {step.title}
-                </h3>
-                <p className="font-body text-sm leading-relaxed text-secondary-text">
-                  {step.description}
-                </p>
-              </FadeIn>
-            ))}
-          </ol>
-        </div>
-      </section>
-
-      {/* Features grid */}
-      <section className="bg-background">
-        <div className="mx-auto max-w-6xl px-6 py-24 md:px-10 md:py-32">
-          <div className="mb-14 max-w-2xl">
-            <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
-              What&apos;s included
-            </p>
-            <h2 className="font-heading text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[40px]">
-              Everything a real client&apos;s agent ships with.
-            </h2>
-          </div>
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {FEATURES.map((feature, index) => {
-              const Icon = feature.icon;
-              return (
-                <AiAgentFeatureCard
-                  key={feature.title}
-                  icon={<Icon className="h-5 w-5" strokeWidth={1.75} />}
-                  title={feature.title}
-                  description={feature.description}
-                  index={index}
-                />
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing */}
-      <section className="border-t border-border bg-secondary-background">
-        <div className="mx-auto max-w-6xl px-6 py-24 md:px-10 md:py-32">
-          <div className="mb-14 max-w-2xl">
-            <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
-              Pricing
-            </p>
-            <h2 className="font-heading text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[40px]">
-              Simple, transparent plans as your business grows.
-            </h2>
-          </div>
-          <div className="grid grid-cols-1 gap-6 pt-3 sm:grid-cols-2 lg:grid-cols-3">
-            {(Object.keys(PLANS) as (keyof typeof PLANS)[]).map(
-              (planId, index) => (
-                <AiAgentPricingCard
-                  key={planId}
-                  plan={PLANS[planId]}
-                  featured={planId === "growth"}
-                  index={index}
-                />
-              ),
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* Social proof */}
-      <Testimonials />
-
-      <section className="bg-background">
-        <div className="mx-auto max-w-3xl px-6 py-16 text-center md:px-10">
-          <p className="font-body text-sm text-secondary-text">
-            Want to see it in a real business?{" "}
-            <Link
-              href="/case-studies"
-              className="font-medium text-primary underline underline-offset-2 hover:text-accent"
-            >
-              Read our case studies
-            </Link>
-          </p>
-        </div>
-      </section>
-
-      {/* Closing CTA */}
-      <section className="bg-background">
-        <FadeIn
-          viewport={{ once: true, amount: 0.5 }}
-          className="mx-auto max-w-3xl px-6 py-24 text-center md:px-10 md:py-32"
-        >
-          <h2 className="font-heading text-[28px] font-bold leading-tight tracking-tight text-text sm:text-[36px]">
-            Ready to give your business its own AI agent?
-          </h2>
-          <p className="mx-auto mt-4 max-w-xl font-body text-base text-secondary-text">
-            Start free and configure it yourself, or book a call and we&apos;ll
-            set it up with you.
-          </p>
-          <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-            <Button asChild size="lg" className="rounded-lg px-7 py-6">
-              <Link href="/signup">
-                Start Free Trial
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
-            <Button
-              asChild
-              variant="outline"
-              size="lg"
-              className="rounded-lg px-7 py-6"
-            >
-              <Link href="/contact">Book a Consultation</Link>
-            </Button>
-          </div>
-        </FadeIn>
       </section>
     </>
   );
@@ -27417,6 +26687,278 @@ nav a {
 }
 </file>
 
+<file path="components/platform/MobileNav.tsx">
+"use client";
+
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { ChevronDown, LogOut, Sun, Moon, X, ArrowLeft } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { signOut } from "@/lib/auth/actions";
+import { useTheme } from "@/components/theme/ThemeProvider";
+import { useRouteLoader } from "@/components/loader/RouteLoader";
+import { useFocusTrap } from "@/components/chatbot/useFocusTrap";
+import type { NavGroup } from "./DesktopNav";
+
+export function MobileNav({
+  open,
+  onClose,
+  groups,
+  activeHref,
+  navBadges,
+  userEmail,
+}: {
+  open: boolean;
+  onClose: () => void;
+  groups: NavGroup[];
+  activeHref: string | null;
+  navBadges?: Record<string, number>;
+  userEmail?: string | null;
+}) {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const { theme, toggleTheme } = useTheme();
+  const { start } = useRouteLoader();
+  const shouldReduceMotion = useReducedMotion();
+
+  useFocusTrap(sheetRef, open, onClose);
+
+  useEffect(() => {
+    if (!open) return;
+    const scrollbarWidth =
+      window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = "hidden";
+    document.body.style.paddingRight = `${scrollbarWidth}px`;
+    return () => {
+      document.body.style.overflow = "";
+      document.body.style.paddingRight = "";
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (open) setExpanded(null);
+  }, [open]);
+
+  const handleNavigate = () => {
+    start();
+    onClose();
+  };
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            aria-hidden="true"
+            onClick={onClose}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: shouldReduceMotion ? 0 : 0.2 }}
+            className="fixed inset-0 z-40 bg-black/60 md:hidden"
+          />
+          <motion.div
+            ref={sheetRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation menu"
+            initial={shouldReduceMotion ? false : { y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={
+              shouldReduceMotion
+                ? { duration: 0 }
+                : { type: "spring", damping: 28, stiffness: 320 }
+            }
+            className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-border bg-card px-4 pb-6 pt-3 md:hidden"
+          >
+            <div
+              className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-border"
+              aria-hidden="true"
+            />
+            <div className="mb-2 flex items-center justify-between">
+              <span className="font-heading text-sm font-semibold text-foreground">
+                Menu
+              </span>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close menu"
+                className="rounded-lg p-3 text-foreground hover:bg-background"
+              >
+                <X className="h-5 w-5" strokeWidth={1.75} />
+              </button>
+            </div>
+
+            <nav aria-label="Mobile" className="flex flex-col gap-1">
+              {groups.map((group) => {
+                if (group.type === "link") {
+                  const isActive = group.href === activeHref;
+                  const LinkIcon = group.icon;
+                  return (
+                    <Link
+                      key={group.label}
+                      href={group.href}
+                      onClick={handleNavigate}
+                      className={cn(
+                        "group flex items-center justify-between rounded-lg px-3 py-3 font-body text-base font-medium transition-colors duration-150",
+                        isActive
+                          ? "bg-primary/10 text-primary"
+                          : "text-foreground hover:bg-background",
+                      )}
+                    >
+                      <span className="flex items-center gap-3">
+                        <LinkIcon
+                          className="h-4 w-4 flex-none transition-transform duration-500 ease-out group-hover:-translate-y-0.5 group-active:-translate-y-0.5"
+                          strokeWidth={1.75}
+                          aria-hidden="true"
+                        />
+                        {group.label}
+                      </span>
+                      {!!navBadges?.[group.href] && (
+                        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 font-body text-[10px] font-semibold text-primary-foreground">
+                          {navBadges[group.href]}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                }
+
+                const isSectionOpen = expanded === group.label;
+                const isGroupActive = group.items.some(
+                  (item) => item.href === activeHref,
+                );
+
+                return (
+                  <div
+                    key={group.label}
+                    className="border-b border-border/60 pb-1 last:border-none"
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpanded(isSectionOpen ? null : group.label)
+                      }
+                      aria-expanded={isSectionOpen}
+                      className={cn(
+                        "flex w-full items-center justify-between rounded-lg px-3 py-3 font-body text-xs font-semibold uppercase tracking-wide transition-colors duration-150",
+                        isGroupActive ? "text-primary" : "text-secondary-text",
+                      )}
+                    >
+                      {group.label}
+                      <ChevronDown
+                        className={cn(
+                          "h-4 w-4 transition-transform duration-150",
+                          isSectionOpen && "rotate-180",
+                        )}
+                        strokeWidth={1.75}
+                      />
+                    </button>
+
+                    <AnimatePresence initial={false}>
+                      {isSectionOpen && (
+                        <motion.div
+                          initial={
+                            shouldReduceMotion
+                              ? false
+                              : { height: 0, opacity: 0 }
+                          }
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{
+                            duration: shouldReduceMotion ? 0 : 0.18,
+                            ease: "easeOut",
+                          }}
+                          className="overflow-hidden"
+                        >
+                          <div className="flex flex-col gap-1 pb-2 pl-2 pt-1">
+                            {group.items.map((item) => {
+                              const Icon = item.icon;
+                              const isActive = item.href === activeHref;
+                              return (
+                                <Link
+                                  key={item.href}
+                                  href={item.href}
+                                  onClick={handleNavigate}
+                                  className={cn(
+                                    "group flex items-center gap-2.5 rounded-lg px-3 py-2.5 font-body text-sm font-medium transition-colors duration-150",
+                                    isActive
+                                      ? "bg-primary/10 text-primary"
+                                      : "text-foreground hover:bg-background",
+                                  )}
+                                >
+                                  <Icon
+                                    className="h-4 w-4 flex-none transition-transform duration-500 ease-out group-hover:-translate-y-0.5 group-active:-translate-y-0.5"
+                                    strokeWidth={1.75}
+                                  />
+                                  <span className="flex flex-1 items-center justify-between">
+                                    {item.label}
+                                    {!!navBadges?.[item.href] && (
+                                      <span className="ml-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 font-body text-[10px] font-semibold text-primary-foreground">
+                                        {navBadges[item.href]}
+                                      </span>
+                                    )}
+                                  </span>
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              })}
+            </nav>
+
+            <div className="mt-3 border-t border-border pt-3">
+              <Link
+                href="/"
+                onClick={handleNavigate}
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-3 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                <ArrowLeft className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                Back to website
+              </Link>
+
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-3 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                {theme === "dark" ? (
+                  <Sun className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                ) : (
+                  <Moon className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                )}
+                {theme === "dark" ? "Light mode" : "Dark mode"}
+              </button>
+
+              {userEmail && (
+                <p className="truncate px-3 pb-1 pt-2 font-body text-xs text-secondary-text">
+                  {userEmail}
+                </p>
+              )}
+
+              <form action={signOut} onSubmit={() => start()}>
+                <button
+                  type="submit"
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-3 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                >
+                  <LogOut className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                  Log out
+                </button>
+              </form>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
+</file>
+
 <file path="components/sections/ProjectCard.tsx">
 "use client";
 
@@ -27610,63 +27152,175 @@ function ServiceCard({ service, index }: { service: Service; index: number }) {
 }
 </file>
 
-<file path="config/site.ts">
-import { buildWhatsAppLink } from "@/config/contact";
-import { Layers, Bot, Briefcase, Users, Newspaper, Mail } from "lucide-react";
+<file path="data/projects.ts">
+/**
+ * TODO (content): each project below is a REAL, shipped project — only
+ * the case-study write-up sub-fields (`problem`, `solution`, `outcome`)
+ * are sometimes incomplete.
+ *
+ * QA FIX (manual test pass): the case-study detail page's "results are
+ * being finalized" fallback only fires when `outcome` is an EMPTY array.
+ * This file previously had `outcome` populated with bracketed
+ * placeholder text like "[e.g. 40%]" / "[e.g. increase in booking
+ * inquiries]" — which meant the fallback never triggered, and 3 live
+ * case-study pages were rendering that literal placeholder text to
+ * visitors as if it were real data. Fixed by setting `outcome: []` for
+ * any project without real numbers yet, so the honest fallback message
+ * shows instead.
+ *
+ * Replace `outcome: []` with real metric objects (and the `problem`/
+ * `solution` TODOs with real copy) as case studies get written up — do
+ * NOT invent plausible-sounding metrics or narrative to fill these
+ * fields early. A fabricated stat on a real client's case study is a
+ * false claim, not a placeholder.
+ */
+import type { Project } from "@/types";
+import type { BusinessType } from "@/lib/chat/estimator";
 
-export const siteConfig = {
-  name: "MBR Studio",
-  title: "MBR Studio — Digital products, built to grow your business.",
-  founder: "Muaaz Bin Riaz",
-  tagline: "Digital products, built to grow your business.",
-  description:
-    "MBR Studio is a premium software agency building websites, AI-powered automation, and digital products for growing businesses.",
-  url: "https://mbrstudio.co",
-  ogImage: "/opengraph-image",
-  email: "mbrstudio.dev@gmail.com",
-  // Added fields for the chat route
-  consultationUrl: "https://cal.com/mbr-studio/consultation",
-
-  contactEmail: "mbrstudio.dev@gmail.com",
-  links: {
-    twitter: "https://twitter.com/mbrstudio",
-    linkedin: "https://www.linkedin.com/in/muaaz-bin-riaz-92b395298/",
-    github: "https://github.com/muaazbinriaz",
+export const projects: Project[] = [
+  {
+    slug: "lumiere-skin-clinic",
+    title: "Lumière Skin Clinic Website",
+    client: "Lumière Skin Clinic, Rawalpindi",
+    industry: "Healthcare / Aesthetic Clinic",
+    summary:
+      "A full-stack web application for Lumière Skin Clinic, delivering a complete digital presence with AI chatbot, online booking, and admin dashboard. Built with Next.js, TypeScript, and MongoDB.",
+    image: "/images/projects/skin-clinic/skin-clinic.png",
+    images: [
+      "/images/projects/skin-clinic/skin-clinic-services.png",
+      "/images/projects/skin-clinic/skin-clinic-blog.png",
+      "/images/projects/skin-clinic/skin-clinic-footer.png",
+    ],
+    tags: [
+      "Next.js",
+      "TypeScript",
+      "TailwindCSS",
+      "MongoDB",
+      "NextAuth",
+      "Cloudinary",
+      "AI Chatbot",
+    ],
+    category: "AI Chatbot",
+    link: "https://skin-clinic.vercel.app",
+    problem:
+      "TODO (content): add the real pre-project context for Lumière here — do not fabricate.",
+    solution:
+      "TODO (content): add the real 1–2 sentence solution summary here — do not fabricate.",
+    outcome: [],
   },
-} as const;
 
-export const navLinks = [
-  { label: "Services", href: "/services", icon: Layers },
-  { label: "AI Agent", href: "/ai-agent", icon: Bot },
-  { label: "Portfolio", href: "/portfolio", icon: Briefcase },
-  { label: "About", href: "/about", icon: Users },
-  { label: "Blog", href: "/blog", icon: Newspaper },
-  { label: "Contact", href: "/contact", icon: Mail },
-] as const;
+  {
+    slug: "jobmatch-ai-job-matching",
+    title: "JobMatch — AI-Powered CV Analysis & Job Matching",
+    client: "Personal / SaaS Project",
+    industry: "Startup / SaaS",
+    summary:
+      "An AI-powered job matching platform where users upload their CV as a PDF and get matched against live job listings. The app extracts skills, experience, and education using an LLM, then searches real-time job data to surface relevant openings — all behind secure email/password authentication.",
+    image: "/images/projects/jobmatch/hero.png",
+    images: [
+      "/images/projects/jobmatch/login.png",
+      "/images/projects/jobmatch/mobile.png",
+    ],
+    tags: [
+      "Next.js",
+      "React",
+      "NextAuth.js",
+      "TailwindCSS",
+      "Node.js",
+      "Express",
+      "MongoDB",
+      "Mongoose",
+      "JWT",
+      "Groq (Llama 3.1)",
+      "pdf-parse",
+      "JSearch API",
+    ],
+    category: "Website",
+    link: "https://job-hunt-frontend-green.vercel.app/",
+    problem:
+      "Job seekers spend hours manually reading their CV against dozens of listings to figure out which roles are actually a fit — a slow, repetitive process that misses relevant openings buried in irrelevant search results.",
+    solution:
+      "Built an end-to-end pipeline: users upload a PDF CV, the backend extracts raw text with pdf-parse, and Groq's Llama 3.1 8B model structures it into skills, experience, and education. That profile is matched against live listings pulled from JSearch (RapidAPI), with results cached for 24 hours per user to minimize API costs.",
+    outcome: [],
+  },
 
-export const primaryCta = {
-  label: "Book a Consultation",
-  href: "/contact",
-} as const;
-
-export const secondaryCta = {
-  label: "Start Free",
-  href: "/signup",
-} as const;
+  {
+    slug: "mern-trello-task-board",
+    title: "MERN Trello-Style Collaborative Task Board",
+    client: "Personal / SaaS Project",
+    industry: "Startup / SaaS",
+    summary:
+      "A full-stack collaborative Kanban board app inspired by Trello. Users create boards, invite teammates by email, and manage drag-and-drop lists and cards with real-time updates powered by WebSockets — complete with image uploads, tagging, and automation rules.",
+    image: "/images/projects/task-board/hero.png",
+    images: [
+      "/images/projects/task-board/workflow.png",
+      "/images/projects/task-board/card-modal.png",
+      "/images/projects/task-board/invitation-modal.png",
+      "/images/projects/task-board/automation-modal.png",
+    ],
+    tags: [
+      "React 19",
+      "Redux Toolkit",
+      "TailwindCSS",
+      "Vite",
+      "React DnD",
+      "Socket.IO",
+      "Node.js",
+      "Express",
+      "MongoDB",
+      "Mongoose",
+      "JWT",
+      "Cloudinary",
+      "Nodemailer",
+    ],
+    category: "SaaS",
+    link: "https://notes-frontend-rouge.vercel.app/",
+    problem:
+      "Teams often juggle scattered task lists across chat threads and spreadsheets, with no shared, real-time view of who's doing what — leading to duplicated work and missed updates when multiple people edit the same board.",
+    solution:
+      "Built a real-time collaborative Kanban board where every list, card, and member change syncs instantly across all connected users via WebSockets (Socket.IO). Added automation rules — like auto-moving cards to a new list when tagged — plus email invitations, image attachments, and drag-and-drop reordering for a smooth, Trello-like workflow.",
+    outcome: [],
+  },
+];
 
 /**
- * Delegates to config/contact.ts's buildWhatsAppLink() — that file is
- * the single source of truth for the WhatsApp number (WHATSAPP_DIGITS /
- * WHATSAPP_DISPLAY). This used to hardcode a second literal number here,
- * which risked the contact page and the AI chatbot handoff pointing at
- * two different numbers if only one was ever updated.
- *
- * Passes an empty message override so the chatbot's handoff link keeps
- * its previous behavior (no pre-filled WhatsApp message) rather than
- * picking up buildWhatsAppLink()'s default qualification message.
+ * BUGFIX: this used to compare `project.industry.toLowerCase()` (free
+ * text like "Healthcare / Aesthetic Clinic") for strict equality against
+ * `category`, which is a BusinessType enum value (e.g. "healthcare").
+ * "healthcare / aesthetic clinic" !== "healthcare", so matchCategory was
+ * false for every real project whenever a category was supplied — the
+ * AI's searchPortfolio tool would silently return zero results any time
+ * the model passed a category, even when a matching project existed.
+ * Fixed by matching each BusinessType against keywords that can appear
+ * inside the free-text `industry` field instead of requiring equality.
  */
-export function getWhatsappLink(): string {
-  return buildWhatsAppLink("");
+const CATEGORY_KEYWORDS: Record<BusinessType, string[]> = {
+  restaurant: ["restaurant", "food", "cafe"],
+  retail: ["retail", "e-commerce", "ecommerce", "shop"],
+  services: ["services", "agency"],
+  real_estate: ["real estate", "property"],
+  healthcare: ["healthcare", "clinic", "medical"],
+  startup_saas: ["startup", "saas"],
+  other: [],
+};
+
+export function searchProjects(
+  category?: BusinessType,
+  keyword?: string,
+): Project[] {
+  // Simple in-memory search – replace with real data when you add more projects.
+  return projects.filter((project) => {
+    const industryLower = project.industry.toLowerCase();
+    const matchCategory =
+      !category ||
+      category === "other" ||
+      CATEGORY_KEYWORDS[category].some((kw) => industryLower.includes(kw));
+    const matchKeyword =
+      !keyword ||
+      project.title.toLowerCase().includes(keyword.toLowerCase()) ||
+      project.summary.toLowerCase().includes(keyword.toLowerCase());
+    return matchCategory && matchKeyword;
+  });
 }
 </file>
 
@@ -28362,6 +28016,313 @@ export function getWhatsappLink(): string {
 })();
 </file>
 
+<file path="app/(marketing)/ai-agent/page.tsx">
+import type { Metadata } from "next";
+import Link from "next/link";
+import Script from "next/script";
+import {
+  ArrowRight,
+  BarChart3,
+  Bot,
+  Inbox,
+  MessageCircle,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { FadeIn } from "@/components/animations/FadeIn";
+import { AiAgentFeatureCard } from "@/components/sections/AiAgentFeatureCard";
+import { AiAgentPricingCard } from "@/components/sections/AiAgentPricingCard";
+import { Testimonials } from "@/components/sections/Testimonials";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { breadcrumbSchema } from "@/lib/seo/schemas";
+import { siteConfig } from "@/config/site";
+import { PLANS } from "@/lib/billing/plans";
+import { SuppressLauncherOnMount } from "@/components/chatbot/SuppressLauncherOnMount";
+
+export const metadata: Metadata = {
+  title: "AI Agent",
+  description:
+    "Try the exact AI agent MBR Studio builds for businesses — a live, working chatbot demo covering pricing, guardrails, lead capture, and setup.",
+  alternates: {
+    canonical: "/ai-agent",
+  },
+};
+
+const DEMO_WIDGET_PUBLIC_KEY = process.env.NEXT_PUBLIC_DEMO_WIDGET_KEY || null;
+
+const HOW_IT_WORKS = [
+  {
+    number: "01",
+    title: "Knowledge base",
+    description:
+      "Upload your docs, FAQs, or website content — the agent learns your business, not a generic script.",
+  },
+  {
+    number: "02",
+    title: "Guardrails",
+    description:
+      "Set rules for tone, topics to avoid, and when to hand off — so it only says what you'd approve.",
+  },
+  {
+    number: "03",
+    title: "Embed on your site",
+    description:
+      "One script tag. Works on any website, no developer required beyond pasting a line of code.",
+  },
+  {
+    number: "04",
+    title: "Conversations flow into your inbox",
+    description:
+      "Every chat lands in your dashboard — reply directly, or let the agent keep handling it.",
+  },
+] as const;
+
+const FEATURES = [
+  {
+    icon: ShieldCheck,
+    title: "Stays on-brand, every time",
+    description:
+      "Define what the agent can and can't say, and when it should stop and hand off to a human.",
+  },
+  {
+    icon: Sparkles,
+    title: "Never lose a lead again",
+    description:
+      "Collects name, email, and intent mid-conversation — leads land in your dashboard automatically.",
+  },
+  {
+    icon: MessageCircle,
+    title: "Meets customers where they are",
+    description:
+      "Website live now, with WhatsApp, Instagram, and Messenger available depending on your plan.",
+  },
+  {
+    icon: Inbox,
+    title: "Jump in anytime, no context lost",
+    description:
+      "Take over any conversation in real time when the agent needs a human.",
+  },
+  {
+    icon: BarChart3,
+    title: "Know exactly what's working",
+    description:
+      "Track conversations, leads, and channel performance in one place.",
+  },
+  {
+    icon: Bot,
+    title: "Live in minutes, not weeks",
+    description:
+      "Start from a template tuned for your industry instead of a blank knowledge base.",
+  },
+] as const;
+
+export default function AiAgentPage() {
+  return (
+    <>
+      <JsonLd
+        data={breadcrumbSchema([
+          { name: "Home", url: siteConfig.url },
+          { name: "AI Agent", url: `${siteConfig.url}/ai-agent` },
+        ])}
+      />
+
+      {DEMO_WIDGET_PUBLIC_KEY && (
+        <>
+          <Script
+            src="/chatbot.js"
+            data-client={DEMO_WIDGET_PUBLIC_KEY}
+            strategy="lazyOnload"
+          />
+          <SuppressLauncherOnMount />
+        </>
+      )}
+
+      {/* Hero */}
+      <section className="bg-background">
+        <FadeIn className="mx-auto max-w-4xl px-6 py-24 text-center md:px-10 md:py-32">
+          <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+            AI Agent Platform
+          </p>
+          <h1 className="font-heading text-[36px] font-bold leading-tight tracking-tight text-text sm:text-[48px] md:text-[56px]">
+            Give your business a 24/7 AI agent — try the exact one your
+            customers would talk to, right now.
+          </h1>
+          <p className="mx-auto mt-5 max-w-2xl font-body text-base text-secondary-text sm:text-lg">
+            This isn&apos;t a mockup. The chat bubble on this page is the same
+            widget technology we ship to real clients — configured here as our
+            own demo agent. Open it and ask it anything about pricing, setup, or
+            how it works.
+          </p>
+
+          <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
+            <Button asChild size="lg" className="rounded-lg px-7 py-6">
+              <Link href="/signup">
+                Start Free Trial
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              size="lg"
+              className="rounded-lg px-7 py-6"
+            >
+              <Link href="/contact">Book a Consultation</Link>
+            </Button>
+          </div>
+
+          {DEMO_WIDGET_PUBLIC_KEY && (
+            <p className="mt-6 font-body text-sm text-secondary-text">
+              Or just look for the chat bubble in the bottom-right corner of
+              this page 👇 — it&apos;s the same agent, live.
+            </p>
+          )}
+        </FadeIn>
+      </section>
+
+      {/* How it works */}
+      <section className="border-t border-border bg-secondary-background">
+        <div className="mx-auto max-w-6xl px-6 py-24 md:px-10 md:py-32">
+          <div className="mb-14 max-w-2xl">
+            <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+              How it works
+            </p>
+            <h2 className="font-heading text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[40px]">
+              From knowledge base to live conversations, in four steps.
+            </h2>
+          </div>
+          <ol className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
+            {HOW_IT_WORKS.map((step, index) => (
+              <FadeIn
+                key={step.number}
+                as="li"
+                viewport={{ once: true, amount: 0.4 }}
+                transition={{ duration: 0.4, delay: index * 0.08 }}
+              >
+                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card font-heading text-xs font-semibold text-text">
+                  {step.number}
+                </div>
+                <h3 className="mb-2 font-heading text-lg font-semibold text-text">
+                  {step.title}
+                </h3>
+                <p className="font-body text-sm leading-relaxed text-secondary-text">
+                  {step.description}
+                </p>
+              </FadeIn>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      {/* Features grid */}
+      <section className="bg-background">
+        <div className="mx-auto max-w-6xl px-6 py-24 md:px-10 md:py-32">
+          <div className="mb-14 max-w-2xl">
+            <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+              What&apos;s included
+            </p>
+            <h2 className="font-heading text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[40px]">
+              Everything a real client&apos;s agent ships with.
+            </h2>
+          </div>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {FEATURES.map((feature, index) => {
+              const Icon = feature.icon;
+              return (
+                <AiAgentFeatureCard
+                  key={feature.title}
+                  icon={<Icon className="h-5 w-5" strokeWidth={1.75} />}
+                  title={feature.title}
+                  description={feature.description}
+                  index={index}
+                />
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing */}
+      <section className="border-t border-border bg-secondary-background">
+        <div className="mx-auto max-w-6xl px-6 py-24 md:px-10 md:py-32">
+          <div className="mb-14 max-w-2xl">
+            <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+              Pricing
+            </p>
+            <h2 className="font-heading text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[40px]">
+              Simple, transparent plans as your business grows.
+            </h2>
+          </div>
+          <div className="grid grid-cols-1 gap-6 pt-3 sm:grid-cols-2 lg:grid-cols-3">
+            {(Object.keys(PLANS) as (keyof typeof PLANS)[]).map(
+              (planId, index) => (
+                <AiAgentPricingCard
+                  key={planId}
+                  plan={PLANS[planId]}
+                  featured={planId === "growth"}
+                  index={index}
+                />
+              ),
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Social proof */}
+      <Testimonials />
+
+      <section className="bg-background">
+        <div className="mx-auto max-w-3xl px-6 py-16 text-center md:px-10">
+          <p className="font-body text-sm text-secondary-text">
+            Want to see it in a real business?{" "}
+            <Link
+              href="/case-studies"
+              className="font-medium text-primary underline underline-offset-2 hover:text-accent"
+            >
+              Read our case studies
+            </Link>
+          </p>
+        </div>
+      </section>
+
+      {/* Closing CTA */}
+      <section className="bg-background">
+        <FadeIn
+          viewport={{ once: true, amount: 0.5 }}
+          className="mx-auto max-w-3xl px-6 py-24 text-center md:px-10 md:py-32"
+        >
+          <h2 className="font-heading text-[28px] font-bold leading-tight tracking-tight text-text sm:text-[36px]">
+            Ready to give your business its own AI agent?
+          </h2>
+          <p className="mx-auto mt-4 max-w-xl font-body text-base text-secondary-text">
+            Start free and configure it yourself, or book a call and we&apos;ll
+            set it up with you.
+          </p>
+          <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+            <Button asChild size="lg" className="rounded-lg px-7 py-6">
+              <Link href="/signup">
+                Start Free Trial
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              size="lg"
+              className="rounded-lg px-7 py-6"
+            >
+              <Link href="/contact">Book a Consultation</Link>
+            </Button>
+          </div>
+        </FadeIn>
+      </section>
+    </>
+  );
+}
+</file>
+
 <file path="components/chatbot/ChatWindow.tsx">
 "use client";
 
@@ -28772,6 +28733,66 @@ export function ChatWindow() {
 }
 </file>
 
+<file path="config/site.ts">
+import { buildWhatsAppLink } from "@/config/contact";
+import { Layers, Bot, Briefcase, Users, Newspaper, Mail } from "lucide-react";
+
+export const siteConfig = {
+  name: "MBR Studio",
+  title: "MBR Studio — Digital products, built to grow your business.",
+  founder: "Muaaz Bin Riaz",
+  tagline: "Digital products, built to grow your business.",
+  description:
+    "MBR Studio is a premium software agency building websites, AI-powered automation, and digital products for growing businesses.",
+  url: "https://mbrstudio.co",
+  ogImage: "/opengraph-image",
+  email: "mbrstudio.dev@gmail.com",
+  // Added fields for the chat route
+  consultationUrl: "https://cal.com/mbr-studio/consultation",
+
+  contactEmail: "mbrstudio.dev@gmail.com",
+  links: {
+    twitter: "https://twitter.com/mbrstudio",
+    linkedin: "https://www.linkedin.com/in/muaaz-bin-riaz-92b395298/",
+    github: "https://github.com/muaazbinriaz",
+  },
+} as const;
+
+export const navLinks = [
+  { label: "Services", href: "/services", icon: Layers },
+  { label: "AI Agent", href: "/ai-agent", icon: Bot },
+  { label: "Portfolio", href: "/portfolio", icon: Briefcase },
+  { label: "About", href: "/about", icon: Users },
+  { label: "Blog", href: "/blog", icon: Newspaper },
+  { label: "Contact", href: "/contact", icon: Mail },
+] as const;
+
+export const primaryCta = {
+  label: "Book a Consultation",
+  href: "/contact",
+} as const;
+
+export const secondaryCta = {
+  label: "Start Free Trial",
+  href: "/signup",
+} as const;
+
+/**
+ * Delegates to config/contact.ts's buildWhatsAppLink() — that file is
+ * the single source of truth for the WhatsApp number (WHATSAPP_DIGITS /
+ * WHATSAPP_DISPLAY). This used to hardcode a second literal number here,
+ * which risked the contact page and the AI chatbot handoff pointing at
+ * two different numbers if only one was ever updated.
+ *
+ * Passes an empty message override so the chatbot's handoff link keeps
+ * its previous behavior (no pre-filled WhatsApp message) rather than
+ * picking up buildWhatsAppLink()'s default qualification message.
+ */
+export function getWhatsappLink(): string {
+  return buildWhatsAppLink("");
+}
+</file>
+
 <file path=".env.example">
 RESEND_API_KEY=
 
@@ -28995,13 +29016,65 @@ export default async function DashboardPage() {
 }
 </file>
 
+<file path="package.json">
+{
+  "name": "mbr-studio",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build --turbopack",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.4",
+    "@ai-sdk/react": "^3.0.220",
+    "@hookform/resolvers": "^5.4.0",
+    "@next/third-parties": "^16.2.10",
+    "@openrouter/ai-sdk-provider": "^2.10.0",
+    "@radix-ui/react-label": "^2.1.11",
+    "@radix-ui/react-slot": "^1.3.0",
+    "@supabase/ssr": "^0.12.0",
+    "@supabase/supabase-js": "^2.110.0",
+    "@vercel/analytics": "^2.0.1",
+    "ai": "^6.0.218",
+    "cheerio": "^1.2.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.42.2",
+    "lucide-react": "^1.22.0",
+    "next": "15.5.19",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "react-hook-form": "^7.80.0",
+    "resend": "^6.16.0",
+    "tailwind-merge": "^3.6.0",
+    "tw-animate-css": "^1.4.0",
+    "unpdf": "^1.6.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.19",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
+</file>
+
 <file path="components/platform/PlatformShell.tsx">
 "use client";
 
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, LogOut, Sun, Moon, ExternalLink } from "lucide-react";
+import { Menu, LogOut, Sun, Moon, ArrowLeft } from "lucide-react";
 import {
   Building2,
   Settings,
@@ -29027,7 +29100,7 @@ import { PlatformAmbient } from "@/components/platform/PlatformAmbient";
 import { useRouteLoader } from "@/components/loader/RouteLoader";
 import { DesktopNav, type NavGroup } from "@/components/platform/DesktopNav";
 import { MobileNav } from "@/components/platform/MobileNav";
-import { LogoMark } from "@/components/brand/Logo";
+import { Logo } from "@/components/brand/Logo";
 export type PlatformVariant = "admin" | "client";
 
 const NAV_GROUPS_BY_VARIANT: Record<
@@ -29218,16 +29291,20 @@ export function PlatformShell({
               onClick={() => start()}
               className="flex items-center gap-2 font-heading text-base font-semibold tracking-tight text-foreground"
             >
-              <LogoMark className="h-6 w-6" />
-              MBR Studio {brandSuffix}
+              <Logo markClassName="h-6 w-6" />
+              {brandSuffix && (
+                <span className="font-body text-sm font-normal text-secondary-text">
+                  {brandSuffix}
+                </span>
+              )}
             </Link>
             <Link
               href="/"
               onClick={() => start()}
               className="hidden items-center gap-1 rounded-full border border-border px-2.5 py-1 font-body text-xs text-secondary-text transition-colors duration-150 hover:border-primary/40 hover:text-foreground sm:inline-flex"
             >
-              <ExternalLink className="h-3 w-3" strokeWidth={1.75} />
-              View live site
+              <ArrowLeft className="h-3 w-3" strokeWidth={1.75} />
+              Back to website
             </Link>
           </div>
 
@@ -29321,15 +29398,6 @@ function UserMenu({ userEmail }: { userEmail?: string | null }) {
                 {userEmail}
               </p>
             )}
-            <Link
-              href="/"
-              role="menuitem"
-              onClick={() => start()}
-              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground"
-            >
-              <ExternalLink className="h-4 w-4 flex-none" strokeWidth={1.75} />
-              View live site
-            </Link>
             <form action={signOut} onSubmit={() => start()}>
               <button
                 type="submit"
@@ -29345,58 +29413,6 @@ function UserMenu({ userEmail }: { userEmail?: string | null }) {
       )}
     </div>
   );
-}
-</file>
-
-<file path="package.json">
-{
-  "name": "mbr-studio",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "@ai-sdk/anthropic": "^4.0.4",
-    "@ai-sdk/react": "^3.0.220",
-    "@hookform/resolvers": "^5.4.0",
-    "@next/third-parties": "^16.2.10",
-    "@openrouter/ai-sdk-provider": "^2.10.0",
-    "@radix-ui/react-label": "^2.1.11",
-    "@radix-ui/react-slot": "^1.3.0",
-    "@supabase/ssr": "^0.12.0",
-    "@supabase/supabase-js": "^2.110.0",
-    "@vercel/analytics": "^2.0.1",
-    "ai": "^6.0.218",
-    "cheerio": "^1.2.0",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "framer-motion": "^12.42.2",
-    "lucide-react": "^1.22.0",
-    "next": "15.5.19",
-    "react": "^19.2.1",
-    "react-dom": "^19.2.1",
-    "react-hook-form": "^7.80.0",
-    "resend": "^6.16.0",
-    "tailwind-merge": "^3.6.0",
-    "tw-animate-css": "^1.4.0",
-    "unpdf": "^1.6.2",
-    "zod": "^4.4.3"
-  },
-  "devDependencies": {
-    "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "15.5.19",
-    "tailwindcss": "^4",
-    "typescript": "^5"
-  }
 }
 </file>
 

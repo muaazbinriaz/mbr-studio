@@ -111,9 +111,14 @@ export function Footer() {
               >
                 {siteConfig.email}
               </a>
-              <Link href="/contact" className={footerLinkClass}>
+              <a
+                href={siteConfig.consultationUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={footerLinkClass}
+              >
                 Book a Consultation
-              </Link>
+              </a>
             </div>
           </div>
         </div>

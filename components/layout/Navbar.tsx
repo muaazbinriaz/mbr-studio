@@ -162,7 +162,13 @@ export function Navbar() {
               <Link href={secondaryCta.href}>{secondaryCta.label}</Link>
             </Button>
             <Button asChild size="sm">
-              <Link href={primaryCta.href}>{primaryCta.label}</Link>
+              <Link
+                href={primaryCta.href}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {primaryCta.label}
+              </Link>
             </Button>
           </div>
 
@@ -296,7 +302,12 @@ export function Navbar() {
                     </Link>
                   </Button>
                   <Button asChild size="lg" className="w-full">
-                    <Link href={primaryCta.href} onClick={() => setOpen(false)}>
+                    <Link
+                      href={primaryCta.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setOpen(false)}
+                    >
                       {primaryCta.label}
                     </Link>
                   </Button>

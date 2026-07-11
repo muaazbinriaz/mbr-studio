@@ -33,7 +33,7 @@ export const navLinks = [
 
 export const primaryCta = {
   label: "Book a Consultation",
-  href: "/contact",
+  href: siteConfig.consultationUrl,
 } as const;
 
 export const secondaryCta = {

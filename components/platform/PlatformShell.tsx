@@ -230,9 +230,12 @@ export function PlatformShell({
             <Link
               href="/"
               onClick={() => start()}
-              className="hidden items-center gap-1 rounded-full border border-border px-2.5 py-1 font-body text-xs text-secondary-text transition-colors duration-150 hover:border-primary/40 hover:text-foreground sm:inline-flex"
+              className="group hidden items-center gap-1.5 rounded-full border border-border px-3 py-1.5 font-body text-xs text-secondary-text transition-all duration-150 hover:border-primary/30 hover:bg-card hover:text-foreground sm:inline-flex"
             >
-              <ArrowLeft className="h-3 w-3" strokeWidth={1.75} />
+              <ArrowLeft
+                className="h-3 w-3 transition-transform duration-150 group-hover:-translate-x-0.5"
+                strokeWidth={1.75}
+              />
               Back to website
             </Link>
           </div>
