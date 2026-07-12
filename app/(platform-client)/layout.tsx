@@ -41,7 +41,7 @@ export default async function ClientDashboardLayout({
   if (membership) {
     const { data: agent } = await supabase
       .from("agents")
-      .select("setup_complete, agent_name, is_active")
+      .select("setup_complete, name, is_active")
       .eq("organization_id", membership.organization_id)
       .eq("is_active", true)
       .order("created_at", { ascending: true })
@@ -51,7 +51,7 @@ export default async function ClientDashboardLayout({
     // safer default than briefly flashing the full sidebar.
     setupComplete = agent?.setup_complete ?? false;
 
-    if (agent?.agent_name) agentName = agent.agent_name;
+    if (agent?.name) agentName = agent.name;
 
     const { data: orgRow } = await supabase
       .from("organizations")
