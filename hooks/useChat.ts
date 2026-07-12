@@ -12,8 +12,9 @@ import { DefaultChatTransport } from "ai";
  * `components/chatbot/useChat.tsx`'s `useChatPanel` — that file only
  * owns panel open/close state, this one owns message state/streaming.
  */
-export function useAIChat() {
+export function useAIChat(id?: string) {
   return useAiChatSdk({
+    id,
     transport: new DefaultChatTransport({
       api: "/api/chat",
     }),

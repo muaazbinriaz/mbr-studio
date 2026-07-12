@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Menu, LogOut, Sun, Moon, ArrowLeft } from "lucide-react";
 import {
   Building2,
@@ -34,7 +35,7 @@ export type PlatformVariant = "admin" | "client";
 
 const NAV_GROUPS_BY_VARIANT: Record<
   PlatformVariant,
-  (isReseller: boolean) => NavGroup[]
+  (isReseller: boolean, setupComplete: boolean) => NavGroup[]
 > = {
   admin: () => [
     { type: "link", label: "Overview", href: "/admin", icon: LayoutDashboard },
@@ -58,7 +59,39 @@ const NAV_GROUPS_BY_VARIANT: Record<
     },
   ],
 
-  client: (isReseller) => {
+  client: (isReseller, setupComplete) => {
+    // Pre-setup: only what's actually usable with zero data. Inbox/Leads/
+    // Channels/templates are meaningless before the agent is live, so they
+    // don't even appear — not hidden-but-reachable, genuinely absent.
+    if (!setupComplete) {
+      return [
+        {
+          type: "link",
+          label: "Overview",
+          href: "/dashboard",
+          icon: LayoutDashboard,
+        },
+        {
+          type: "link",
+          label: "Setup Wizard",
+          href: "/dashboard/onboarding",
+          icon: Sparkles,
+        },
+        {
+          type: "link",
+          label: "Knowledge Base",
+          href: "/dashboard/knowledge-base",
+          icon: BookOpen,
+        },
+        {
+          type: "link",
+          label: "Settings",
+          href: "/dashboard/settings",
+          icon: Settings,
+        },
+      ];
+    }
+
     // Essential: what a small-business owner touches regularly, always
     // one click away. Everything else lives under two grouped menus —
     // "Agent" (config that shapes what the bot says/does) and "Account"
@@ -190,6 +223,7 @@ export function PlatformShell({
   userEmail,
   navBadges,
   isReseller = false,
+  setupComplete = true,
   children,
 }: {
   variant: PlatformVariant;
@@ -197,6 +231,8 @@ export function PlatformShell({
   /** Keyed by nav item href, e.g. { "/dashboard/inbox": 3 } */
   navBadges?: Record<string, number>;
   isReseller?: boolean;
+  /** Client variant only — false collapses the sidebar to setup-only items. */
+  setupComplete?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -204,7 +240,7 @@ export function PlatformShell({
   const { theme, toggleTheme } = useTheme();
   const { start } = useRouteLoader();
 
-  const groups = NAV_GROUPS_BY_VARIANT[variant](isReseller);
+  const groups = NAV_GROUPS_BY_VARIANT[variant](isReseller, setupComplete);
   const brandSuffix = BRAND_SUFFIX_BY_VARIANT[variant];
   const activeHref = getActiveHref(pathname, flattenHrefs(groups));
 
@@ -303,51 +339,54 @@ export function PlatformShell({
 }
 
 function UserMenu({ userEmail }: { userEmail?: string | null }) {
-  const [open, setOpen] = useState(false);
   const { start } = useRouteLoader();
+  const signOutFormRef = useRef<HTMLFormElement>(null);
 
   return (
-    <div className="relative hidden md:block">
-      <button
-        type="button"
-        onClick={() => setOpen((prev) => !prev)}
-        aria-expanded={open}
-        aria-haspopup="true"
-        aria-label="Account menu"
-        className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 font-body text-sm font-semibold text-primary transition-colors duration-150 hover:bg-primary/20"
-      >
-        {userEmail?.[0]?.toUpperCase() ?? "?"}
-      </button>
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          aria-label="Account menu"
+          className="hidden h-9 w-9 items-center justify-center rounded-full bg-primary/10 font-body text-sm font-semibold text-primary transition-colors duration-150 hover:bg-primary/20 data-[state=open]:bg-primary/20 md:flex"
+        >
+          {userEmail?.[0]?.toUpperCase() ?? "?"}
+        </button>
+      </DropdownMenu.Trigger>
 
-      {open && (
-        <>
-          <div
-            aria-hidden="true"
-            onClick={() => setOpen(false)}
-            className="fixed inset-0 z-40"
-          />
-          <div
-            role="menu"
-            className="absolute right-0 top-full z-50 mt-2 w-56 rounded-xl border border-border bg-card p-1.5 shadow-xl shadow-black/[0.06] dark:shadow-black/30"
-          >
-            {userEmail && (
-              <p className="truncate px-3 py-2 font-body text-xs text-secondary-text">
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="end"
+          sideOffset={8}
+          className="z-50 w-56 rounded-xl border border-border bg-card p-1.5 shadow-xl shadow-black/[0.06] dark:shadow-black/30"
+        >
+          {userEmail && (
+            <>
+              <DropdownMenu.Label className="truncate px-3 pb-2 pt-1.5 font-body text-xs text-secondary-text">
                 {userEmail}
-              </p>
-            )}
-            <form action={signOut} onSubmit={() => start()}>
-              <button
-                type="submit"
-                role="menuitem"
-                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground"
-              >
-                <LogOut className="h-4 w-4 flex-none" strokeWidth={1.75} />
-                Log out
-              </button>
-            </form>
-          </div>
-        </>
-      )}
-    </div>
+              </DropdownMenu.Label>
+              <DropdownMenu.Separator className="mx-1 mb-1.5 h-px bg-border" />
+            </>
+          )}
+
+          <DropdownMenu.Item
+            onSelect={() => {
+              start();
+              signOutFormRef.current?.requestSubmit();
+            }}
+            className="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 font-body text-sm font-medium text-secondary-text outline-none transition-colors duration-150 data-[highlighted]:bg-background data-[highlighted]:text-foreground"
+          >
+            <LogOut className="h-4 w-4 flex-none" strokeWidth={1.75} />
+            Log out
+          </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+
+      {/* Real submit target for the server action — kept off-screen and
+          triggered via requestSubmit() so the visible row can be a
+          proper Radix Item (correct role, keyboard nav, Escape/outside
+          click handling) instead of a <form> standing in for one. */}
+      <form ref={signOutFormRef} action={signOut} className="hidden" />
+    </DropdownMenu.Root>
   );
 }

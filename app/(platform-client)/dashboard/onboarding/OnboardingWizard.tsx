@@ -2,12 +2,27 @@
 
 import { useState, useTransition } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Copy, Loader2, ArrowRight, ArrowLeft } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Loader2,
+  ArrowRight,
+  ArrowLeft,
+  ExternalLink,
+} from "lucide-react";
 import { WidgetPreview } from "@/components/platform/WidgetPreview";
 import type { AgentTemplate } from "@/lib/agents/templates";
+import type { GuardrailToggles } from "@/lib/agents/build-system-prompt";
 import { applyTemplate } from "@/app/(platform-client)/dashboard/agent/templates/actions";
-import { addKnowledgeBaseDocument } from "@/app/(platform-client)/dashboard/knowledge-base/actions";
-import { saveOrgBasics, saveBranding, markOnboardingComplete } from "./actions";
+import { KnowledgeBaseClient } from "@/app/(platform-client)/dashboard/knowledge-base/KnowledgeBaseClient";
+import { GuardrailsClient } from "@/app/(platform-client)/dashboard/agent/guardrails/GuardrailsClient";
+import {
+  saveOrgBasics,
+  saveAgentName,
+  saveBranding,
+  saveOnboardingStep,
+  markOnboardingComplete,
+} from "./actions";
 import { Button } from "@/components/ui/button";
 import { useLoaderRouter } from "@/components/loader/RouteLoader";
 
@@ -17,37 +32,69 @@ type OrgInfo = {
   accent_color: string;
   welcome_message: string;
   logo_url: string | null;
+  widget_position: string;
 } | null;
 
+interface LeadCaptureSettings {
+  ask_name: boolean;
+  ask_email: boolean;
+  ask_phone: boolean;
+  ask_message: boolean;
+}
+
+interface DocumentRow {
+  id: string;
+  title: string;
+  status: string;
+  source_type: string;
+  source_url?: string | null;
+  created_at: string;
+  updated_at: string;
+  last_refreshed_at?: string | null;
+  error_message?: string | null;
+  raw_content?: string | null;
+  chunkCount: number;
+}
+
 const STEPS = [
-  "Business basics",
-  "Knowledge base",
-  "Branding",
+  "Name & Personality",
+  "Train",
+  "Behavior",
+  "Look & Feel",
   "Go live",
 ] as const;
 const EMBED_TABS = ["HTML", "WordPress", "Wix", "Webflow"] as const;
 
 export function OnboardingWizard({
   org,
+  agentName: initialAgentName,
   publicKey,
   templates,
+  initialStep,
+  guardrails,
+  leadCaptureSettings,
+  documents,
 }: {
   org: OrgInfo;
   agentId: string | null;
+  agentName: string;
   publicKey: string | null;
   templates: AgentTemplate[];
+  initialStep: number;
+  guardrails: GuardrailToggles | null;
+  leadCaptureSettings: LeadCaptureSettings | null;
+  documents: DocumentRow[];
 }) {
   const router = useLoaderRouter();
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(initialStep);
+  const [mobileView, setMobileView] = useState<"form" | "preview">("form");
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const [businessName, setBusinessName] = useState(org?.name ?? "");
+  const [agentName, setAgentName] = useState(initialAgentName);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
     null,
   );
-
-  const [kbContent, setKbContent] = useState("");
 
   const [primaryColor, setPrimaryColor] = useState(
     org?.primary_color ?? "#6366f1",
@@ -59,26 +106,56 @@ export function OnboardingWizard({
     org?.welcome_message ?? "Hi! How can I help you today?",
   );
   const [logoUrl, setLogoUrl] = useState(org?.logo_url ?? "");
+  const [widgetPosition, setWidgetPosition] = useState<
+    "bottom-right" | "bottom-left"
+  >((org?.widget_position as "bottom-right" | "bottom-left") ?? "bottom-right");
 
   const [embedTab, setEmbedTab] = useState<(typeof EMBED_TABS)[number]>("HTML");
   const [copied, setCopied] = useState(false);
 
-  const goNext = () => setStep((s) => Math.min(s + 1, STEPS.length - 1));
-  const goBack = () => setStep((s) => Math.max(s - 1, 0));
+  // Fire-and-forget: persists the step server-side so closing the tab and
+  // coming back to /dashboard resumes here instead of restarting at 0.
+  // Never blocks navigation on this — it's a convenience, not a gate.
+  const persistStep = (n: number) => {
+    void saveOnboardingStep(n);
+  };
+
+  const goNext = () =>
+    setStep((s) => {
+      const next = Math.min(s + 1, STEPS.length - 1);
+      persistStep(next);
+      return next;
+    });
+  const goBack = () =>
+    setStep((s) => {
+      const prev = Math.max(s - 1, 0);
+      persistStep(prev);
+      return prev;
+    });
 
   const embedSnippet = publicKey
     ? `<script src="${typeof window !== "undefined" ? window.location.origin : ""}/chatbot.js" data-client="${publicKey}" defer></script>`
     : "";
 
-  const handleStep1Next = () => {
+  const handleStep0Next = () => {
     setError(null);
-    const formData = new FormData();
-    formData.set("name", businessName);
+    if (!agentName.trim()) {
+      setError("Give your agent a name.");
+      return;
+    }
 
     startTransition(async () => {
-      const result = await saveOrgBasics(formData);
-      if (result?.error) {
-        setError(result.error);
+      const orgFormData = new FormData();
+      orgFormData.set("name", agentName);
+      const orgResult = await saveOrgBasics(orgFormData);
+      if (orgResult?.error) {
+        setError(orgResult.error);
+        return;
+      }
+
+      const nameResult = await saveAgentName(agentName);
+      if (nameResult?.error) {
+        setError(nameResult.error);
         return;
       }
 
@@ -88,45 +165,20 @@ export function OnboardingWizard({
           setError(templateResult.error);
           return;
         }
-        const template = templates.find((t) => t.id === selectedTemplateId);
-        if (template?.starterFaqs[0]) {
-          setKbContent(template.starterFaqs[0].content);
-        }
       }
 
       goNext();
     });
   };
 
-  const handleStep2Next = () => {
-    setError(null);
-
-    if (!kbContent.trim() || kbContent.trim().length < 20) {
-      goNext();
-      return;
-    }
-
-    const formData = new FormData();
-    formData.set("title", "Getting started (from onboarding)");
-    formData.set("rawContent", kbContent);
-
-    startTransition(async () => {
-      const result = await addKnowledgeBaseDocument(formData);
-      if (result?.error) {
-        setError(result.error);
-        return;
-      }
-      goNext();
-    });
-  };
-
-  const handleStep3Next = () => {
+  const handleBrandingNext = () => {
     setError(null);
     const formData = new FormData();
     formData.set("primary_color", primaryColor);
     formData.set("accent_color", accentColor);
     formData.set("welcome_message", welcomeMessage);
     formData.set("logo_url", logoUrl);
+    formData.set("widget_position", widgetPosition);
 
     startTransition(async () => {
       const result = await saveBranding(formData);
@@ -158,9 +210,21 @@ export function OnboardingWizard({
     });
   };
 
+  // Opens a genuinely blank page and injects the real embed snippet, so the
+  // user sees the widget work outside the dashboard too — not a simulation.
+  const openLiveTest = () => {
+    if (!embedSnippet) return;
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(
+      `<!DOCTYPE html><html><head><title>Widget test</title></head><body style="font-family:sans-serif;padding:48px;color:#333"><h1>This is a blank page</h1><p>Your chat widget should appear in the corner below — this is exactly how it'll look on your real site.</p>${embedSnippet}</body></html>`,
+    );
+    win.document.close();
+  };
+
   return (
     <div>
-      <div className="mb-8 flex items-center gap-2">
+      <div className="mb-6 flex items-center gap-2">
         {STEPS.map((label, i) => (
           <div key={label} className="flex flex-1 items-center gap-2">
             <div
@@ -184,303 +248,380 @@ export function OnboardingWizard({
         ))}
       </div>
 
+      {/* Mobile-only Setup/Preview toggle — the preview never just disappears */}
+      <div className="mb-4 flex gap-2 lg:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileView("form")}
+          className={`flex-1 rounded-lg px-3 py-2 font-body text-xs font-medium transition-colors ${
+            mobileView === "form"
+              ? "bg-primary text-primary-foreground"
+              : "border border-border text-secondary-text"
+          }`}
+        >
+          Setup
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileView("preview")}
+          className={`flex-1 rounded-lg px-3 py-2 font-body text-xs font-medium transition-colors ${
+            mobileView === "preview"
+              ? "bg-primary text-primary-foreground"
+              : "border border-border text-secondary-text"
+          }`}
+        >
+          Preview
+        </button>
+      </div>
+
       {error && (
         <p role="alert" className="mb-4 font-body text-sm text-error">
           {error}
         </p>
       )}
 
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={step}
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -12 }}
-          transition={{ duration: 0.4, ease: "easeOut" }}
-          className="rounded-2xl border border-border bg-card p-6 sm:p-8"
-        >
-          {step === 0 && (
-            <div>
-              <h2 className="mb-1 font-heading text-lg font-semibold text-foreground">
-                Tell us about your business
-              </h2>
-              <p className="mb-6 font-body text-sm text-secondary-text">
-                We&apos;ll use this to set up your AI agent&apos;s starting
-                point.
-              </p>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[55fr_45fr]">
+        {/* Left: steps */}
+        <div className={mobileView === "preview" ? "hidden lg:block" : ""}>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={step}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+              className="gradient-ring rounded-2xl border border-border bg-card p-6 sm:p-8"
+            >
+              {step === 0 && (
+                <div>
+                  <h2 className="mb-1 font-heading text-lg font-semibold text-foreground">
+                    Name your agent
+                  </h2>
+                  <p className="mb-6 font-body text-sm text-secondary-text">
+                    Pick a name and a starting template — watch it come alive on
+                    the right.
+                  </p>
 
-              <div className="mb-6 flex flex-col gap-1.5">
-                <label className="font-body text-sm font-medium text-foreground">
-                  Business name
-                </label>
-                <input
-                  value={businessName}
-                  onChange={(e) => setBusinessName(e.target.value)}
-                  className="rounded-lg border border-border bg-background px-3 py-2.5 font-body text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
-              </div>
-
-              <p className="mb-3 font-body text-sm font-medium text-foreground">
-                Choose a starting template (optional)
-              </p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {templates.map((template) => (
-                  <button
-                    key={template.id}
-                    type="button"
-                    onClick={() => setSelectedTemplateId(template.id)}
-                    className={`rounded-xl border p-4 text-left transition-colors duration-150 ${
-                      selectedTemplateId === template.id
-                        ? "border-primary bg-primary/5"
-                        : "border-border hover:border-primary/40"
-                    }`}
-                  >
-                    <p className="font-body text-sm font-semibold text-foreground">
-                      {template.name}
-                    </p>
-                    <p className="mt-1 font-body text-xs text-secondary-text">
-                      {template.description}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {step === 1 && (
-            <div>
-              <h2 className="mb-1 font-heading text-lg font-semibold text-foreground">
-                Add what your AI should know
-              </h2>
-              <p className="mb-6 font-body text-sm text-secondary-text">
-                FAQs, pricing, policies — anything visitors might ask about.
-                Edit the example content below or write your own.
-              </p>
-              <textarea
-                rows={10}
-                value={kbContent}
-                onChange={(e) => setKbContent(e.target.value)}
-                placeholder={
-                  "Q: What are your hours?\nA: We're open Monday to Saturday, 9am to 6pm."
-                }
-                className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2.5 font-body text-sm text-foreground placeholder:text-secondary-text/70 focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
-              <p className="mt-2 font-body text-xs text-secondary-text">
-                You can add PDFs or scrape a website too — from the Knowledge
-                Base page later.
-              </p>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-              <div>
-                <h2 className="mb-1 font-heading text-lg font-semibold text-foreground">
-                  Make it match your brand
-                </h2>
-                <p className="mb-6 font-body text-sm text-secondary-text">
-                  These colors and message are used in your live chat widget.
-                </p>
-
-                <div className="mb-4 grid grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-1.5">
+                  <div className="mb-6 flex flex-col gap-1.5">
                     <label className="font-body text-sm font-medium text-foreground">
-                      Primary color
+                      Agent name
                     </label>
                     <input
-                      type="color"
-                      value={primaryColor}
-                      onChange={(e) => setPrimaryColor(e.target.value)}
-                      className="h-10 w-full cursor-pointer rounded-lg border border-border bg-background"
+                      value={agentName}
+                      onChange={(e) => setAgentName(e.target.value)}
+                      placeholder="e.g. Aria, Sam, Support Bot"
+                      className="rounded-lg border border-border bg-background px-3 py-2.5 font-body text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                     />
                   </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="font-body text-sm font-medium text-foreground">
-                      Accent color
-                    </label>
-                    <input
-                      type="color"
-                      value={accentColor}
-                      onChange={(e) => setAccentColor(e.target.value)}
-                      className="h-10 w-full cursor-pointer rounded-lg border border-border bg-background"
-                    />
+
+                  <p className="mb-3 font-body text-sm font-medium text-foreground">
+                    Choose a starting template (optional)
+                  </p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {templates.map((template) => (
+                      <button
+                        key={template.id}
+                        type="button"
+                        onClick={() => setSelectedTemplateId(template.id)}
+                        className={`rounded-xl border p-4 text-left transition-colors duration-150 ${
+                          selectedTemplateId === template.id
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-primary/40"
+                        }`}
+                      >
+                        <p className="font-body text-sm font-semibold text-foreground">
+                          {template.name}
+                        </p>
+                        <p className="mt-1 font-body text-xs text-secondary-text">
+                          {template.description}
+                        </p>
+                      </button>
+                    ))}
                   </div>
-                </div>
-
-                <div className="mb-4 flex flex-col gap-1.5">
-                  <label className="font-body text-sm font-medium text-foreground">
-                    Welcome message
-                  </label>
-                  <input
-                    value={welcomeMessage}
-                    onChange={(e) => setWelcomeMessage(e.target.value)}
-                    className="rounded-lg border border-border bg-background px-3 py-2.5 font-body text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="font-body text-sm font-medium text-foreground">
-                    Logo URL{" "}
-                    <span className="text-secondary-text">(optional)</span>
-                  </label>
-                  <input
-                    value={logoUrl}
-                    onChange={(e) => setLogoUrl(e.target.value)}
-                    placeholder="https://..."
-                    className="rounded-lg border border-border bg-background px-3 py-2.5 font-body text-sm text-foreground placeholder:text-secondary-text focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  />
-                  <p className="mt-1 font-body text-xs text-secondary-text">
-                    File upload is coming soon — paste a hosted image URL for
-                    now.
+                  <p className="mt-3 font-body text-xs text-secondary-text">
+                    A template pre-fills starter FAQs and behavior — you can
+                    change everything later.
                   </p>
                 </div>
-              </div>
+              )}
 
-              <div>
-                <p className="mb-3 font-body text-sm font-medium text-foreground">
-                  Preview
-                </p>
-                <WidgetPreview
-                  primaryColor={primaryColor}
-                  businessName={businessName || "Your Business"}
-                  welcomeMessage={welcomeMessage}
-                />
-              </div>
-            </div>
-          )}
-
-          {step === 3 && (
-            <div>
-              <h2 className="mb-1 font-heading text-lg font-semibold text-foreground">
-                You&apos;re ready to go live
-              </h2>
-              <p className="mb-6 font-body text-sm text-secondary-text">
-                Paste this snippet into your website to embed the chat widget.
-              </p>
-
-              <div className="mb-4 flex gap-2">
-                {EMBED_TABS.map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setEmbedTab(tab)}
-                    className={`rounded-lg px-3 py-1.5 font-body text-xs font-medium transition-colors ${
-                      embedTab === tab
-                        ? "bg-primary text-primary-foreground"
-                        : "border border-border text-secondary-text hover:text-foreground"
-                    }`}
-                  >
-                    {tab}
-                  </button>
-                ))}
-              </div>
-
-              {publicKey ? (
-                <>
-                  <div className="mb-2 flex items-start justify-between gap-2 rounded-lg bg-background p-4">
-                    <code className="whitespace-pre-wrap break-all font-mono text-xs text-foreground">
-                      {embedSnippet}
-                    </code>
-                    <button
-                      type="button"
-                      onClick={copyEmbed}
-                      aria-label="Copy embed snippet"
-                      className="flex-none rounded-md p-1.5 text-secondary-text hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                    >
-                      <Copy className="h-4 w-4" />
-                    </button>
+              {step === 1 && (
+                <div>
+                  <h2 className="mb-1 font-heading text-lg font-semibold text-foreground">
+                    Add what your AI should know
+                  </h2>
+                  <p className="mb-4 font-body text-sm text-secondary-text">
+                    Scan your website, upload files, or type it in directly —
+                    this is the real Knowledge Base, not a simplified copy.
+                  </p>
+                  <div className="h-[520px] min-h-0 overflow-hidden rounded-xl border border-border">
+                    <KnowledgeBaseClient documents={documents} />
                   </div>
-                  {copied && (
-                    <p className="mb-4 font-body text-xs text-success">
-                      Copied.
+                </div>
+              )}
+
+              {step === 2 && (
+                <div>
+                  <h2 className="mb-1 font-heading text-lg font-semibold text-foreground">
+                    Set how it behaves
+                  </h2>
+                  <p className="mb-4 font-body text-sm text-secondary-text">
+                    Tone, guardrails, and lead capture — save your changes
+                    below, then continue.
+                  </p>
+                  <GuardrailsClient
+                    guardrails={guardrails}
+                    leadCaptureSettings={leadCaptureSettings}
+                    orgName={agentName || "Your Business"}
+                  />
+                </div>
+              )}
+
+              {step === 3 && (
+                <div>
+                  <h2 className="mb-1 font-heading text-lg font-semibold text-foreground">
+                    Make it match your brand
+                  </h2>
+                  <p className="mb-6 font-body text-sm text-secondary-text">
+                    These are used in your live chat widget — watch the preview
+                    update.
+                  </p>
+
+                  <div className="mb-4 grid grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="font-body text-sm font-medium text-foreground">
+                        Primary color
+                      </label>
+                      <input
+                        type="color"
+                        value={primaryColor}
+                        onChange={(e) => setPrimaryColor(e.target.value)}
+                        className="h-10 w-full cursor-pointer rounded-lg border border-border bg-background"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="font-body text-sm font-medium text-foreground">
+                        Accent color
+                      </label>
+                      <input
+                        type="color"
+                        value={accentColor}
+                        onChange={(e) => setAccentColor(e.target.value)}
+                        className="h-10 w-full cursor-pointer rounded-lg border border-border bg-background"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mb-4 flex flex-col gap-1.5">
+                    <label className="font-body text-sm font-medium text-foreground">
+                      Welcome message
+                    </label>
+                    <input
+                      value={welcomeMessage}
+                      onChange={(e) => setWelcomeMessage(e.target.value)}
+                      className="rounded-lg border border-border bg-background px-3 py-2.5 font-body text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    />
+                  </div>
+
+                  <div className="mb-4 flex flex-col gap-1.5">
+                    <label className="font-body text-sm font-medium text-foreground">
+                      Logo URL{" "}
+                      <span className="text-secondary-text">(optional)</span>
+                    </label>
+                    <input
+                      value={logoUrl}
+                      onChange={(e) => setLogoUrl(e.target.value)}
+                      placeholder="https://..."
+                      className="rounded-lg border border-border bg-background px-3 py-2.5 font-body text-sm text-foreground placeholder:text-secondary-text focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="font-body text-sm font-medium text-foreground">
+                      Widget position
+                    </label>
+                    <div className="flex gap-2">
+                      {(["bottom-right", "bottom-left"] as const).map((pos) => (
+                        <button
+                          key={pos}
+                          type="button"
+                          onClick={() => setWidgetPosition(pos)}
+                          className={`rounded-lg px-3 py-1.5 font-body text-xs font-medium transition-colors ${
+                            widgetPosition === pos
+                              ? "bg-primary text-primary-foreground"
+                              : "border border-border text-secondary-text hover:text-foreground"
+                          }`}
+                        >
+                          {pos === "bottom-right"
+                            ? "Bottom right"
+                            : "Bottom left"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {step === 4 && (
+                <div>
+                  <h2 className="mb-1 font-heading text-lg font-semibold text-foreground">
+                    You&apos;re ready to go live
+                  </h2>
+                  <p className="mb-6 font-body text-sm text-secondary-text">
+                    Paste this snippet into your website to embed the chat
+                    widget.
+                  </p>
+
+                  <div className="mb-4 flex gap-2">
+                    {EMBED_TABS.map((tab) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setEmbedTab(tab)}
+                        className={`rounded-lg px-3 py-1.5 font-body text-xs font-medium transition-colors ${
+                          embedTab === tab
+                            ? "bg-primary text-primary-foreground"
+                            : "border border-border text-secondary-text hover:text-foreground"
+                        }`}
+                      >
+                        {tab}
+                      </button>
+                    ))}
+                  </div>
+
+                  {publicKey ? (
+                    <>
+                      <div className="mb-2 flex items-start justify-between gap-2 rounded-lg bg-background p-4">
+                        <code className="whitespace-pre-wrap break-all font-mono text-xs text-foreground">
+                          {embedSnippet}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={copyEmbed}
+                          aria-label="Copy embed snippet"
+                          className="flex-none rounded-md p-1.5 text-secondary-text hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </button>
+                      </div>
+                      {copied && (
+                        <p className="mb-4 font-body text-xs text-success">
+                          Copied.
+                        </p>
+                      )}
+
+                      <div className="rounded-lg border border-border bg-background p-4 font-body text-xs leading-relaxed text-secondary-text">
+                        {embedTab === "HTML" && (
+                          <p>
+                            Paste this snippet right before the closing{" "}
+                            <code>&lt;/body&gt;</code> tag of your site.
+                          </p>
+                        )}
+                        {embedTab === "WordPress" && (
+                          <p>
+                            Go to Appearance → Theme File Editor → footer.php,
+                            and paste this snippet right before{" "}
+                            <code>&lt;/body&gt;</code>. Or use a
+                            &quot;Header/Footer scripts&quot; plugin instead of
+                            editing theme files directly.
+                          </p>
+                        )}
+                        {embedTab === "Wix" && (
+                          <p>
+                            Go to Settings → Custom Code → Add Custom Code,
+                            paste this snippet, set it to load on all pages,
+                            placed at the end of the body.
+                          </p>
+                        )}
+                        {embedTab === "Webflow" && (
+                          <p>
+                            Go to Project Settings → Custom Code → Footer Code,
+                            paste this snippet, then publish your site.
+                          </p>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={openLiveTest}
+                        className="mt-4 inline-flex items-center gap-1.5 font-body text-sm font-medium text-primary underline underline-offset-2"
+                      >
+                        Test it live on a blank page
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </button>
+
+                      <p className="mt-6 font-body text-sm text-foreground">
+                        Want to lock the widget to your domain only? Head to{" "}
+                        <a
+                          href="/dashboard/settings"
+                          className="text-primary underline underline-offset-2"
+                        >
+                          Settings
+                        </a>{" "}
+                        to verify domain ownership — the widget works everywhere
+                        until then.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="font-body text-sm text-secondary-text">
+                      No embed key found yet for your agent — contact support if
+                      this persists.
                     </p>
                   )}
-
-                  <div className="rounded-lg border border-border bg-background p-4 font-body text-xs leading-relaxed text-secondary-text">
-                    {embedTab === "HTML" && (
-                      <p>
-                        Paste this snippet right before the closing{" "}
-                        <code>&lt;/body&gt;</code> tag of your site.
-                      </p>
-                    )}
-                    {embedTab === "WordPress" && (
-                      <p>
-                        Go to Appearance → Theme File Editor → footer.php, and
-                        paste this snippet right before{" "}
-                        <code>&lt;/body&gt;</code>. Or use a &quot;Header/Footer
-                        scripts&quot; plugin instead of editing theme files
-                        directly.
-                      </p>
-                    )}
-                    {embedTab === "Wix" && (
-                      <p>
-                        Go to Settings → Custom Code → Add Custom Code, paste
-                        this snippet, set it to load on all pages, placed at the
-                        end of the body.
-                      </p>
-                    )}
-                    {embedTab === "Webflow" && (
-                      <p>
-                        Go to Project Settings → Custom Code → Footer Code,
-                        paste this snippet, then publish your site.
-                      </p>
-                    )}
-                  </div>
-
-                  <p className="mt-6 font-body text-sm text-foreground">
-                    Want to lock the widget to your domain only? Head to{" "}
-                    <a
-                      href="/dashboard/settings"
-                      className="text-primary underline underline-offset-2"
-                    >
-                      Settings
-                    </a>{" "}
-                    to verify domain ownership — the widget works everywhere
-                    until then.
-                  </p>
-                </>
-              ) : (
-                <p className="font-body text-sm text-secondary-text">
-                  No embed key found yet for your agent — contact support if
-                  this persists.
-                </p>
+                </div>
               )}
-            </div>
-          )}
-        </motion.div>
-      </AnimatePresence>
+            </motion.div>
+          </AnimatePresence>
 
-      <div className="mt-6 flex items-center justify-between">
-        <Button
-          variant="outline"
-          onClick={goBack}
-          disabled={step === 0 || isPending}
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back
-        </Button>
+          <div className="mt-6 flex items-center justify-between">
+            <Button
+              variant="outline"
+              onClick={goBack}
+              disabled={step === 0 || isPending}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </Button>
 
-        {step < STEPS.length - 1 ? (
-          <Button
-            onClick={
-              step === 0
-                ? handleStep1Next
-                : step === 1
-                  ? handleStep2Next
-                  : handleStep3Next
-            }
-            disabled={isPending || (step === 0 && !businessName.trim())}
-          >
-            {isPending ? <Loader2 className="animate-spin" /> : null}
-            Next
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        ) : (
-          <Button onClick={handleFinish} disabled={isPending}>
-            {isPending ? <Loader2 className="animate-spin" /> : null}
-            Go to dashboard
-          </Button>
-        )}
+            {step < STEPS.length - 1 ? (
+              <Button
+                onClick={
+                  step === 0
+                    ? handleStep0Next
+                    : step === 3
+                      ? handleBrandingNext
+                      : goNext
+                }
+                disabled={isPending || (step === 0 && !agentName.trim())}
+              >
+                {isPending ? <Loader2 className="animate-spin" /> : null}
+                Next
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button onClick={handleFinish} disabled={isPending}>
+                {isPending ? <Loader2 className="animate-spin" /> : null}
+                Go live
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Right: persistent live preview */}
+        <div className={mobileView === "form" ? "hidden lg:block" : ""}>
+          <div className="lg:sticky lg:top-24">
+            <p className="mb-3 font-body text-sm font-medium text-foreground">
+              Live preview
+            </p>
+            <WidgetPreview
+              primaryColor={primaryColor}
+              businessName={agentName || "Your Business"}
+              welcomeMessage={welcomeMessage}
+              logoUrl={logoUrl}
+              position={widgetPosition}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

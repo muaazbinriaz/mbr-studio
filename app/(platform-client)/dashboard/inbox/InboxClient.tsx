@@ -14,7 +14,9 @@ import {
   CheckCircle2,
   AlertTriangle,
   ArrowLeft,
+  Inbox as InboxIcon,
 } from "lucide-react";
+import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/client";
 import { isFallbackReply } from "@/lib/chat/lead-capture";
@@ -360,6 +362,33 @@ export function InboxClient({
       if (result.error) setActionError(result.error);
     });
   };
+
+  // Genuinely zero conversations ever (not just filtered to nothing) — a
+  // different message than "no conversations match these filters" below.
+  if (conversations.length === 0) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border bg-card/50 px-8 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <InboxIcon className="h-5 w-5" strokeWidth={1.75} />
+        </div>
+        <div>
+          <p className="font-body text-sm font-medium text-foreground">
+            No conversations yet
+          </p>
+          <p className="mt-1 max-w-sm font-body text-sm text-secondary-text">
+            Conversations will show up here once your widget is live — copy your
+            embed code and add it to your site.
+          </p>
+        </div>
+        <Link
+          href="/dashboard/onboarding"
+          className="mt-1 rounded-lg bg-primary px-4 py-2 font-body text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
+        >
+          Get your embed code
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 md:grid md:grid-cols-[340px_1fr]">

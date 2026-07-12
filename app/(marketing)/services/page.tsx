@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { siteConfig } from "@/config/site";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { serviceSchema } from "@/lib/seo/schemas";
+import { ServiceVisual } from "@/components/sections/ServiceVisual";
 
 export const metadata: Metadata = {
   title: "Services",
@@ -122,7 +123,10 @@ export default function ServicesPage() {
           <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
             Services
           </p>
-          <h1 className="font-heading text-[36px] font-bold leading-tight tracking-tight text-text sm:text-[48px] md:text-[56px]">
+          <h1
+            className="font-heading text-h1-primary font-bold leading-tight tracking-tight text-text
+"
+          >
             Everything you need to build, automate, and grow.
           </h1>
           <p className="mx-auto mt-5 max-w-2xl font-body text-base text-secondary-text sm:text-lg">
@@ -156,7 +160,10 @@ export default function ServicesPage() {
       <section className="border-t border-border bg-secondary-background">
         <div className="mx-auto max-w-3xl px-6 py-24 text-center md:px-10 md:py-32">
           <HelpCircle className="mx-auto mb-5 h-8 w-8 text-primary" />
-          <h2 className="font-heading text-[28px] font-bold leading-tight tracking-tight text-text sm:text-[36px]">
+          <h2
+            className="font-heading text-h2-section font-bold leading-tight tracking-tight text-text
+"
+          >
             Not sure what you need?
           </h2>
           <p className="mx-auto mt-4 max-w-xl font-body text-base text-secondary-text">
@@ -247,27 +254,31 @@ function ServiceSection({
             </div>
           </div>
 
-          {/* Right: what's included */}
-          {detail && (
-            <div className="gradient-ring rounded-2xl border border-border bg-card p-8">
-              <p className="mb-5 font-body text-sm font-semibold uppercase tracking-wide text-secondary-text">
-                What&apos;s included
-              </p>
-              <ul className="space-y-4">
-                {detail.includes.map((item) => (
-                  <li key={item} className="flex items-start gap-3">
-                    <Check
-                      className="mt-0.5 h-4 w-4 flex-none text-accent"
-                      strokeWidth={2.5}
-                    />
-                    <span className="font-body text-sm leading-relaxed text-text">
-                      {item}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* Right: product mockup + what's included */}
+          <div className="flex flex-col items-center gap-6">
+            <ServiceVisual slug={service.slug} />
+
+            {detail && (
+              <div className="gradient-ring w-full max-w-sm rounded-2xl border border-border bg-card p-8">
+                <p className="mb-5 font-body text-sm font-semibold uppercase tracking-wide text-secondary-text">
+                  What&apos;s included
+                </p>
+                <ul className="space-y-4">
+                  {detail.includes.map((item) => (
+                    <li key={item} className="flex items-start gap-3">
+                      <Check
+                        className="mt-0.5 h-4 w-4 flex-none text-accent"
+                        strokeWidth={2.5}
+                      />
+                      <span className="font-body text-sm leading-relaxed text-text">
+                        {item}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </section>

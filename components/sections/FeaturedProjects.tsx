@@ -1,9 +1,11 @@
 // components/sections/FeaturedProjects.tsx (Server Component — no "use client")
+"use client";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
 import { projects } from "@/data/projects";
 import type { Project } from "@/types";
+import { FadeIn } from "@/components/animations/FadeIn";
 import { ProjectCard } from "./ProjectCard";
 
 export function FeaturedProjects() {
@@ -16,12 +18,15 @@ export function FeaturedProjects() {
   return (
     <section id="work" className="bg-background">
       <div className="mx-auto max-w-6xl px-6 py-24 md:px-10 md:py-32">
-        <div className="mb-14 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
+        <FadeIn className="mb-14 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
           <div className="max-w-2xl">
             <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
               Selected work
             </p>
-            <h2 className="font-heading text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[40px] md:text-[48px]">
+            <h2
+              className="font-heading text-h2-feature font-bold leading-tight tracking-tight text-text
+"
+            >
               Recent projects, real results.
             </h2>
           </div>
@@ -33,9 +38,10 @@ export function FeaturedProjects() {
             View all work
             <ArrowRight className="h-3.5 w-3.5" />
           </Link>
-        </div>
+        </FadeIn>
 
-        <div
+        <FadeIn
+          delay={0.1}
           className={`grid grid-cols-1 gap-6 md:grid-cols-2 ${
             featured.length >= 3 ? "lg:grid-cols-3" : ""
           }`}
@@ -43,7 +49,7 @@ export function FeaturedProjects() {
           {featured.map((project, index) => (
             <ProjectCard key={project.slug} project={project} index={index} />
           ))}
-        </div>
+        </FadeIn>
       </div>
     </section>
   );

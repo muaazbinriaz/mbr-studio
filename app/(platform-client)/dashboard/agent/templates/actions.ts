@@ -70,6 +70,7 @@ export async function applyTemplate(templateId: string) {
   revalidatePath("/dashboard/agent/guardrails");
   revalidatePath("/dashboard/knowledge-base");
   revalidatePath("/dashboard/agent/templates");
+  revalidatePath("/dashboard/onboarding");
 
   return { error: null };
 }

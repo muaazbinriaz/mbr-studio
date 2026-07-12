@@ -238,7 +238,9 @@ export function GuardrailsClient({
         }
       } catch (e) {
         setError(
-          e instanceof Error ? e.message : "An unexpected error occurred.",
+          e instanceof Error
+            ? e.message
+            : "Something went wrong saving your changes — try again.",
         );
       }
     });

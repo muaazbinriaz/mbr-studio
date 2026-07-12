@@ -59,6 +59,16 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Hand the already-verified user to the route so client/dashboard
+  // layout.tsx doesn't have to pay for a second getUser() round-trip
+  // on every request — this is what was stretching the blocking
+  // window before /dashboard's HTML (and its theme-init script)
+  // could reach the browser.
+  if (user) {
+    response.headers.set("x-user-id", user.id);
+    if (user.email) response.headers.set("x-user-email", user.email);
+  }
+
   // Logged in but not an admin, hitting /admin/* -> send to client dashboard
   if (isAdminRoute && user) {
     const { data: adminRow } = await supabase

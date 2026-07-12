@@ -148,7 +148,14 @@ export function RouteLoaderProvider({ children }: { children: ReactNode }) {
       const isModifiedClick =
         e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0;
 
-      const isSamePage = href === pathname;
+      // Strip any #hash before comparing — "/services#whatsapp-automation"
+      // and "/services" are the same route as far as Next.js routing is
+      // concerned (no navigation/pathname change happens, just a scroll),
+      // so comparing the raw href against pathname was missing this case:
+      // start() fired but the pathname-change effect that calls stop()
+      // never ran, leaving the loading bar stuck.
+      const hrefPathname = href.split("#")[0];
+      const isSamePage = hrefPathname === "" || hrefPathname === pathname;
 
       if (isExternal || isModifiedClick || isSamePage) return;
 

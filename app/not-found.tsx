@@ -11,7 +11,7 @@ export default function NotFound() {
   return (
     <section className="flex min-h-[80vh] items-center bg-background">
       <div className="mx-auto flex max-w-xl flex-col items-center px-6 text-center">
-        <p className="font-heading text-6xl font-bold tracking-tight text-primary sm:text-7xl">
+        <p className="font-heading text-3xl font-bold tracking-tight text-primary sm:text-4xl">
           404
         </p>
         <h1 className="mt-4 font-heading text-2xl font-semibold text-text sm:text-3xl">

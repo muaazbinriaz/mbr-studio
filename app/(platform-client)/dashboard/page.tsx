@@ -20,6 +20,7 @@ import {
   GettingStartedChecklist,
   type ChecklistItem,
 } from "@/components/platform/GettingStartedChecklist";
+import { ResumeOnboardingBanner } from "@/components/platform/ResumeOnboardingBanner";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -58,9 +59,32 @@ export default async function DashboardPage() {
 
   const orgId = membership.organization_id;
 
-  const [current, previous] = await Promise.all([
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("id, setup_complete, onboarding_step, embed_added_self_reported")
+    .eq("organization_id", orgId)
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
+
+  const [current, previous, kbDocCount, guardrailsRow] = await Promise.all([
     getOrgAnalyticsSummary(supabase, orgId, 30),
     getPreviousPeriodSummary(supabase, orgId, 30),
+    agent
+      ? supabase
+          .from("knowledge_base_documents")
+          .select("id", { count: "exact", head: true })
+          .eq("agent_id", agent.id)
+          .then((r) => r.count ?? 0)
+      : Promise.resolve(0),
+    agent
+      ? supabase
+          .from("agent_guardrails")
+          .select("agent_id")
+          .eq("agent_id", agent.id)
+          .maybeSingle()
+          .then((r) => !!r.data)
+      : Promise.resolve(false),
   ]);
 
   const monthStart = new Date();
@@ -79,32 +103,34 @@ export default async function DashboardPage() {
     return Math.round(((currentVal - prevVal) / prevVal) * 100);
   };
 
-  // For now, all checklist items are "not done" – you can later add a
-  // database table to track these per user/org.
   const checklistItems: ChecklistItem[] = [
     {
       key: "add_knowledge",
       label: "Add your first knowledge base document",
       href: "/dashboard/knowledge-base",
-      done: false,
+      done: kbDocCount > 0,
     },
     {
       key: "embed_widget",
       label: "Embed the chat widget on your site",
       href: "/dashboard/onboarding",
-      done: false,
+      done: agent?.embed_added_self_reported ?? false,
       selfReported: true,
     },
     {
       key: "set_guardrails",
       label: "Set up guardrails and tone",
       href: "/dashboard/agent/guardrails",
-      done: false,
+      done: guardrailsRow,
     },
   ];
 
   return (
     <div>
+      {agent && !agent.setup_complete && (
+        <ResumeOnboardingBanner step={agent.onboarding_step ?? 0} />
+      )}
+
       <PlanLimitBanner
         status={org.status}
         monthlyMessageLimit={org.monthly_message_limit}

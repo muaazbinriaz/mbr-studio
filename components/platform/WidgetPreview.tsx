@@ -11,24 +11,44 @@ export function WidgetPreview({
   primaryColor,
   businessName,
   welcomeMessage,
+  logoUrl,
+  position = "bottom-right",
 }: {
   primaryColor: string;
   businessName: string;
   welcomeMessage: string;
+  logoUrl?: string | null;
+  position?: "bottom-right" | "bottom-left";
 }) {
+  const isLeft = position === "bottom-left";
+
   return (
-    <div className="relative flex h-80 items-end justify-end rounded-2xl border border-border bg-background p-4">
+    <div className="relative flex h-80 items-end rounded-2xl border border-border bg-background p-4">
       <div
-        className="flex h-14 w-14 items-center justify-center rounded-full shadow-lg"
+        className={`absolute bottom-4 flex h-14 w-14 items-center justify-center rounded-full shadow-lg ${
+          isLeft ? "left-4" : "right-4"
+        }`}
         style={{ backgroundColor: primaryColor }}
       >
         <div className="h-6 w-6 rounded-full border-2 border-white" />
       </div>
-      <div className="absolute bottom-24 right-4 w-64 overflow-hidden rounded-2xl bg-white shadow-2xl">
+      <div
+        className={`absolute bottom-24 w-64 overflow-hidden rounded-2xl bg-white shadow-2xl ${
+          isLeft ? "left-4" : "right-4"
+        }`}
+      >
         <div
-          className="p-3 text-white"
+          className="flex items-center gap-2 p-3 text-white"
           style={{ backgroundColor: primaryColor }}
         >
+          {logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={logoUrl}
+              alt=""
+              className="h-5 w-5 flex-none rounded-full object-cover"
+            />
+          ) : null}
           <p className="font-body text-xs font-semibold">{businessName}</p>
         </div>
         <div className="flex flex-col gap-2 p-3">

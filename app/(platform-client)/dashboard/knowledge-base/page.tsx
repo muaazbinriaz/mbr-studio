@@ -23,6 +23,7 @@ export default async function KnowledgeBasePage() {
     source_url: string | null;
     created_at: string;
     updated_at: string;
+    last_refreshed_at: string | null;
     error_message: string | null;
     raw_content: string | null;
     chunkCount: number;
@@ -43,7 +44,7 @@ export default async function KnowledgeBasePage() {
       const { data: docs } = await supabase
         .from("knowledge_base_documents")
         .select(
-          "id, title, status, source_type, source_url, created_at, updated_at, error_message, raw_content",
+          "id, title, status, source_type, source_url, created_at, updated_at, last_refreshed_at, error_message, raw_content",
         )
         .eq("agent_id", agentId)
         .order("updated_at", { ascending: false });

@@ -1,5 +1,7 @@
 "use client";
 
+import { FadeIn } from "@/components/animations/FadeIn";
+
 import { useState } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -83,9 +85,11 @@ function TestimonialCarousel({
   return (
     <section className="border-t border-border bg-secondary-background">
       <div className="mx-auto max-w-3xl px-6 py-24 md:px-10 md:py-32">
-        <p className="mb-10 text-center font-body text-sm font-medium tracking-wide text-accent">
-          What clients say
-        </p>
+        <FadeIn>
+          <p className="mb-10 text-center font-body text-sm font-medium tracking-wide text-accent">
+            What clients say
+          </p>
+        </FadeIn>
 
         <div className="relative">
           <div

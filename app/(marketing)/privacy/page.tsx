@@ -35,7 +35,10 @@ export default function PrivacyPage() {
           <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
             Legal
           </p>
-          <h1 className="font-heading text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[44px]">
+          <h1
+            className="font-heading text-h1-secondary font-bold leading-tight tracking-tight text-text
+"
+          >
             Privacy Policy
           </h1>
           <p className="mt-4 font-body text-sm text-secondary-text">
@@ -156,12 +159,13 @@ export default function PrivacyPage() {
             </PolicySection>
           </div>
 
-          <p className="mt-16 rounded-lg border border-border bg-card p-4 font-body text-xs leading-relaxed text-secondary-text">
+          {/*
+            INTERNAL NOTE — not rendered, not visible to visitors:
             This is placeholder legal content generated for scaffolding
             purposes. Have it reviewed by a lawyer familiar with your
             jurisdiction and client base (including US, UK, and UAE regulations
             such as GDPR) before publishing.
-          </p>
+          */}
         </div>
       </section>
     </>

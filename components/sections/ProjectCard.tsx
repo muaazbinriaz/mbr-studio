@@ -25,7 +25,7 @@ export function ProjectCard({
           ? undefined
           : { y: -4, transition: { duration: 0.2, ease: "easeOut" } }
       }
-      className="group relative overflow-hidden rounded-2xl border border-border bg-card transition-colors duration-200 hover:border-primary/50"
+      className="group relative overflow-hidden rounded-2xl border border-border bg-card transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/10"
     >
       <div
         aria-hidden="true"

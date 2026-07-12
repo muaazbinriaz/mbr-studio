@@ -77,7 +77,7 @@ export function GettingStartedChecklist({ items }: { items: ChecklistItem[] }) {
   }
 
   return (
-    <div className="mb-8 rounded-2xl border border-border bg-card p-6">
+    <div className="animated-border mb-8 rounded-2xl border border-border bg-card p-6">
       <div className="mb-1 flex items-center justify-between">
         <h2 className="font-heading text-base font-semibold text-foreground">
           Getting started

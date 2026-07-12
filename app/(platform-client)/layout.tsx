@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { PlatformShell } from "@/components/platform/PlatformShell";
 import { getUnreadInboxCount } from "@/lib/inbox/queries";
@@ -12,15 +13,21 @@ export default async function ClientDashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // middleware.ts already ran auth.getUser() for this exact request and
+  // redirects unauthenticated visitors before they ever reach this layout —
+  // calling getUser() again here was a fully redundant Supabase round-trip
+  // that added to the blocking window before any HTML (theme-init script
+  // included) could reach the browser. Read its result from the header
+  // middleware sets instead.
+  const requestHeaders = await headers();
+  const userId = requestHeaders.get("x-user-id") ?? "";
+  const userEmail = requestHeaders.get("x-user-email");
 
+  const supabase = await createClient();
   const { data: membership } = await supabase
     .from("organization_members")
     .select("organization_id, organizations(is_reseller)")
-    .eq("user_id", user?.id ?? "")
+    .eq("user_id", userId)
     .limit(1)
     .maybeSingle();
 
@@ -32,12 +39,27 @@ export default async function ClientDashboardLayout({
     ? await getUnreadInboxCount(supabase, membership.organization_id)
     : 0;
 
+  let setupComplete = true;
+  if (membership) {
+    const { data: agent } = await supabase
+      .from("agents")
+      .select("setup_complete")
+      .eq("organization_id", membership.organization_id)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+    // No agent row yet (mid-provisioning) is treated as "not complete" —
+    // safer default than briefly flashing the full sidebar.
+    setupComplete = agent?.setup_complete ?? false;
+  }
+
   return (
     <PlatformShell
       variant="client"
-      userEmail={user?.email}
+      userEmail={userEmail}
       navBadges={{ "/dashboard/inbox": unreadCount }}
       isReseller={!!org?.is_reseller}
+      setupComplete={setupComplete}
     >
       {children}
     </PlatformShell>

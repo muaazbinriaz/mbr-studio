@@ -46,7 +46,10 @@ export default async function BlogPage({
           <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
             Blog
           </p>
-          <h1 className="font-heading text-[36px] font-bold leading-tight tracking-tight text-text sm:text-[48px]">
+          <h1
+            className="font-heading text-h1-primary font-bold leading-tight tracking-tight text-text
+"
+          >
             Articles & Insights
           </h1>
           <p className="mt-4 max-w-2xl font-body text-base text-secondary-text">

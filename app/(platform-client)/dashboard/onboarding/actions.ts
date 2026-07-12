@@ -27,6 +27,43 @@ export async function saveOrgBasics(formData: FormData) {
   return { error: null };
 }
 
+export async function saveAgentName(name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) return { error: "Give your agent a name." };
+
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent) return { error: "No active agent found for your organization." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("agents")
+    .update({ name: trimmed })
+    .eq("id", agent.id);
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/dashboard/onboarding");
+  return { error: null };
+}
+
+// Persists which step the user is on so closing the tab and coming back
+// resumes exactly where they left off, instead of restarting at step 0.
+export async function saveOnboardingStep(step: number) {
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent) return { error: "No active agent found for your organization." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("agents")
+    .update({ onboarding_step: step })
+    .eq("id", agent.id);
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/dashboard");
+  return { error: null };
+}
+
 export async function saveBranding(formData: FormData) {
   const organizationId = await getCurrentOrgId();
   if (!organizationId) return { error: "No organization found." };
@@ -35,6 +72,11 @@ export async function saveBranding(formData: FormData) {
   const accentColor = String(formData.get("accent_color") ?? "").trim();
   const welcomeMessage = String(formData.get("welcome_message") ?? "").trim();
   const logoUrl = String(formData.get("logo_url") ?? "").trim();
+  const widgetPositionRaw = String(
+    formData.get("widget_position") ?? "",
+  ).trim();
+  const widgetPosition =
+    widgetPositionRaw === "bottom-left" ? "bottom-left" : "bottom-right";
 
   if (!welcomeMessage) {
     return { error: "Welcome message can't be empty." };
@@ -48,6 +90,7 @@ export async function saveBranding(formData: FormData) {
       accent_color: accentColor || "#06b6d4",
       welcome_message: welcomeMessage,
       logo_url: logoUrl || null,
+      widget_position: widgetPosition,
     })
     .eq("id", organizationId);
 

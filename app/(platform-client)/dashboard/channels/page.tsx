@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { ChannelsClient } from "./ChannelsClient";
 import { maskToken, decryptToken } from "@/lib/channels/encryption";
+import { LockedFeatureEmptyState } from "@/components/platform/LockedFeatureEmptyState";
 
 export default async function ChannelsPage() {
   const supabase = await createClient();
@@ -16,6 +17,7 @@ export default async function ChannelsPage() {
     .maybeSingle();
 
   let agentId: string | null = null;
+  let setupComplete = false;
   let connections: {
     id: string;
     channel: string;
@@ -28,15 +30,16 @@ export default async function ChannelsPage() {
   if (membership) {
     const { data: agent } = await supabase
       .from("agents")
-      .select("id")
+      .select("id, setup_complete")
       .eq("organization_id", membership.organization_id)
       .eq("is_active", true)
       .limit(1)
       .maybeSingle();
 
     agentId = agent?.id ?? null;
+    setupComplete = agent?.setup_complete ?? false;
 
-    if (agentId) {
+    if (agentId && setupComplete) {
       const { data: rows } = await supabase
         .from("channel_connections")
         .select(
@@ -79,6 +82,10 @@ export default async function ChannelsPage() {
           <p className="font-body text-sm text-secondary-text">
             No active agent found for your organization yet.
           </p>
+        </div>
+      ) : !setupComplete ? (
+        <div className="mt-8">
+          <LockedFeatureEmptyState feature="Channels" />
         </div>
       ) : (
         <div className="mt-8">

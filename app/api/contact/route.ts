@@ -108,7 +108,7 @@ export async function POST(request: Request) {
       : "Not provided";
 
     // Notification to the MBR Studio inbox.
-    await resend.emails.send({
+    const { error: notifyError } = await resend.emails.send({
       from: `MBR Studio Website <notifications@mbrstudio.dev>`,
       to: CONTACT_EMAIL,
       replyTo: email,
@@ -132,7 +132,7 @@ export async function POST(request: Request) {
     });
 
     // Auto-reply to the visitor.
-    await resend.emails.send({
+    const { error: replyError } = await resend.emails.send({
       from: `MBR Studio <notifications@mbrstudio.dev>`,
       to: email,
       replyTo: CONTACT_EMAIL,
@@ -142,14 +142,26 @@ export async function POST(request: Request) {
           <p>Hi ${safeName.split(" ")[0]},</p>
           <p>
             Thanks for reaching out to MBR Studio. We've received your message
-            about <strong>${serviceLabel}</strong> and will follow up within
-            1–2 business days.
+            about <strong>${serviceLabel}</strong> — we typically reply the
+            same day.
           </p>
           <p>If it's urgent, you can also reach us on WhatsApp at ${WHATSAPP_DISPLAY}.</p>
           <p>— MBR Studio</p>
         </div>
       `,
     });
+
+    if (replyError) {
+      console.error("Resend auto-reply email failed:", replyError);
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "We received your message, but couldn't send a confirmation email. We'll still follow up.",
+        },
+        { status: 502 },
+      );
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

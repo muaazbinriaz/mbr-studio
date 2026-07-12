@@ -1,5 +1,7 @@
 "use client";
 
+import { FadeIn } from "@/components/animations/FadeIn";
+
 import { motion, useReducedMotion } from "framer-motion";
 
 /**
@@ -35,9 +37,11 @@ export function Technologies() {
   return (
     <section className="border-t border-border bg-background">
       <div className="mx-auto max-w-6xl px-6 py-16 md:px-10 md:py-20">
-        <p className="mb-10 text-center font-body text-sm font-medium tracking-wide text-secondary-text">
-          Built on a modern, production-grade stack
-        </p>
+        <FadeIn>
+          <p className="mb-10 text-center font-body text-sm font-medium tracking-wide text-secondary-text">
+            Built on a modern, production-grade stack
+          </p>
+        </FadeIn>
 
         <motion.div
           initial={shouldReduceMotion ? false : { opacity: 0 }}

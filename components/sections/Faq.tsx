@@ -65,7 +65,7 @@ export function FAQ() {
           <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
             FAQ
           </p>
-          <h2 className="font-heading text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[40px]">
+          <h2 className="font-heading text-h2-feature font-bold leading-tight tracking-tight text-text">
             Questions, answered.
           </h2>
         </div>

@@ -123,7 +123,7 @@ export function Navbar() {
 
           <nav
             aria-label="Primary"
-            className="hidden items-center gap-1 md:flex"
+            className="hidden items-center gap-1 lg:flex"
           >
             {visibleNavLinks.map((link) => {
               const isActive =
@@ -141,7 +141,7 @@ export function Navbar() {
           </nav>
 
           {/* Desktop CTA + Theme Toggle */}
-          <div className="hidden items-center gap-2 md:flex">
+          <div className="hidden items-center gap-2 lg:flex">
             <button
               type="button"
               onClick={toggleTheme}
@@ -176,7 +176,7 @@ export function Navbar() {
           <button
             ref={menuButtonRef}
             type="button"
-            className="-mr-1 rounded-md p-3 text-foreground md:hidden"
+            className="-mr-1 rounded-md p-3 text-foreground lg:hidden"
             aria-label="Open menu"
             aria-expanded={open}
             aria-controls="mobile-nav-drawer"
@@ -198,7 +198,7 @@ export function Navbar() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: shouldReduceMotion ? 0 : 0.2 }}
-              className="fixed inset-0 z-40 bg-black/60 md:hidden"
+              className="fixed inset-0 z-40 bg-black/60 lg:hidden"
             />
             <motion.div
               id="mobile-nav-drawer"
@@ -214,7 +214,7 @@ export function Navbar() {
                   ? { duration: 0 }
                   : { type: "spring", damping: 28, stiffness: 320 }
               }
-              className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-border bg-card px-4 pb-6 pt-3 md:hidden"
+              className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-border bg-card px-4 pb-6 pt-3 lg:hidden"
             >
               <div
                 className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-border"

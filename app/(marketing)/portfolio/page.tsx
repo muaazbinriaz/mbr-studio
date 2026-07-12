@@ -45,7 +45,7 @@ export default function PortfolioPage() {
             <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
               Portfolio
             </p>
-            <h1 className="font-heading text-[36px] font-bold leading-tight tracking-tight text-text sm:text-[48px] md:text-[56px]">
+            <h1 className="font-heading text-h1-primary font-bold leading-tight tracking-tight text-text">
               Work built for real businesses, not a mockup gallery.
             </h1>
           </div>
@@ -57,7 +57,10 @@ export default function PortfolioPage() {
       {/* Closing CTA — reused pattern from about/page.tsx & case-studies/[slug]/page.tsx */}
       <section className="border-t border-border bg-secondary-background">
         <div className="mx-auto max-w-3xl px-6 py-24 text-center md:px-10 md:py-32">
-          <h2 className="font-heading text-[28px] font-bold leading-tight tracking-tight text-text sm:text-[36px]">
+          <h2
+            className="font-heading text-h2-section font-bold leading-tight tracking-tight text-text
+"
+          >
             See something close to what you need?
           </h2>
           <p className="mx-auto mt-4 max-w-xl font-body text-base text-secondary-text">

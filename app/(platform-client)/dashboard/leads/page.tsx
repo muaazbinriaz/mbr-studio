@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { LeadsClient } from "./LeadsClient";
+import { LockedFeatureEmptyState } from "@/components/platform/LockedFeatureEmptyState";
 
 export default async function LeadsPage() {
   const supabase = await createClient();
@@ -23,16 +24,28 @@ export default async function LeadsPage() {
     captured_at: string;
     conversation_id: string | null;
   }[] = [];
+  let setupComplete = false;
 
   if (membership) {
-    const { data } = await supabase
-      .from("leads")
-      .select(
-        "id, visitor_name, visitor_email, visitor_phone, notes, captured_at, conversation_id",
-      )
+    const { data: agent } = await supabase
+      .from("agents")
+      .select("setup_complete")
       .eq("organization_id", membership.organization_id)
-      .order("captured_at", { ascending: false });
-    leads = data ?? [];
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+    setupComplete = agent?.setup_complete ?? false;
+
+    if (setupComplete) {
+      const { data } = await supabase
+        .from("leads")
+        .select(
+          "id, visitor_name, visitor_email, visitor_phone, notes, captured_at, conversation_id",
+        )
+        .eq("organization_id", membership.organization_id)
+        .order("captured_at", { ascending: false });
+      leads = data ?? [];
+    }
   }
 
   return (
@@ -43,7 +56,11 @@ export default async function LeadsPage() {
         directly.
       </p>
       <div className="mt-8">
-        <LeadsClient leads={leads} />
+        {setupComplete ? (
+          <LeadsClient leads={leads} />
+        ) : (
+          <LockedFeatureEmptyState feature="Leads" />
+        )}
       </div>
     </div>
   );

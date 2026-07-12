@@ -11,9 +11,9 @@
 --------------------------------------------------------------------- */
 :root {
   /* Color System — LIGHT */
-  --background: #eef0f7;
+  --background: #eef1f8;
   --background-secondary: #e4e7f3;
-  --card: #ffffff;
+  --card: #fbfcff;
   --primary: #6366f1;
   --accent: #06b6d4;
   --success: #10b981;
@@ -64,9 +64,9 @@
   color-scheme: dark;
 
   /* Color System — DARK (unchanged) */
-  --background: #030712;
-  --background-secondary: #0f172a;
-  --card: #111827;
+  --background: #0d1220;
+  --background-secondary: #141b2e;
+  --card: #171f33;
   --primary: #6366f1;
   --accent: #06b6d4;
   --success: #10b981;
@@ -483,6 +483,28 @@ nav a {
     }
   }
 
+  /* Single breathing dot — chat typing indicator. Subtle, fast, brand
+     gradient, so it reads as "alive" without being loud on a surface
+     that's visible for most of the conversation. */
+  @keyframes mbr-breathe {
+    0%,
+    100% {
+      transform: scale(0.85);
+      opacity: 0.55;
+    }
+    50% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mbr-breathe-dot {
+      animation: none !important;
+      opacity: 0.85;
+    }
+  }
+
   /* Static gradient-ring — same visual as .animated-border but no motion.
      Use on repeated content cards (e.g. Services "what's included" panels,
      one per service section) where an always-animating border across
@@ -529,5 +551,47 @@ nav a {
     box-shadow:
       0 0 0 1px color-mix(in srgb, var(--color-primary) 10%, transparent),
       0 8px 24px -8px color-mix(in srgb, var(--color-primary) 20%, transparent);
+  }
+
+  /* Consolidated heading scale — replaces the ad-hoc text-[Npx] chains
+     that had drifted across marketing pages into two deliberate tiers. */
+  .text-h1-primary {
+    font-size: 2.25rem; /* 36px */
+  }
+  .text-h1-secondary {
+    font-size: 2rem; /* 32px */
+  }
+  .text-h2-feature {
+    font-size: 2rem; /* 32px */
+  }
+  .text-h2-section {
+    font-size: 1.75rem; /* 28px */
+  }
+
+  @media (min-width: 640px) {
+    .text-h1-primary {
+      font-size: 3rem; /* 48px */
+    }
+    .text-h1-secondary {
+      font-size: 2.75rem; /* 44px */
+    }
+    .text-h2-feature {
+      font-size: 2.5rem; /* 40px */
+    }
+    .text-h2-section {
+      font-size: 2.25rem; /* 36px */
+    }
+  }
+
+  @media (min-width: 768px) {
+    .text-h1-primary {
+      font-size: 3.5rem; /* 56px */
+    }
+    .text-h1-secondary {
+      font-size: 3.25rem; /* 52px */
+    }
+    .text-h2-feature {
+      font-size: 3rem; /* 48px */
+    }
   }
 }

@@ -2,7 +2,15 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { X, Send, Sparkles, AlertTriangle, MessageCircle } from "lucide-react";
+import {
+  X,
+  Send,
+  Sparkles,
+  AlertTriangle,
+  MessageCircle,
+  RotateCcw,
+} from "lucide-react";
+import type { UIMessage } from "ai";
 import { LogoMark } from "@/components/brand/Logo";
 import { useChatPanel } from "@/components/chatbot/useChat";
 import { useAIChat } from "@/hooks/useChat";
@@ -15,6 +23,36 @@ import { SuggestionChips } from "./SuggestionChips";
 import { OPENING_OPTIONS } from "./chatbot";
 import { buildWhatsAppLink } from "@/config/contact";
 import { cn } from "@/lib/utils";
+
+const CHAT_SESSION_STORAGE_KEY = "mbr-chat-session";
+
+type StoredChatSession = {
+  conversationKey: string;
+  messages: UIMessage[];
+};
+
+// Reads the persisted transcript for this tab's session. Returns null
+// on anything unexpected (SSR, nothing stored, corrupt JSON, storage
+// access blocked in private browsing) so callers never need extra
+// guarding — null just means "start fresh".
+function readStoredChatSession(): StoredChatSession | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(CHAT_SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (
+      !parsed ||
+      typeof parsed.conversationKey !== "string" ||
+      !Array.isArray(parsed.messages)
+    ) {
+      return null;
+    }
+    return parsed as StoredChatSession;
+  } catch {
+    return null;
+  }
+}
 
 // Spring used for the panel opening on desktop — mirrors the "pop up from
 // the launcher" feel used by Intercom/Crisp. Closing reuses a quicker tween
@@ -55,7 +93,54 @@ const iconVariants = {
 
 export function ChatWindow() {
   const { isOpen, close, toggle, launcherSuppressed } = useChatPanel();
-  const { messages, sendMessage, status, error, regenerate } = useAIChat();
+  const [conversationKey, setConversationKey] = useState(
+    () => readStoredChatSession()?.conversationKey ?? crypto.randomUUID(),
+  );
+  const {
+    messages,
+    sendMessage,
+    status,
+    error,
+    regenerate,
+    stop,
+    setMessages,
+  } = useAIChat(conversationKey);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [hasRestoredSession, setHasRestoredSession] = useState(false);
+
+  // Restore the visible transcript from sessionStorage on mount, once.
+  // There's no server endpoint to re-fetch this conversation from
+  // (see comment above readStoredChatSession) — this IS the source of
+  // truth for surviving a reload.
+  useEffect(() => {
+    const stored = readStoredChatSession();
+    if (
+      stored &&
+      stored.conversationKey === conversationKey &&
+      stored.messages.length > 0
+    ) {
+      setMessages(stored.messages);
+    }
+    setHasRestoredSession(true);
+    // Intentionally only ever runs once, on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist on every change — gated on hasRestoredSession so this
+  // doesn't fire first (with an empty `messages`) and clobber the
+  // history the effect above is about to restore.
+  useEffect(() => {
+    if (!hasRestoredSession || typeof window === "undefined") return;
+    try {
+      window.sessionStorage.setItem(
+        CHAT_SESSION_STORAGE_KEY,
+        JSON.stringify({ conversationKey, messages }),
+      );
+    } catch {
+      // Best-effort — private browsing / storage-quota errors should
+      // never break the chat itself.
+    }
+  }, [hasRestoredSession, conversationKey, messages]);
   const shouldReduceMotion = useReducedMotion();
   // Matches the `sm:` breakpoint (640px) already used throughout this
   // component's className logic, so the JS-driven variant switch and
@@ -162,6 +247,31 @@ export function ChatWindow() {
     sendMessage({ text: label });
   };
 
+  const startNewConversation = () => {
+    stop();
+    const newKey = crypto.randomUUID();
+    setConversationKey(newKey);
+    setDraft("");
+    setConfirmReset(false);
+    try {
+      window.sessionStorage.setItem(
+        CHAT_SESSION_STORAGE_KEY,
+        JSON.stringify({ conversationKey: newKey, messages: [] }),
+      );
+    } catch {
+      // Best-effort — the persist effect will also overwrite this on
+      // the next render either way.
+    }
+  };
+
+  const handleNewConversationClick = () => {
+    if (!hasStarted) {
+      startNewConversation();
+      return;
+    }
+    setConfirmReset(true);
+  };
+
   return (
     <>
       <AnimatePresence onExitComplete={() => setPanelExited(true)}>
@@ -202,15 +312,53 @@ export function ChatWindow() {
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={close}
-                aria-label="Close chat"
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-200 hover:bg-card hover:text-foreground"
-              >
-                <X className="h-4 w-4" strokeWidth={1.75} />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={handleNewConversationClick}
+                  aria-label="Start new conversation"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-200 hover:bg-card hover:text-foreground"
+                >
+                  <RotateCcw className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+                <button
+                  type="button"
+                  onClick={close}
+                  aria-label="Close chat"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-200 hover:bg-card hover:text-foreground"
+                >
+                  <X className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+              </div>
             </div>
+
+            {confirmReset && (
+              <div
+                role="alertdialog"
+                aria-label="Confirm new conversation"
+                className="flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-2.5"
+              >
+                <p className="font-body text-xs text-muted-foreground">
+                  Start a new conversation? Your current chat will be cleared.
+                </p>
+                <div className="flex flex-none gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmReset(false)}
+                    className="rounded-lg px-2.5 py-1.5 font-body text-xs font-medium text-muted-foreground transition-colors hover:bg-background"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={startNewConversation}
+                    className="rounded-lg bg-primary px-2.5 py-1.5 font-body text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
+                  >
+                    Start new
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div
               ref={scrollRef}

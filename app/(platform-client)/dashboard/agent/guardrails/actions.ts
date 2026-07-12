@@ -42,5 +42,6 @@ export async function saveGuardrails(formData: FormData) {
   if (error) return { error: error.message };
 
   revalidatePath("/dashboard/agent/guardrails");
+  revalidatePath("/dashboard/onboarding");
   return { error: null };
 }

@@ -6,6 +6,7 @@ import { formatDate } from "@/lib/formatters";
 import type { BlogPost } from "@/data/blog";
 import { Badge } from "@/components/ui/badge";
 import { FadeIn } from "@/components/animations/FadeIn";
+import { BlogCoverArt } from "@/components/sections/BlogCoverArt";
 
 export function BlogCard({
   post,
@@ -25,27 +26,32 @@ export function BlogCard({
           ? undefined
           : { y: -4, transition: { duration: 0.2, ease: "easeOut" } }
       }
-      className="group relative overflow-hidden rounded-2xl border border-border bg-card transition-colors duration-200 hover:border-primary/50"
+      className="group relative overflow-hidden rounded-2xl border border-border bg-card transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/10"
     >
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 hover-glow-primary transition-opacity duration-300 group-hover:opacity-100"
       />
-      <Link href={`/blog/${post.slug}`} className="relative block p-6">
-        <div className="mb-3 flex items-center gap-2 text-xs text-secondary-text">
-          <Badge variant="outline" className="text-xs">
-            {post.category}
-          </Badge>
-          <span>·</span>
-          <time dateTime={post.publishedAt}>
-            {formatDate(post.publishedAt)}
-          </time>
+      <Link href={`/blog/${post.slug}`} className="relative block">
+        <div className="p-3 pb-0">
+          <BlogCoverArt category={post.category} compact />
         </div>
-        <h2 className="mb-2 font-heading text-lg font-semibold text-text transition-colors group-hover:text-primary">
-          {post.title}
-        </h2>
-        <p className="text-sm text-secondary-text">{post.summary}</p>
-        <div className="mt-4 text-primary">Read more</div>
+        <div className="p-6 pt-4">
+          <div className="mb-3 flex items-center gap-2 text-xs text-secondary-text">
+            <Badge variant="outline" className="text-xs">
+              {post.category}
+            </Badge>
+            <span>·</span>
+            <time dateTime={post.publishedAt}>
+              {formatDate(post.publishedAt)}
+            </time>
+          </div>
+          <h2 className="mb-2 font-heading text-lg font-semibold text-text transition-colors group-hover:text-primary">
+            {post.title}
+          </h2>
+          <p className="text-sm text-secondary-text">{post.summary}</p>
+          <div className="mt-4 text-primary">Read more</div>
+        </div>
       </Link>
     </FadeIn>
   );

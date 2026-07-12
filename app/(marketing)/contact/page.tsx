@@ -40,7 +40,10 @@ export default function ContactPage() {
             <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
               Contact
             </p>
-            <h1 className="font-heading text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[44px] md:text-[52px]">
+            <h1
+              className="font-heading text-h1-secondary font-bold leading-tight tracking-tight text-text
+"
+            >
               Let&apos;s talk about your project.
             </h1>
             <p className="mt-4 font-body text-base text-secondary-text sm:text-lg">
@@ -91,7 +94,7 @@ export default function ContactPage() {
               <InfoCard
                 icon={Clock}
                 title="Response time"
-                description="We reply to every message within 1–2 business days. Urgent? WhatsApp is faster."
+                description="We reply to every message the same day. Urgent? WhatsApp is faster."
               />
             </div>
           </div>

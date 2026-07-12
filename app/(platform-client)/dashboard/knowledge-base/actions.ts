@@ -7,6 +7,7 @@ import { ingestDocument } from "@/lib/knowledge-base/ingest";
 import { discoverPages, scrapePage } from "@/lib/knowledge-base/scrape";
 import { extractPdfText } from "@/lib/knowledge-base/pdf";
 import { getActiveAgentForCurrentUser } from "@/lib/auth/actions";
+import { embedText } from "@/lib/knowledge-base/embed";
 
 // NOTE: ingestDocument() uses the service-role client and bypasses RLS
 // entirely, so every call site in this file must verify ownership via
@@ -16,6 +17,8 @@ import { getActiveAgentForCurrentUser } from "@/lib/auth/actions";
 export async function addKnowledgeBaseDocument(formData: FormData) {
   const title = String(formData.get("title") ?? "").trim();
   const rawContent = String(formData.get("rawContent") ?? "").trim();
+  const requestedType = String(formData.get("sourceType") ?? "manual_text");
+  const sourceType = requestedType === "faq_pair" ? "faq_pair" : "manual_text";
 
   if (!title) return { error: "Give this document a short title." };
   if (!rawContent || rawContent.length < 20) {
@@ -31,7 +34,7 @@ export async function addKnowledgeBaseDocument(formData: FormData) {
     .insert({
       agent_id: agent.id,
       organization_id: agent.organization_id,
-      source_type: "manual_text",
+      source_type: sourceType,
       title,
       raw_content: rawContent,
       status: "processing",
@@ -40,7 +43,9 @@ export async function addKnowledgeBaseDocument(formData: FormData) {
     .single();
 
   if (error || !doc) {
-    return { error: error?.message ?? "Failed to save document." };
+    return {
+      error: error?.message ?? "We couldn't save that — try again in a moment.",
+    };
   }
 
   try {
@@ -48,12 +53,15 @@ export async function addKnowledgeBaseDocument(formData: FormData) {
   } catch (err) {
     console.error("[knowledge-base] ingestion failed:", err);
     revalidatePath("/dashboard/knowledge-base");
+    revalidatePath("/dashboard/onboarding");
     return {
-      error: "Saved, but processing failed — see the status badge below.",
+      error:
+        "We saved it, but couldn't process it yet — check the status badge below.",
     };
   }
 
   revalidatePath("/dashboard/knowledge-base");
+  revalidatePath("/dashboard/onboarding");
   return { error: null };
 }
 
@@ -83,7 +91,10 @@ export async function discoverKnowledgeBaseUrls(rootUrl: string) {
     return { error: null, pages };
   } catch (err) {
     return {
-      error: err instanceof Error ? err.message : "Could not reach that site.",
+      error:
+        err instanceof Error
+          ? err.message
+          : "We couldn't reach that website — check the URL and try again.",
       pages: [],
     };
   }
@@ -127,10 +138,12 @@ export async function scrapeAndIngestUrl(url: string) {
   } catch (err) {
     console.error("[knowledge-base] url ingestion failed:", err);
     revalidatePath("/dashboard/knowledge-base");
+    revalidatePath("/dashboard/onboarding");
     return { error: `Saved ${url}, but processing failed.` };
   }
 
   revalidatePath("/dashboard/knowledge-base");
+  revalidatePath("/dashboard/onboarding");
   return { error: null };
 }
 
@@ -155,7 +168,7 @@ export async function refreshKnowledgeBaseUrlDocument(documentId: string) {
       error:
         err instanceof Error
           ? err.message
-          : "Could not re-fetch the source page.",
+          : "We couldn't re-scan that page — try again in a moment.",
     };
   }
 
@@ -175,13 +188,15 @@ export async function refreshKnowledgeBaseUrlDocument(documentId: string) {
   } catch (err) {
     console.error("[knowledge-base] refresh failed:", err);
     revalidatePath("/dashboard/knowledge-base");
+    revalidatePath("/dashboard/onboarding");
     return {
       error:
-        "Refreshed, but re-processing failed — see the status badge below.",
+        "We refreshed it, but couldn't reprocess it yet — check the status badge below.",
     };
   }
 
   revalidatePath("/dashboard/knowledge-base");
+  revalidatePath("/dashboard/onboarding");
   return { error: null };
 }
 
@@ -208,7 +223,9 @@ export async function createPdfUploadUrl(fileName: string) {
 
   if (error || !data) {
     return {
-      error: error?.message ?? "Could not create an upload URL.",
+      error:
+        error?.message ??
+        "We couldn't start the upload — try again in a moment.",
       data: null,
     };
   }
@@ -234,7 +251,9 @@ export async function ingestUploadedPdf(storagePath: string, fileName: string) {
 
   if (downloadError || !file) {
     return {
-      error: downloadError?.message ?? "Could not download the uploaded file.",
+      error:
+        downloadError?.message ??
+        "We couldn't read that file — try uploading it again.",
     };
   }
 
@@ -264,6 +283,7 @@ export async function ingestUploadedPdf(storagePath: string, fileName: string) {
         "This PDF appears to be a scanned image with no selectable text — try re-exporting it as a text-based PDF, or paste the content manually.",
     });
     revalidatePath("/dashboard/knowledge-base");
+    revalidatePath("/dashboard/onboarding");
     return { error: null };
   }
 
@@ -281,7 +301,11 @@ export async function ingestUploadedPdf(storagePath: string, fileName: string) {
     .single();
 
   if (insertError || !doc) {
-    return { error: insertError?.message ?? "Failed to save document." };
+    return {
+      error:
+        insertError?.message ??
+        "We couldn't save that — try again in a moment.",
+    };
   }
 
   try {
@@ -289,12 +313,15 @@ export async function ingestUploadedPdf(storagePath: string, fileName: string) {
   } catch (err) {
     console.error("[knowledge-base] pdf ingestion failed:", err);
     revalidatePath("/dashboard/knowledge-base");
+    revalidatePath("/dashboard/onboarding");
     return {
-      error: "Saved, but processing failed — see the status badge below.",
+      error:
+        "We saved it, but couldn't process it yet — check the status badge below.",
     };
   }
 
   revalidatePath("/dashboard/knowledge-base");
+  revalidatePath("/dashboard/onboarding");
   return { error: null };
 }
 
@@ -306,6 +333,7 @@ export async function deleteKnowledgeBaseDocument(documentId: string) {
     .eq("id", documentId);
 
   revalidatePath("/dashboard/knowledge-base");
+  revalidatePath("/dashboard/onboarding");
   return { error: error?.message ?? null };
 }
 
@@ -332,10 +360,12 @@ export async function reindexKnowledgeBaseDocument(documentId: string) {
   } catch (err) {
     console.error("[knowledge-base] re-index failed:", err);
     revalidatePath("/dashboard/knowledge-base");
+    revalidatePath("/dashboard/onboarding");
     return { error: "Re-index failed — see the status badge below." };
   }
 
   revalidatePath("/dashboard/knowledge-base");
+  revalidatePath("/dashboard/onboarding");
   return { error: null };
 }
 
@@ -376,11 +406,101 @@ export async function updateKnowledgeBaseDocument(
   } catch (err) {
     console.error("[knowledge-base] edit re-ingest failed:", err);
     revalidatePath("/dashboard/knowledge-base");
+    revalidatePath("/dashboard/onboarding");
     return {
-      error: "Saved, but re-processing failed — see the status badge below.",
+      error:
+        "We saved your edit, but couldn't reprocess it yet — check the status badge below.",
     };
   }
 
   revalidatePath("/dashboard/knowledge-base");
   return { error: null };
+}
+
+// ============================================================
+// "Test what your agent knows" — same retrieval path the live
+// widget uses (match_knowledge_base_chunks), surfaced for the
+// dashboard owner instead of an end visitor.
+// ============================================================
+
+export async function testKnowledgeBaseQuery(query: string) {
+  const trimmed = query.trim();
+  if (!trimmed) return { error: "Type a question first.", matches: [] };
+
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent) {
+    return {
+      error: "No active agent found for your organization.",
+      matches: [],
+    };
+  }
+
+  const supabase = await createClient();
+
+  let queryEmbedding: number[];
+  try {
+    queryEmbedding = await embedText(trimmed);
+  } catch {
+    return {
+      error: "We couldn't test that question — try again in a moment.",
+      matches: [],
+    };
+  }
+
+  const { data: matchRows, error: matchError } = await supabase.rpc(
+    "match_knowledge_base_chunks",
+    {
+      query_embedding: queryEmbedding,
+      target_agent_id: agent.id,
+      match_count: 5,
+    },
+  );
+
+  if (matchError) {
+    return { error: matchError.message, matches: [] };
+  }
+
+  const chunkIds = (matchRows ?? []).map((m: { id: string }) => m.id);
+  if (chunkIds.length === 0) return { error: null, matches: [] };
+
+  const { data: chunkRows } = await supabase
+    .from("knowledge_base_chunks")
+    .select("id, document_id")
+    .in("id", chunkIds);
+
+  const chunkToDoc = new Map(
+    (chunkRows ?? []).map((c) => [c.id, c.document_id]),
+  );
+  const docIds = Array.from(new Set(chunkToDoc.values()));
+
+  const { data: docs } = await supabase
+    .from("knowledge_base_documents")
+    .select("id, title, source_type")
+    .in("id", docIds);
+
+  const docMap = new Map((docs ?? []).map((d) => [d.id, d]));
+
+  const seen = new Set<string>();
+  const matches: {
+    documentId: string;
+    title: string;
+    sourceType: string;
+    snippet: string;
+  }[] = [];
+
+  for (const m of matchRows as { id: string; content: string }[]) {
+    const docId = chunkToDoc.get(m.id);
+    if (!docId || seen.has(docId)) continue;
+    seen.add(docId);
+    const doc = docMap.get(docId);
+    matches.push({
+      documentId: docId,
+      title: doc?.title ?? "Untitled",
+      sourceType: doc?.source_type ?? "manual_text",
+      snippet:
+        m.content.length > 160 ? `${m.content.slice(0, 160)}…` : m.content,
+    });
+  }
+
+  return { error: null, matches };
 }

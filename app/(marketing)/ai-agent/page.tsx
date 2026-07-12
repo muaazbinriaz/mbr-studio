@@ -126,7 +126,10 @@ export default function AiAgentPage() {
           <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
             AI Agent Platform
           </p>
-          <h1 className="font-heading text-[36px] font-bold leading-tight tracking-tight text-text sm:text-[48px] md:text-[56px]">
+          <h1
+            className="font-heading text-h1-primary font-bold leading-tight tracking-tight text-text
+"
+          >
             Give your business a 24/7 AI agent — try the exact one your
             customers would talk to, right now.
           </h1>
@@ -170,7 +173,10 @@ export default function AiAgentPage() {
             <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
               How it works
             </p>
-            <h2 className="font-heading text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[40px]">
+            <h2
+              className="font-heading text-h2-feature font-bold leading-tight tracking-tight text-text
+"
+            >
               From knowledge base to live conversations, in four steps.
             </h2>
           </div>
@@ -204,7 +210,10 @@ export default function AiAgentPage() {
             <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
               What&apos;s included
             </p>
-            <h2 className="font-heading text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[40px]">
+            <h2
+              className="font-heading text-h2-feature font-bold leading-tight tracking-tight text-text
+"
+            >
               Everything a real client&apos;s agent ships with.
             </h2>
           </div>
@@ -232,7 +241,10 @@ export default function AiAgentPage() {
             <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
               Pricing
             </p>
-            <h2 className="font-heading text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[40px]">
+            <h2
+              className="font-heading text-h2-feature font-bold leading-tight tracking-tight text-text
+"
+            >
               Simple, transparent plans as your business grows.
             </h2>
           </div>
@@ -274,7 +286,10 @@ export default function AiAgentPage() {
           viewport={{ once: true, amount: 0.5 }}
           className="mx-auto max-w-3xl px-6 py-24 text-center md:px-10 md:py-32"
         >
-          <h2 className="font-heading text-[28px] font-bold leading-tight tracking-tight text-text sm:text-[36px]">
+          <h2
+            className="font-heading text-h2-section font-bold leading-tight tracking-tight text-text
+"
+          >
             Ready to give your business its own AI agent?
           </h2>
           <p className="mx-auto mt-4 max-w-xl font-body text-base text-secondary-text">

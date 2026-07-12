@@ -57,7 +57,10 @@ export function WhyChooseUs() {
             <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
               Why MBR Studio
             </p>
-            <h2 className="font-heading text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[40px]">
+            <h2
+              className="font-heading text-h2-feature font-bold leading-tight tracking-tight text-text
+"
+            >
               Built by an engineer who ships, not an agency that manages.
             </h2>
           </div>

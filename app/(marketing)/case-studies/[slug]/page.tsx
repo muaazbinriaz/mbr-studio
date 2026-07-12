@@ -85,7 +85,10 @@ export default async function CaseStudyPage({ params }: CaseStudyPageProps) {
             </span>
           </div>
 
-          <h1 className="max-w-3xl font-heading text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[44px] md:text-[56px]">
+          <h1
+            className="max-w-3xl font-heading text-h1-secondary font-bold leading-tight tracking-tight text-text
+"
+          >
             {project.title}
           </h1>
           <p className="mt-5 max-w-2xl font-body text-base text-secondary-text sm:text-lg">
@@ -235,7 +238,10 @@ export default async function CaseStudyPage({ params }: CaseStudyPageProps) {
       {/* 7. CTA */}
       <section className="border-t border-border bg-secondary-background">
         <div className="mx-auto max-w-3xl px-6 py-24 text-center md:px-10 md:py-32">
-          <h2 className="font-heading text-[28px] font-bold leading-tight tracking-tight text-text sm:text-[36px]">
+          <h2
+            className="font-heading text-h2-section font-bold leading-tight tracking-tight text-text
+"
+          >
             Have a similar project in mind?
           </h2>
           <p className="mx-auto mt-4 max-w-xl font-body text-base text-secondary-text">

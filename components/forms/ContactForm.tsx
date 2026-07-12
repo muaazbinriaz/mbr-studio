@@ -79,7 +79,7 @@ export function ContactForm() {
         </h3>
         <p className="max-w-sm font-body text-sm leading-relaxed text-secondary-text">
           Thanks for reaching out. We&apos;ve sent a confirmation to your inbox
-          and will follow up within 1–2 business days.
+          — we typically reply the same day.
         </p>
         <button
           type="button"

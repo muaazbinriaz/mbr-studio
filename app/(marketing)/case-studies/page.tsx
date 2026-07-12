@@ -55,7 +55,7 @@ export default function CaseStudiesPage() {
             <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
               Case Studies
             </p>
-            <h1 className="font-heading text-[36px] font-bold leading-tight tracking-tight text-text sm:text-[48px] md:text-[56px]">
+            <h1 className="font-heading text-h1-primary font-bold leading-tight tracking-tight text-text">
               The problem, the approach, and the outcome — for real projects.
             </h1>
           </div>
@@ -78,7 +78,7 @@ export default function CaseStudiesPage() {
                   <Link
                     key={project.slug}
                     href={`/case-studies/${project.slug}`}
-                    className="group flex flex-col gap-3 py-8 transition-colors duration-200 first:pt-0 last:pb-0 md:flex-row md:items-start md:justify-between md:gap-8"
+                    className="group flex flex-col gap-3 py-8 transition-colors duration-200 last:pb-0 md:flex-row md:items-start md:justify-between md:gap-8"
                   >
                     <div className="min-w-0 flex-1">
                       <p className="mb-1.5 font-body text-xs font-medium uppercase tracking-wide text-secondary-text">
@@ -110,7 +110,10 @@ export default function CaseStudiesPage() {
       {/* Closing CTA — reused pattern from about/page.tsx & portfolio/page.tsx */}
       <section className="border-t border-border bg-secondary-background">
         <div className="mx-auto max-w-3xl px-6 py-24 text-center md:px-10 md:py-32">
-          <h2 className="font-heading text-[28px] font-bold leading-tight tracking-tight text-text sm:text-[36px]">
+          <h2
+            className="font-heading text-h2-section font-bold leading-tight tracking-tight text-text
+"
+          >
             Have a project like these in mind?
           </h2>
           <p className="mx-auto mt-4 max-w-xl font-body text-base text-secondary-text">

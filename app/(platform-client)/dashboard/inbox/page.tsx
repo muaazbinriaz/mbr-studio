@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getInboxConversations } from "@/lib/inbox/queries";
 import { InboxClient } from "./InboxClient";
+import { LockedFeatureEmptyState } from "@/components/platform/LockedFeatureEmptyState";
 
 export default async function InboxPage() {
   const supabase = await createClient();
@@ -17,9 +18,22 @@ export default async function InboxPage() {
 
   const organizationId = membership?.organization_id ?? null;
 
-  const initialConversations = organizationId
-    ? await getInboxConversations(supabase, organizationId)
-    : [];
+  let setupComplete = false;
+  if (organizationId) {
+    const { data: agent } = await supabase
+      .from("agents")
+      .select("setup_complete")
+      .eq("organization_id", organizationId)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+    setupComplete = agent?.setup_complete ?? false;
+  }
+
+  const initialConversations =
+    organizationId && setupComplete
+      ? await getInboxConversations(supabase, organizationId)
+      : [];
 
   return (
     <div className="flex h-[calc(100vh-8rem)] flex-col">
@@ -38,6 +52,8 @@ export default async function InboxPage() {
             No organization found for your account yet.
           </p>
         </div>
+      ) : !setupComplete ? (
+        <LockedFeatureEmptyState feature="the Inbox" />
       ) : (
         <div className="min-h-0 flex-1">
           <InboxClient

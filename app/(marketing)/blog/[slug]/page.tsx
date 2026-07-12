@@ -8,6 +8,7 @@ import { JsonLd } from "@/components/seo/JsonLd";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { BlogCoverArt } from "@/components/sections/BlogCoverArt";
 
 interface BlogPostPageProps {
   params: Promise<{ slug: string }>; // ✅ params is async, per Next.js 15
@@ -64,10 +65,16 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
             <ArrowLeft className="h-4 w-4" />
             Back to blog
           </Link>
+          <div className="mb-6">
+            <BlogCoverArt category={post.category} />
+          </div>
           <Badge variant="outline" className="mb-3">
             {post.category}
           </Badge>
-          <h1 className="font-heading text-[32px] font-bold leading-tight text-text sm:text-[44px]">
+          <h1
+            className="font-heading text-h1-secondary font-bold leading-tight tracking-tight text-text
+"
+          >
             {post.title}
           </h1>
           <div className="mt-4 flex items-center gap-2 text-sm text-secondary-text">

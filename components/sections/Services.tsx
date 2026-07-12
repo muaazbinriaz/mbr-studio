@@ -29,7 +29,10 @@ export function Services() {
           <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
             What we do
           </p>
-          <h2 className="font-heading text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[40px] md:text-[48px]">
+          <h2
+            className="font-heading text-h2-feature font-bold leading-tight tracking-tight text-text
+"
+          >
             Everything you need to grow online, under one roof.
           </h2>
         </div>
