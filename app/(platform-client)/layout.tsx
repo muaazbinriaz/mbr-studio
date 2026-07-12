@@ -40,10 +40,13 @@ export default async function ClientDashboardLayout({
     : 0;
 
   let setupComplete = true;
+  let agentName = "Your Agent";
+  let agentStatus: "live" | "trial" | "paused" = "live";
+
   if (membership) {
     const { data: agent } = await supabase
       .from("agents")
-      .select("setup_complete")
+      .select("setup_complete, agent_name, is_active")
       .eq("organization_id", membership.organization_id)
       .eq("is_active", true)
       .limit(1)
@@ -51,6 +54,20 @@ export default async function ClientDashboardLayout({
     // No agent row yet (mid-provisioning) is treated as "not complete" —
     // safer default than briefly flashing the full sidebar.
     setupComplete = agent?.setup_complete ?? false;
+
+    if (agent?.agent_name) agentName = agent.agent_name;
+
+    const { data: orgRow } = await supabase
+      .from("organizations")
+      .select("status")
+      .eq("id", membership.organization_id)
+      .maybeSingle();
+
+    agentStatus = !agent?.is_active
+      ? "paused"
+      : orgRow?.status === "trial"
+        ? "trial"
+        : "live";
   }
 
   return (
@@ -60,6 +77,8 @@ export default async function ClientDashboardLayout({
       navBadges={{ "/dashboard/inbox": unreadCount }}
       isReseller={!!org?.is_reseller}
       setupComplete={setupComplete}
+      agentName={agentName}
+      agentStatus={agentStatus}
     >
       {children}
     </PlatformShell>

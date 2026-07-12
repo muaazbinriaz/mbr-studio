@@ -31,6 +31,10 @@ import { useRouteLoader } from "@/components/loader/RouteLoader";
 import { DesktopNav, type NavGroup } from "@/components/platform/DesktopNav";
 import { MobileNav } from "@/components/platform/MobileNav";
 import { Logo } from "@/components/brand/Logo";
+import {
+  AgentSidebarShell,
+  type AgentStatus,
+} from "@/components/platform/AgentSidebarShell";
 export type PlatformVariant = "admin" | "client";
 
 const NAV_GROUPS_BY_VARIANT: Record<
@@ -224,6 +228,8 @@ export function PlatformShell({
   navBadges,
   isReseller = false,
   setupComplete = true,
+  agentName,
+  agentStatus,
   children,
 }: {
   variant: PlatformVariant;
@@ -233,12 +239,33 @@ export function PlatformShell({
   isReseller?: boolean;
   /** Client variant only — false collapses the sidebar to setup-only items. */
   setupComplete?: boolean;
+  /** Client variant + setupComplete only — used by the agent sidebar shell. */
+  agentName?: string;
+  agentStatus?: AgentStatus;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const { start } = useRouteLoader();
+
+  // Once the agent is live, the client dashboard IS the agent's
+  // management console — no separate "Manage" click needed. Pre-setup
+  // (still in the wizard) and the admin variant keep the lighter
+  // top-nav shell below, unchanged.
+  if (variant === "client" && setupComplete) {
+    return (
+      <AgentSidebarShell
+        agentName={agentName ?? "Your Agent"}
+        agentStatus={agentStatus ?? "live"}
+        userEmail={userEmail}
+        isReseller={isReseller}
+        navBadges={navBadges}
+      >
+        {children}
+      </AgentSidebarShell>
+    );
+  }
 
   const groups = NAV_GROUPS_BY_VARIANT[variant](isReseller, setupComplete);
   const brandSuffix = BRAND_SUFFIX_BY_VARIANT[variant];
