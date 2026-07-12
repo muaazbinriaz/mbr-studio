@@ -110,6 +110,14 @@ export default async function DashboardPage({
 
   const checklistItems: ChecklistItem[] = [
     {
+      key: "finish_setup",
+      label: "Finish the setup wizard",
+      href: "/dashboard/onboarding",
+      done: agent?.setup_complete ?? false,
+      emoji: "🚀",
+      hint: "Unlocks your full dashboard — Inbox, Leads, and agent settings",
+    },
+    {
       key: "add_knowledge",
       label: "Add your first knowledge base document",
       href: "/dashboard/knowledge-base",
