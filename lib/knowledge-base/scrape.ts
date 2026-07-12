@@ -299,6 +299,32 @@ export async function discoverPages(
   return [...prioritized, ...rest].slice(0, MAX_DISCOVERED_PAGES);
 }
 
+// Elements that are structurally never real page content. Cookie/consent
+// banners and skip-links in particular live OUTSIDE <nav>/<header>/<footer>
+// on most sites (including this one — see CookieConsent and SkipLink in
+// app/layout.tsx, both siblings of <main>, not nested inside it), so
+// removing just nav/footer/header misses them entirely. Matched
+// heuristically since every consent-banner library names things
+// differently and there's no single semantic tag for "cookie banner".
+const BOILERPLATE_SELECTORS = [
+  "script",
+  "style",
+  "noscript",
+  "nav",
+  "header",
+  "footer",
+  "a[href^='#main']",
+  ".sr-only",
+  "[class*='skip-link' i]",
+  "[class*='cookie' i]",
+  "[id*='cookie' i]",
+  "[class*='consent' i]",
+  "[id*='consent' i]",
+  "[aria-label*='cookie' i]",
+  "[role='banner']",
+  "[role='navigation']",
+].join(", ");
+
 export async function scrapePage(
   url: string,
 ): Promise<{ title: string; text: string }> {
@@ -308,10 +334,20 @@ export async function scrapePage(
 
   const html = await res.text();
   const $ = cheerio.load(html);
-  $("script, style, nav, footer, noscript").remove();
+  $(BOILERPLATE_SELECTORS).remove();
 
   const title = $("title").first().text().trim() || url;
-  const text = $("body").text().replace(/\s+/g, " ").trim();
+
+  // Prefer the page's actual content region over the whole <body>. Sites
+  // built with a conventional layout (including this one — see
+  // <main id="main-content"> in app/(marketing)/layout.tsx) wrap real
+  // content in <main>, with nav, header CTAs, and cookie banners rendered
+  // as siblings outside it. Using <main> when present skips all of that
+  // boilerplate at the source instead of trying to blacklist every
+  // possible container after the fact. Falls back to <body> for pages
+  // that don't use <main> (e.g. a client's non-Next.js site).
+  const contentRoot = $("main").first().length ? $("main").first() : $("body");
+  const text = contentRoot.text().replace(/\s+/g, " ").trim();
 
   return { title, text };
 }

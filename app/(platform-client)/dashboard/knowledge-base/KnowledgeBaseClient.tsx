@@ -351,90 +351,98 @@ export function KnowledgeBaseClient({
         })}
       </div>
 
-      {/* Two-pane body: add-panel + list on the left, detail on the right */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[400px_1fr]">
-        <div
-          className={`${
-            selectedId ? "hidden lg:flex" : "flex"
-          } min-h-0 flex-col gap-4 overflow-y-auto lg:overflow-visible`}
-        >
-          <div className="flex-none rounded-2xl border border-border bg-card p-4">
-            {activeTab === "url" && <WebsiteAddPanel />}
-            {activeTab === "pdf" && <FilesAddPanel />}
-            {activeTab === "manual_text" && <TextAddPanel />}
-            {activeTab === "faq_pair" && <QaAddPanel />}
-          </div>
+      {/* Two-pane body: add-panel + list on the left, detail on the right.
+          Wrapped in @container so this responds to the space it ACTUALLY
+          has (e.g. squeezed into the onboarding wizard's 55%-width column)
+          instead of the viewport's lg: breakpoint. Without this, a fixed
+          400px sidebar + "wide" 1fr detail pane gets squeezed into an
+          unusably narrow sliver whenever this component is embedded in a
+          narrower host layout — which is exactly what was happening. */}
+      <div className="min-h-0 flex-1 @container">
+        <div className="grid h-full min-h-0 grid-cols-1 gap-4 @3xl:grid-cols-[360px_1fr]">
+          <div
+            className={`${
+              selectedId ? "hidden @3xl:flex" : "flex"
+            } min-h-0 flex-col gap-4 overflow-y-auto @3xl:overflow-visible`}
+          >
+            <div className="flex-none rounded-2xl border border-border bg-card p-4">
+              {activeTab === "url" && <WebsiteAddPanel />}
+              {activeTab === "pdf" && <FilesAddPanel />}
+              {activeTab === "manual_text" && <TextAddPanel />}
+              {activeTab === "faq_pair" && <QaAddPanel />}
+            </div>
 
-          <div className="flex min-h-[240px] flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card">
-            <div className="flex-none border-b border-border p-3">
-              <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
-                <Search className="h-4 w-4 flex-none text-secondary-text" />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={`Search ${SOURCE_TABS.find((t) => t.id === activeTab)?.label.toLowerCase()}...`}
-                  className="w-full bg-transparent font-body text-sm text-foreground placeholder:text-secondary-text focus:outline-none"
-                />
+            <div className="flex min-h-[240px] flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card">
+              <div className="flex-none border-b border-border p-3">
+                <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+                  <Search className="h-4 w-4 flex-none text-secondary-text" />
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder={`Search ${SOURCE_TABS.find((t) => t.id === activeTab)?.label.toLowerCase()}...`}
+                    className="w-full bg-transparent font-body text-sm text-foreground placeholder:text-secondary-text focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {tabDocuments.length === 0 ? (
+                  <TabEmptyState tab={activeTab} />
+                ) : filtered.length === 0 ? (
+                  <div className="px-6 py-14 text-center">
+                    <p className="font-body text-sm text-secondary-text">
+                      No matches for &quot;{search}&quot;.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col divide-y divide-border">
+                    {filtered.map((doc) => (
+                      <DocumentRowItem
+                        key={doc.id}
+                        doc={doc}
+                        isSelected={selectedId === doc.id}
+                        onSelect={() => setSelectedId(doc.id)}
+                        onQuickRefresh={
+                          doc.source_type === "url"
+                            ? () => handleRefresh(doc.id)
+                            : undefined
+                        }
+                        isRefreshing={isPending && pendingId === doc.id}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {tabDocuments.length === 0 ? (
-                <TabEmptyState tab={activeTab} />
-              ) : filtered.length === 0 ? (
-                <div className="px-6 py-14 text-center">
-                  <p className="font-body text-sm text-secondary-text">
-                    No matches for &quot;{search}&quot;.
-                  </p>
-                </div>
-              ) : (
-                <div className="flex flex-col divide-y divide-border">
-                  {filtered.map((doc) => (
-                    <DocumentRowItem
-                      key={doc.id}
-                      doc={doc}
-                      isSelected={selectedId === doc.id}
-                      onSelect={() => setSelectedId(doc.id)}
-                      onQuickRefresh={
-                        doc.source_type === "url"
-                          ? () => handleRefresh(doc.id)
-                          : undefined
-                      }
-                      isRefreshing={isPending && pendingId === doc.id}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
-        </div>
 
-        {/* Detail pane */}
-        <div
-          className={`${
-            selectedId ? "flex" : "hidden lg:flex"
-          } min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card`}
-        >
-          {!selected ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center">
-              <FileText
-                className="h-8 w-8 text-secondary-text"
-                strokeWidth={1.5}
+          {/* Detail pane */}
+          <div
+            className={`${
+              selectedId ? "flex" : "hidden @3xl:flex"
+            } min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card`}
+          >
+            {!selected ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center">
+                <FileText
+                  className="h-8 w-8 text-secondary-text"
+                  strokeWidth={1.5}
+                />
+                <p className="font-body text-sm text-secondary-text">
+                  Select an entry to view it, or add a new one on the left.
+                </p>
+              </div>
+            ) : (
+              <DocumentDetail
+                key={selected.id}
+                doc={selected}
+                isRowPending={isPending && pendingId === selected.id}
+                onBack={() => setSelectedId(null)}
+                onDelete={() => setDeleteTarget(selected)}
+                onReindex={() => handleReindex(selected.id)}
+                onRefresh={() => handleRefresh(selected.id)}
               />
-              <p className="font-body text-sm text-secondary-text">
-                Select an entry to view it, or add a new one on the left.
-              </p>
-            </div>
-          ) : (
-            <DocumentDetail
-              key={selected.id}
-              doc={selected}
-              isRowPending={isPending && pendingId === selected.id}
-              onBack={() => setSelectedId(null)}
-              onDelete={() => setDeleteTarget(selected)}
-              onReindex={() => handleReindex(selected.id)}
-              onRefresh={() => handleRefresh(selected.id)}
-            />
-          )}
+            )}
+          </div>
         </div>
       </div>
 
@@ -480,6 +488,7 @@ function KnowledgeTestPanel() {
         title: string;
         sourceType: string;
         snippet: string;
+        similarity: number;
       }[]
     | null
   >(null);
@@ -549,8 +558,8 @@ function KnowledgeTestPanel() {
 
           {results && results.length === 0 && !error && (
             <p className="mt-4 font-body text-sm text-secondary-text">
-              Nothing in your knowledge base matches this yet — consider adding
-              it.
+              Nothing in your knowledge base confidently matches this — consider
+              adding it, or try rephrasing the question.
             </p>
           )}
 
@@ -561,16 +570,21 @@ function KnowledgeTestPanel() {
                   key={`${r.documentId}-${i}`}
                   className="rounded-lg border border-border bg-background px-3.5 py-3"
                 >
-                  <div className="flex items-center gap-1.5">
-                    {(() => {
-                      const Icon = SOURCE_ICON[r.sourceType] ?? AlignLeft;
-                      return (
-                        <Icon className="h-3.5 w-3.5 flex-none text-secondary-text" />
-                      );
-                    })()}
-                    <p className="font-body text-xs font-semibold text-foreground">
-                      {r.title}
-                    </p>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      {(() => {
+                        const Icon = SOURCE_ICON[r.sourceType] ?? AlignLeft;
+                        return (
+                          <Icon className="h-3.5 w-3.5 flex-none text-secondary-text" />
+                        );
+                      })()}
+                      <p className="truncate font-body text-xs font-semibold text-foreground">
+                        {r.title}
+                      </p>
+                    </div>
+                    <span className="flex-none rounded-full bg-primary/10 px-2 py-0.5 font-body text-[10px] font-medium text-primary">
+                      {Math.round(r.similarity * 100)}% match
+                    </span>
                   </div>
                   <p className="mt-1 font-body text-xs leading-relaxed text-secondary-text">
                     {r.snippet}
@@ -738,7 +752,7 @@ function DocumentDetail({
           <button
             type="button"
             onClick={onBack}
-            className="mt-0.5 flex-none rounded-lg p-1 text-secondary-text hover:bg-background lg:hidden"
+            className="mt-0.5 flex-none rounded-lg p-1 text-secondary-text hover:bg-background @3xl:hidden"
             aria-label="Back to list"
           >
             <ArrowLeft className="h-4 w-4" />

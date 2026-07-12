@@ -423,6 +423,16 @@ export async function updateKnowledgeBaseDocument(
 // dashboard owner instead of an end visitor.
 // ============================================================
 
+// Below this, a match is closer to "any two unrelated sentences of
+// English" than to a genuine answer — MiniLM cosine similarity for a
+// truly relevant chunk is typically 0.4+, while unrelated content still
+// floats around 0.15-0.3 from shared common words alone. Without this
+// floor, short/generic queries (e.g. "hi") always returned 5 confident-
+// looking results regardless of relevance, which made the tool actively
+// misleading rather than just imprecise. Tune down if it starts cutting
+// legitimate matches for your content.
+const MIN_CONFIDENT_SIMILARITY = 0.35;
+
 export async function testKnowledgeBaseQuery(query: string) {
   const trimmed = query.trim();
   if (!trimmed) return { error: "Type a question first.", matches: [] };
@@ -460,8 +470,17 @@ export async function testKnowledgeBaseQuery(query: string) {
     return { error: matchError.message, matches: [] };
   }
 
-  const chunkIds = (matchRows ?? []).map((m: { id: string }) => m.id);
-  if (chunkIds.length === 0) return { error: null, matches: [] };
+  // match_knowledge_base_chunks already computes similarity — it was
+  // being fetched and immediately discarded. Filtering on it here is
+  // what turns "top 5 nearest, however irrelevant" into "the matches
+  // we'd actually trust the agent to answer from".
+  const confidentRows = (
+    (matchRows ?? []) as { id: string; content: string; similarity: number }[]
+  ).filter((m) => m.similarity >= MIN_CONFIDENT_SIMILARITY);
+
+  if (confidentRows.length === 0) return { error: null, matches: [] };
+
+  const chunkIds = confidentRows.map((m) => m.id);
 
   const { data: chunkRows } = await supabase
     .from("knowledge_base_chunks")
@@ -486,9 +505,10 @@ export async function testKnowledgeBaseQuery(query: string) {
     title: string;
     sourceType: string;
     snippet: string;
+    similarity: number;
   }[] = [];
 
-  for (const m of matchRows as { id: string; content: string }[]) {
+  for (const m of confidentRows) {
     const docId = chunkToDoc.get(m.id);
     if (!docId || seen.has(docId)) continue;
     seen.add(docId);
@@ -499,6 +519,7 @@ export async function testKnowledgeBaseQuery(query: string) {
       sourceType: doc?.source_type ?? "manual_text",
       snippet:
         m.content.length > 160 ? `${m.content.slice(0, 160)}…` : m.content,
+      similarity: m.similarity,
     });
   }
 
