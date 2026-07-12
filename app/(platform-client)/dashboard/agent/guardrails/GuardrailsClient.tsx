@@ -256,36 +256,38 @@ export function GuardrailsClient({
           <p className="mb-4 font-body text-xs text-secondary-text">
             Pick a starting point — you can still fine-tune anything below.
           </p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {PRESETS.map((preset) => {
-              const isSelected = selectedPreset === preset.id;
-              return (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() => applyPreset(preset.id)}
-                  className={`rounded-xl border p-4 text-left transition-all duration-150 ${
-                    isSelected
-                      ? "border-primary bg-primary/5 shadow-sm ring-1 ring-primary/30"
-                      : "border-border hover:border-primary/50 hover:bg-card"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-body text-sm font-medium text-foreground">
-                      {preset.label}
+          <div className="@container">
+            <div className="grid grid-cols-1 gap-3 @sm:grid-cols-3">
+              {PRESETS.map((preset) => {
+                const isSelected = selectedPreset === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => applyPreset(preset.id)}
+                    className={`rounded-xl border p-4 text-left transition-all duration-150 ${
+                      isSelected
+                        ? "border-primary bg-primary/5 shadow-sm ring-1 ring-primary/30"
+                        : "border-border hover:border-primary/50 hover:bg-card"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-body text-sm font-medium leading-snug text-foreground">
+                        {preset.label}
+                      </p>
+                      {isSelected && (
+                        <span className="flex h-4 w-4 flex-none items-center justify-center rounded-full bg-primary text-primary-foreground">
+                          <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 font-body text-xs leading-relaxed text-secondary-text">
+                      {preset.description}
                     </p>
-                    {isSelected && (
-                      <span className="flex h-4 w-4 flex-none items-center justify-center rounded-full bg-primary text-primary-foreground">
-                        <Check className="h-2.5 w-2.5" strokeWidth={3} />
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-1 font-body text-xs text-secondary-text">
-                    {preset.description}
-                  </p>
-                </button>
-              );
-            })}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 

@@ -200,7 +200,7 @@ export function OnboardingWizard({
         setError(result.error);
         return;
       }
-      router.push("/dashboard");
+      router.push("/dashboard?justLaunched=1");
       router.refresh();
     });
   };

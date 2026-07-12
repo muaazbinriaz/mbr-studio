@@ -22,7 +22,12 @@ import {
 } from "@/components/platform/GettingStartedChecklist";
 import { ResumeOnboardingBanner } from "@/components/platform/ResumeOnboardingBanner";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ justLaunched?: string }>;
+}) {
+  const justLaunched = (await searchParams).justLaunched === "1";
   const supabase = await createClient();
   const {
     data: { user },
@@ -142,6 +147,21 @@ export default async function DashboardPage() {
         monthlyMessageLimit={org.monthly_message_limit}
         messagesThisMonth={messages}
       />
+
+      {justLaunched && (
+        <div className="mb-6 flex flex-col gap-1 rounded-2xl border border-success/30 bg-success/[0.06] p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-heading text-base font-semibold text-foreground">
+              🎉 Your AI agent is live!
+            </p>
+            <p className="mt-1 font-body text-sm text-secondary-text">
+              This dashboard is now your agent&apos;s control center — use the
+              sidebar on the left to manage conversations, retrain it, or change
+              how it looks and behaves.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-3">
         <span className="text-3xl">👋</span>
