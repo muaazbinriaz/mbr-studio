@@ -23,6 +23,7 @@ export function StatCard({
   accent = "primary",
   trend,
   trendSuffix = "vs last period",
+  emptyHint,
 }: {
   icon: ComponentType<{ className?: string; strokeWidth?: number }>;
   label: string;
@@ -32,7 +33,10 @@ export function StatCard({
   accent?: "primary" | "accent";
   trend?: number | null;
   trendSuffix?: string;
+  /** Shown under the value only when value is 0 / "0%" — friendly empty state. */
+  emptyHint?: string;
 }) {
+  const isEmpty = value === 0 || value === "0" || value === "0%";
   return (
     <div
       className={cn(
@@ -88,6 +92,13 @@ export function StatCard({
             </span>
           ))}
       </div>
+
+      {/* Friendly empty-state hint, shown only when value is zero */}
+      {isEmpty && emptyHint && (
+        <p className="relative mt-1 font-body text-xs text-secondary-text/70">
+          {emptyHint}
+        </p>
+      )}
 
       {/* Bottom accent line, draws in on hover */}
       <div

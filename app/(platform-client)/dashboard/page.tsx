@@ -109,6 +109,8 @@ export default async function DashboardPage() {
       label: "Add your first knowledge base document",
       href: "/dashboard/knowledge-base",
       done: kbDocCount > 0,
+      emoji: "📚",
+      hint: "Teach your agent about your business — website, PDF, or text",
     },
     {
       key: "embed_widget",
@@ -116,12 +118,16 @@ export default async function DashboardPage() {
       href: "/dashboard/onboarding",
       done: agent?.embed_added_self_reported ?? false,
       selfReported: true,
+      emoji: "🔗",
+      hint: "Copy one snippet into your site's HTML — takes 2 minutes",
     },
     {
       key: "set_guardrails",
       label: "Set up guardrails and tone",
       href: "/dashboard/agent/guardrails",
       done: guardrailsRow,
+      emoji: "🛡️",
+      hint: "Decide what your agent should and shouldn't say",
     },
   ];
 
@@ -137,12 +143,24 @@ export default async function DashboardPage() {
         messagesThisMonth={messages}
       />
 
-      <h1 className="font-heading text-2xl font-bold text-foreground">
-        Welcome, {org.name}
-      </h1>
+      <div className="flex items-center gap-3">
+        <span className="text-3xl">👋</span>
+        <h1 className="font-heading text-2xl font-bold text-foreground">
+          Welcome back, {org.name}
+        </h1>
+      </div>
       <p className="mt-2 font-body text-sm text-secondary-text">
-        Your AI agent is {org.status === "active" ? "live" : "in trial mode"}.
-        Track performance below.
+        Your AI agent is{" "}
+        <span
+          className={
+            org.status === "active"
+              ? "font-semibold text-success"
+              : "font-semibold text-warning"
+          }
+        >
+          {org.status === "active" ? "live" : "in trial mode"}
+        </span>
+        . Here&apos;s how it&apos;s performing.
       </p>
 
       <div className="mt-6">
@@ -155,24 +173,28 @@ export default async function DashboardPage() {
           label="Conversations"
           value={current.totalConversations}
           trend={trend(current.totalConversations, previous.totalConversations)}
+          emptyHint="No conversations yet — share your widget link"
         />
         <StatCard
           icon={MessageCircle}
           label="Messages"
           value={current.totalMessages}
           trend={trend(current.totalMessages, previous.totalMessages)}
+          emptyHint="Your agent hasn't replied to anyone yet"
         />
         <StatCard
           icon={Users}
           label="Unique visitors"
           value={current.uniqueVisitors}
           trend={trend(current.uniqueVisitors, previous.uniqueVisitors)}
+          emptyHint="Once live, visitors will show up here"
         />
         <StatCard
           icon={CheckCircle}
           label="Resolution rate"
           value={`${Math.round(current.resolutionRate * 100)}%`}
           trend={null}
+          emptyHint="Calculated once you have conversations"
         />
       </div>
 
