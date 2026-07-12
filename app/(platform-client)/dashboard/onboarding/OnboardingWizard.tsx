@@ -225,6 +225,14 @@ export function OnboardingWizard({
     win.document.close();
   };
 
+  // Steps 1 (Train) and 2 (Behavior) embed the full Knowledge Base /
+  // Guardrails settings components, which are built for full page width.
+  // Squeezing them into the 55% left column — to make room for a "live
+  // preview" pane that doesn't even reflect KB or guardrail changes — is
+  // what breaks their internal layout. Only show the preview on steps
+  // where WidgetPreview's props actually change.
+  const showPreview = step !== 1 && step !== 2;
+
   return (
     <div>
       {/* ---------- Already‑live banner ---------- */}
@@ -262,31 +270,34 @@ export function OnboardingWizard({
         ))}
       </div>
 
-      {/* Mobile-only Setup/Preview toggle — the preview never just disappears */}
-      <div className="mb-4 flex gap-2 lg:hidden">
-        <button
-          type="button"
-          onClick={() => setMobileView("form")}
-          className={`flex-1 rounded-lg px-3 py-2 font-body text-xs font-medium transition-colors ${
-            mobileView === "form"
-              ? "bg-primary text-primary-foreground"
-              : "border border-border text-secondary-text"
-          }`}
-        >
-          Setup
-        </button>
-        <button
-          type="button"
-          onClick={() => setMobileView("preview")}
-          className={`flex-1 rounded-lg px-3 py-2 font-body text-xs font-medium transition-colors ${
-            mobileView === "preview"
-              ? "bg-primary text-primary-foreground"
-              : "border border-border text-secondary-text"
-          }`}
-        >
-          Preview
-        </button>
-      </div>
+      {/* Mobile-only Setup/Preview toggle — hidden on steps with no live
+          preview to switch to (Train, Behavior). */}
+      {showPreview && (
+        <div className="mb-4 flex gap-2 lg:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileView("form")}
+            className={`flex-1 rounded-lg px-3 py-2 font-body text-xs font-medium transition-colors ${
+              mobileView === "form"
+                ? "bg-primary text-primary-foreground"
+                : "border border-border text-secondary-text"
+            }`}
+          >
+            Setup
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileView("preview")}
+            className={`flex-1 rounded-lg px-3 py-2 font-body text-xs font-medium transition-colors ${
+              mobileView === "preview"
+                ? "bg-primary text-primary-foreground"
+                : "border border-border text-secondary-text"
+            }`}
+          >
+            Preview
+          </button>
+        </div>
+      )}
 
       {error && (
         <p role="alert" className="mb-4 font-body text-sm text-error">
@@ -294,9 +305,15 @@ export function OnboardingWizard({
         </p>
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[55fr_45fr]">
+      <div
+        className={`grid grid-cols-1 gap-6 ${showPreview ? "lg:grid-cols-[55fr_45fr]" : ""}`}
+      >
         {/* Left: steps */}
-        <div className={mobileView === "preview" ? "hidden lg:block" : ""}>
+        <div
+          className={
+            showPreview && mobileView === "preview" ? "hidden lg:block" : ""
+          }
+        >
           <AnimatePresence mode="wait">
             <motion.div
               key={step}
@@ -621,21 +638,24 @@ export function OnboardingWizard({
           </div>
         </div>
 
-        {/* Right: persistent live preview */}
-        <div className={mobileView === "form" ? "hidden lg:block" : ""}>
-          <div className="lg:sticky lg:top-24">
-            <p className="mb-3 font-body text-sm font-medium text-foreground">
-              Live preview
-            </p>
-            <WidgetPreview
-              primaryColor={primaryColor}
-              businessName={agentName || "Your Business"}
-              welcomeMessage={welcomeMessage}
-              logoUrl={logoUrl}
-              position={widgetPosition}
-            />
+        {/* Right: persistent live preview — only on steps where it
+            reflects something the user just changed. */}
+        {showPreview && (
+          <div className={mobileView === "form" ? "hidden lg:block" : ""}>
+            <div className="lg:sticky lg:top-24">
+              <p className="mb-3 font-body text-sm font-medium text-foreground">
+                Live preview
+              </p>
+              <WidgetPreview
+                primaryColor={primaryColor}
+                businessName={agentName || "Your Business"}
+                welcomeMessage={welcomeMessage}
+                logoUrl={logoUrl}
+                position={widgetPosition}
+              />
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

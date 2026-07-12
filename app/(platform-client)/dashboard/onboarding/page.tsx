@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { OnboardingWizard } from "./OnboardingWizard";
 import { AGENT_TEMPLATES } from "@/lib/agents/templates";
 import type { GuardrailToggles } from "@/lib/agents/build-system-prompt";
+import { getCurrentOrg } from "@/lib/auth/current-org";
 
 interface LeadCaptureSettings {
   ask_name: boolean;
@@ -17,15 +18,20 @@ export default async function OnboardingPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select(
-      "organization_id, organizations(name, primary_color, accent_color, welcome_message, logo_url, widget_position)",
-    )
-    .eq("user_id", user?.id ?? "")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const orgResult = user ? await getCurrentOrg(supabase, user.id) : null;
+  const membership = orgResult
+    ? { organization_id: orgResult.active.organizationId }
+    : null;
+
+  const { data: orgRow } = orgResult
+    ? await supabase
+        .from("organizations")
+        .select(
+          "name, primary_color, accent_color, welcome_message, logo_url, widget_position",
+        )
+        .eq("id", orgResult.active.organizationId)
+        .maybeSingle()
+    : { data: null };
 
   let agentId: string | null = null;
   let agentName = "";
@@ -106,7 +112,7 @@ export default async function OnboardingPage() {
     }
   }
 
-  const org = membership?.organizations as unknown as {
+  const org = orgRow as {
     name: string;
     primary_color: string;
     accent_color: string;
