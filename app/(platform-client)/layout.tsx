@@ -44,6 +44,7 @@ export default async function ClientDashboardLayout({
       .select("setup_complete, agent_name, is_active")
       .eq("organization_id", membership.organization_id)
       .eq("is_active", true)
+      .order("created_at", { ascending: true })
       .limit(1)
       .maybeSingle();
     // No agent row yet (mid-provisioning) is treated as "not complete" —

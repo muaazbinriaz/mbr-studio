@@ -35,6 +35,7 @@ export default async function ClientDetailPage({
     .select("id, name, embed_keys(public_key)")
     .eq("organization_id", org.id)
     .eq("is_active", true)
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
 

@@ -69,6 +69,7 @@ export default async function DashboardPage({
     .select("id, setup_complete, onboarding_step, embed_added_self_reported")
     .eq("organization_id", orgId)
     .eq("is_active", true)
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
 

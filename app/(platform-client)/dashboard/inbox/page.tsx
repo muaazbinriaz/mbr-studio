@@ -29,6 +29,7 @@ export default async function InboxPage({
       .select("setup_complete")
       .eq("organization_id", organizationId)
       .eq("is_active", true)
+      .order("created_at", { ascending: true })
       .limit(1)
       .maybeSingle();
     setupComplete = agent?.setup_complete ?? false;

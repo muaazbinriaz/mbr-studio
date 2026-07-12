@@ -23604,151 +23604,6 @@ function MessageRow({ message }: { message: InboxMessageRow }) {
 }
 </file>
 
-<file path="app/(platform-client)/dashboard/onboarding/page.tsx">
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { OnboardingWizard } from "./OnboardingWizard";
-import { AGENT_TEMPLATES } from "@/lib/agents/templates";
-import type { GuardrailToggles } from "@/lib/agents/build-system-prompt";
-
-interface LeadCaptureSettings {
-  ask_name: boolean;
-  ask_email: boolean;
-  ask_phone: boolean;
-  ask_message: boolean;
-}
-
-export default async function OnboardingPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select(
-      "organization_id, organizations(name, primary_color, accent_color, welcome_message, logo_url, widget_position)",
-    )
-    .eq("user_id", user?.id ?? "")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  let agentId: string | null = null;
-  let agentName = "";
-  let publicKey: string | null = null;
-  let initialStep = 0;
-  let alreadyLive = false;
-  let guardrails: GuardrailToggles | null = null;
-  let leadCaptureSettings: LeadCaptureSettings | null = null;
-  let documents: {
-    id: string;
-    title: string;
-    status: string;
-    source_type: string;
-    source_url: string | null;
-    created_at: string;
-    updated_at: string;
-    last_refreshed_at: string | null;
-    error_message: string | null;
-    raw_content: string | null;
-    chunkCount: number;
-  }[] = [];
-
-  if (membership) {
-    const { data: agent } = await supabase
-      .from("agents")
-      .select(
-        "id, name, setup_complete, onboarding_step, embed_keys(public_key)",
-      )
-      .eq("organization_id", membership.organization_id)
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
-
-    agentId = agent?.id ?? null;
-    agentName = agent?.name ?? "";
-    initialStep = Math.min(Math.max(agent?.onboarding_step ?? 0, 0), 4);
-    alreadyLive = agent?.setup_complete ?? false;
-    const keys = agent?.embed_keys as { public_key: string }[] | undefined;
-    publicKey = keys?.[0]?.public_key ?? null;
-
-    if (agentId) {
-      const { data: gr } = await supabase
-        .from("agent_guardrails")
-        .select(
-          "no_competitors, stay_on_topic, no_pricing, always_polite, no_opinions, push_contact, no_refund_promise, capture_leads, custom_rules, tone, reply_language, lead_capture_settings",
-        )
-        .eq("agent_id", agentId)
-        .maybeSingle();
-      guardrails = gr ?? null;
-      leadCaptureSettings =
-        (gr?.lead_capture_settings as LeadCaptureSettings) ?? null;
-
-      const { data: docs } = await supabase
-        .from("knowledge_base_documents")
-        .select(
-          "id, title, status, source_type, source_url, created_at, updated_at, last_refreshed_at, error_message, raw_content",
-        )
-        .eq("agent_id", agentId)
-        .order("updated_at", { ascending: false });
-
-      const { data: chunks } = await supabase
-        .from("knowledge_base_chunks")
-        .select("document_id")
-        .eq("agent_id", agentId);
-
-      const chunkCounts = new Map<string, number>();
-      for (const c of chunks ?? []) {
-        chunkCounts.set(
-          c.document_id,
-          (chunkCounts.get(c.document_id) ?? 0) + 1,
-        );
-      }
-
-      documents = (docs ?? []).map((d) => ({
-        ...d,
-        chunkCount: chunkCounts.get(d.id) ?? 0,
-      }));
-    }
-  }
-
-  const org = membership?.organizations as unknown as {
-    name: string;
-    primary_color: string;
-    accent_color: string;
-    welcome_message: string;
-    logo_url: string | null;
-    widget_position: string;
-  } | null;
-
-  return (
-    <div>
-      <h1 className="font-heading text-2xl font-bold text-foreground">
-        Get set up
-      </h1>
-      <p className="mt-2 font-body text-sm text-secondary-text">
-        Five quick steps — you&apos;ll see your live widget the whole way
-        through.
-      </p>
-      <div className="mt-8">
-        <OnboardingWizard
-          org={org}
-          agentId={agentId}
-          agentName={agentName}
-          publicKey={publicKey}
-          templates={AGENT_TEMPLATES}
-          initialStep={initialStep}
-          guardrails={guardrails}
-          leadCaptureSettings={leadCaptureSettings}
-          documents={documents}
-        />
-      </div>
-    </div>
-  );
-}
-</file>
-
 <file path="app/(platform-client)/dashboard/settings/billing/BillingClient.tsx">
 "use client";
 
@@ -26299,6 +26154,157 @@ export async function markOnboardingComplete() {
   // setup. redirect() forces a real, full route-tree re-render from the
   // server with fresh data — no race possible.
   redirect("/dashboard?justLaunched=1");
+}
+</file>
+
+<file path="app/(platform-client)/dashboard/onboarding/page.tsx">
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { OnboardingWizard } from "./OnboardingWizard";
+import { AGENT_TEMPLATES } from "@/lib/agents/templates";
+import type { GuardrailToggles } from "@/lib/agents/build-system-prompt";
+import { getCurrentOrg } from "@/lib/auth/current-org";
+
+interface LeadCaptureSettings {
+  ask_name: boolean;
+  ask_email: boolean;
+  ask_phone: boolean;
+  ask_message: boolean;
+}
+
+export default async function OnboardingPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const orgResult = user ? await getCurrentOrg(supabase, user.id) : null;
+  const membership = orgResult
+    ? { organization_id: orgResult.active.organizationId }
+    : null;
+
+  const { data: orgRow } = orgResult
+    ? await supabase
+        .from("organizations")
+        .select(
+          "name, primary_color, accent_color, welcome_message, logo_url, widget_position",
+        )
+        .eq("id", orgResult.active.organizationId)
+        .maybeSingle()
+    : { data: null };
+
+  let agentId: string | null = null;
+  let agentName = "";
+  let publicKey: string | null = null;
+  let initialStep = 0;
+  let alreadyLive = false;
+  let guardrails: GuardrailToggles | null = null;
+  let leadCaptureSettings: LeadCaptureSettings | null = null;
+  let documents: {
+    id: string;
+    title: string;
+    status: string;
+    source_type: string;
+    source_url: string | null;
+    created_at: string;
+    updated_at: string;
+    last_refreshed_at: string | null;
+    error_message: string | null;
+    raw_content: string | null;
+    chunkCount: number;
+  }[] = [];
+
+  if (membership) {
+    const { data: agent } = await supabase
+      .from("agents")
+      .select(
+        "id, name, setup_complete, onboarding_step, embed_keys(public_key)",
+      )
+      .eq("organization_id", membership.organization_id)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+
+    agentId = agent?.id ?? null;
+    agentName = agent?.name ?? "";
+    initialStep = Math.min(Math.max(agent?.onboarding_step ?? 0, 0), 4);
+    alreadyLive = agent?.setup_complete ?? false;
+    const keys = agent?.embed_keys as { public_key: string }[] | undefined;
+    publicKey = keys?.[0]?.public_key ?? null;
+
+    if (agentId) {
+      const { data: gr } = await supabase
+        .from("agent_guardrails")
+        .select(
+          "no_competitors, stay_on_topic, no_pricing, always_polite, no_opinions, push_contact, no_refund_promise, capture_leads, custom_rules, tone, reply_language, lead_capture_settings",
+        )
+        .eq("agent_id", agentId)
+        .maybeSingle();
+      guardrails = gr ?? null;
+      leadCaptureSettings =
+        (gr?.lead_capture_settings as LeadCaptureSettings) ?? null;
+
+      const { data: docs } = await supabase
+        .from("knowledge_base_documents")
+        .select(
+          "id, title, status, source_type, source_url, created_at, updated_at, last_refreshed_at, error_message, raw_content",
+        )
+        .eq("agent_id", agentId)
+        .order("updated_at", { ascending: false });
+
+      const { data: chunks } = await supabase
+        .from("knowledge_base_chunks")
+        .select("document_id")
+        .eq("agent_id", agentId);
+
+      const chunkCounts = new Map<string, number>();
+      for (const c of chunks ?? []) {
+        chunkCounts.set(
+          c.document_id,
+          (chunkCounts.get(c.document_id) ?? 0) + 1,
+        );
+      }
+
+      documents = (docs ?? []).map((d) => ({
+        ...d,
+        chunkCount: chunkCounts.get(d.id) ?? 0,
+      }));
+    }
+  }
+
+  const org = orgRow as {
+    name: string;
+    primary_color: string;
+    accent_color: string;
+    welcome_message: string;
+    logo_url: string | null;
+    widget_position: string;
+  } | null;
+
+  return (
+    <div>
+      <h1 className="font-heading text-2xl font-bold text-foreground">
+        Get set up
+      </h1>
+      <p className="mt-2 font-body text-sm text-secondary-text">
+        Five quick steps — you&apos;ll see your live widget the whole way
+        through.
+      </p>
+      <div className="mt-8">
+        <OnboardingWizard
+          org={org}
+          agentId={agentId}
+          agentName={agentName}
+          publicKey={publicKey}
+          templates={AGENT_TEMPLATES}
+          initialStep={initialStep}
+          guardrails={guardrails}
+          leadCaptureSettings={leadCaptureSettings}
+          documents={documents}
+        />
+      </div>
+    </div>
+  );
 }
 </file>
 
@@ -31220,6 +31226,119 @@ function QaAddPanel() {
 }
 </file>
 
+<file path="config/site.ts">
+import { buildWhatsAppLink } from "@/config/contact";
+import { Layers, Bot, Briefcase, Users, Newspaper, Mail } from "lucide-react";
+
+export const siteConfig = {
+  name: "MBR Studio",
+  title: "MBR Studio — Digital products, built to grow your business.",
+  founder: "Muaaz Bin Riaz",
+  tagline: "Digital products, built to grow your business.",
+  description:
+    "MBR Studio is a premium software agency building websites, AI-powered automation, and digital products for growing businesses.",
+  url: "https://mbrstudio.co",
+  ogImage: "/opengraph-image",
+  email: "mbrstudio.dev@gmail.com",
+  // Added fields for the chat route
+  consultationUrl: "https://cal.com/muaaz-riaz-itdnod/consultation",
+
+  contactEmail: "mbrstudio.dev@gmail.com",
+  links: {
+    twitter: "https://twitter.com/mbrstudio",
+    linkedin: "https://www.linkedin.com/in/muaaz-bin-riaz-92b395298/",
+    github: "https://github.com/muaazbinriaz",
+  },
+} as const;
+
+export const navLinks = [
+  { label: "Services", href: "/services", icon: Layers },
+  { label: "AI Agent", href: "/ai-agent", icon: Bot },
+  { label: "Portfolio", href: "/portfolio", icon: Briefcase },
+  { label: "About", href: "/about", icon: Users },
+  { label: "Blog", href: "/blog", icon: Newspaper },
+  { label: "Contact", href: "/contact", icon: Mail },
+] as const;
+
+export const primaryCta = {
+  label: "Book a Consultation",
+  href: siteConfig.consultationUrl,
+} as const;
+
+export const secondaryCta = {
+  label: "Start Free Trial",
+  href: "/signup",
+} as const;
+
+/**
+ * Delegates to config/contact.ts's buildWhatsAppLink() — that file is
+ * the single source of truth for the WhatsApp number (WHATSAPP_DIGITS /
+ * WHATSAPP_DISPLAY). This used to hardcode a second literal number here,
+ * which risked the contact page and the AI chatbot handoff pointing at
+ * two different numbers if only one was ever updated.
+ *
+ * Passes an empty message override so the chatbot's handoff link keeps
+ * its previous behavior (no pre-filled WhatsApp message) rather than
+ * picking up buildWhatsAppLink()'s default qualification message.
+ */
+export function getWhatsappLink(): string {
+  return buildWhatsAppLink("");
+}
+</file>
+
+<file path="package.json">
+{
+  "name": "mbr-studio",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build --turbopack",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.4",
+    "@ai-sdk/react": "^3.0.220",
+    "@hookform/resolvers": "^5.4.0",
+    "@next/third-parties": "^16.2.10",
+    "@openrouter/ai-sdk-provider": "^2.10.0",
+    "@radix-ui/react-dropdown-menu": "^2.1.20",
+    "@radix-ui/react-label": "^2.1.11",
+    "@radix-ui/react-slot": "^1.3.0",
+    "@supabase/ssr": "^0.12.0",
+    "@supabase/supabase-js": "^2.110.0",
+    "@vercel/analytics": "^2.0.1",
+    "ai": "^6.0.218",
+    "cheerio": "^1.2.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.42.2",
+    "lucide-react": "^1.22.0",
+    "next": "15.5.19",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "react-hook-form": "^7.80.0",
+    "resend": "^6.16.0",
+    "tailwind-merge": "^3.6.0",
+    "tw-animate-css": "^1.4.0",
+    "unpdf": "^1.6.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.19",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
+</file>
+
 <file path="app/(platform-client)/dashboard/onboarding/OnboardingWizard.tsx">
 "use client";
 
@@ -31448,6 +31567,14 @@ export function OnboardingWizard({
     win.document.close();
   };
 
+  // Steps 1 (Train) and 2 (Behavior) embed the full Knowledge Base /
+  // Guardrails settings components, which are built for full page width.
+  // Squeezing them into the 55% left column — to make room for a "live
+  // preview" pane that doesn't even reflect KB or guardrail changes — is
+  // what breaks their internal layout. Only show the preview on steps
+  // where WidgetPreview's props actually change.
+  const showPreview = step !== 1 && step !== 2;
+
   return (
     <div>
       {/* ---------- Already‑live banner ---------- */}
@@ -31485,31 +31612,34 @@ export function OnboardingWizard({
         ))}
       </div>
 
-      {/* Mobile-only Setup/Preview toggle — the preview never just disappears */}
-      <div className="mb-4 flex gap-2 lg:hidden">
-        <button
-          type="button"
-          onClick={() => setMobileView("form")}
-          className={`flex-1 rounded-lg px-3 py-2 font-body text-xs font-medium transition-colors ${
-            mobileView === "form"
-              ? "bg-primary text-primary-foreground"
-              : "border border-border text-secondary-text"
-          }`}
-        >
-          Setup
-        </button>
-        <button
-          type="button"
-          onClick={() => setMobileView("preview")}
-          className={`flex-1 rounded-lg px-3 py-2 font-body text-xs font-medium transition-colors ${
-            mobileView === "preview"
-              ? "bg-primary text-primary-foreground"
-              : "border border-border text-secondary-text"
-          }`}
-        >
-          Preview
-        </button>
-      </div>
+      {/* Mobile-only Setup/Preview toggle — hidden on steps with no live
+          preview to switch to (Train, Behavior). */}
+      {showPreview && (
+        <div className="mb-4 flex gap-2 lg:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileView("form")}
+            className={`flex-1 rounded-lg px-3 py-2 font-body text-xs font-medium transition-colors ${
+              mobileView === "form"
+                ? "bg-primary text-primary-foreground"
+                : "border border-border text-secondary-text"
+            }`}
+          >
+            Setup
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileView("preview")}
+            className={`flex-1 rounded-lg px-3 py-2 font-body text-xs font-medium transition-colors ${
+              mobileView === "preview"
+                ? "bg-primary text-primary-foreground"
+                : "border border-border text-secondary-text"
+            }`}
+          >
+            Preview
+          </button>
+        </div>
+      )}
 
       {error && (
         <p role="alert" className="mb-4 font-body text-sm text-error">
@@ -31517,9 +31647,15 @@ export function OnboardingWizard({
         </p>
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[55fr_45fr]">
+      <div
+        className={`grid grid-cols-1 gap-6 ${showPreview ? "lg:grid-cols-[55fr_45fr]" : ""}`}
+      >
         {/* Left: steps */}
-        <div className={mobileView === "preview" ? "hidden lg:block" : ""}>
+        <div
+          className={
+            showPreview && mobileView === "preview" ? "hidden lg:block" : ""
+          }
+        >
           <AnimatePresence mode="wait">
             <motion.div
               key={step}
@@ -31844,137 +31980,27 @@ export function OnboardingWizard({
           </div>
         </div>
 
-        {/* Right: persistent live preview */}
-        <div className={mobileView === "form" ? "hidden lg:block" : ""}>
-          <div className="lg:sticky lg:top-24">
-            <p className="mb-3 font-body text-sm font-medium text-foreground">
-              Live preview
-            </p>
-            <WidgetPreview
-              primaryColor={primaryColor}
-              businessName={agentName || "Your Business"}
-              welcomeMessage={welcomeMessage}
-              logoUrl={logoUrl}
-              position={widgetPosition}
-            />
+        {/* Right: persistent live preview — only on steps where it
+            reflects something the user just changed. */}
+        {showPreview && (
+          <div className={mobileView === "form" ? "hidden lg:block" : ""}>
+            <div className="lg:sticky lg:top-24">
+              <p className="mb-3 font-body text-sm font-medium text-foreground">
+                Live preview
+              </p>
+              <WidgetPreview
+                primaryColor={primaryColor}
+                businessName={agentName || "Your Business"}
+                welcomeMessage={welcomeMessage}
+                logoUrl={logoUrl}
+                position={widgetPosition}
+              />
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
-}
-</file>
-
-<file path="config/site.ts">
-import { buildWhatsAppLink } from "@/config/contact";
-import { Layers, Bot, Briefcase, Users, Newspaper, Mail } from "lucide-react";
-
-export const siteConfig = {
-  name: "MBR Studio",
-  title: "MBR Studio — Digital products, built to grow your business.",
-  founder: "Muaaz Bin Riaz",
-  tagline: "Digital products, built to grow your business.",
-  description:
-    "MBR Studio is a premium software agency building websites, AI-powered automation, and digital products for growing businesses.",
-  url: "https://mbrstudio.co",
-  ogImage: "/opengraph-image",
-  email: "mbrstudio.dev@gmail.com",
-  // Added fields for the chat route
-  consultationUrl: "https://cal.com/muaaz-riaz-itdnod/consultation",
-
-  contactEmail: "mbrstudio.dev@gmail.com",
-  links: {
-    twitter: "https://twitter.com/mbrstudio",
-    linkedin: "https://www.linkedin.com/in/muaaz-bin-riaz-92b395298/",
-    github: "https://github.com/muaazbinriaz",
-  },
-} as const;
-
-export const navLinks = [
-  { label: "Services", href: "/services", icon: Layers },
-  { label: "AI Agent", href: "/ai-agent", icon: Bot },
-  { label: "Portfolio", href: "/portfolio", icon: Briefcase },
-  { label: "About", href: "/about", icon: Users },
-  { label: "Blog", href: "/blog", icon: Newspaper },
-  { label: "Contact", href: "/contact", icon: Mail },
-] as const;
-
-export const primaryCta = {
-  label: "Book a Consultation",
-  href: siteConfig.consultationUrl,
-} as const;
-
-export const secondaryCta = {
-  label: "Start Free Trial",
-  href: "/signup",
-} as const;
-
-/**
- * Delegates to config/contact.ts's buildWhatsAppLink() — that file is
- * the single source of truth for the WhatsApp number (WHATSAPP_DIGITS /
- * WHATSAPP_DISPLAY). This used to hardcode a second literal number here,
- * which risked the contact page and the AI chatbot handoff pointing at
- * two different numbers if only one was ever updated.
- *
- * Passes an empty message override so the chatbot's handoff link keeps
- * its previous behavior (no pre-filled WhatsApp message) rather than
- * picking up buildWhatsAppLink()'s default qualification message.
- */
-export function getWhatsappLink(): string {
-  return buildWhatsAppLink("");
-}
-</file>
-
-<file path="package.json">
-{
-  "name": "mbr-studio",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "@ai-sdk/anthropic": "^4.0.4",
-    "@ai-sdk/react": "^3.0.220",
-    "@hookform/resolvers": "^5.4.0",
-    "@next/third-parties": "^16.2.10",
-    "@openrouter/ai-sdk-provider": "^2.10.0",
-    "@radix-ui/react-dropdown-menu": "^2.1.20",
-    "@radix-ui/react-label": "^2.1.11",
-    "@radix-ui/react-slot": "^1.3.0",
-    "@supabase/ssr": "^0.12.0",
-    "@supabase/supabase-js": "^2.110.0",
-    "@vercel/analytics": "^2.0.1",
-    "ai": "^6.0.218",
-    "cheerio": "^1.2.0",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "framer-motion": "^12.42.2",
-    "lucide-react": "^1.22.0",
-    "next": "15.5.19",
-    "react": "^19.2.1",
-    "react-dom": "^19.2.1",
-    "react-hook-form": "^7.80.0",
-    "resend": "^6.16.0",
-    "tailwind-merge": "^3.6.0",
-    "tw-animate-css": "^1.4.0",
-    "unpdf": "^1.6.2",
-    "zod": "^4.4.3"
-  },
-  "devDependencies": {
-    "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "15.5.19",
-    "tailwindcss": "^4",
-    "typescript": "^5"
-  }
 }
 </file>
 
@@ -32090,6 +32116,14 @@ export default async function DashboardPage({
   };
 
   const checklistItems: ChecklistItem[] = [
+    {
+      key: "finish_setup",
+      label: "Finish the setup wizard",
+      href: "/dashboard/onboarding",
+      done: agent?.setup_complete ?? false,
+      emoji: "🚀",
+      hint: "Unlocks your full dashboard — Inbox, Leads, and agent settings",
+    },
     {
       key: "add_knowledge",
       label: "Add your first knowledge base document",
