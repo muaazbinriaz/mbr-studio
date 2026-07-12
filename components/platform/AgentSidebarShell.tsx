@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -63,7 +63,9 @@ function buildSections(isReseller: boolean): SidebarSection[] {
   const sections: SidebarSection[] = [
     {
       heading: "Overview",
-      items: [{ label: "Dashboard", href: "/dashboard", icon: LayoutDashboard }],
+      items: [
+        { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+      ],
     },
     {
       heading: "Engage",
@@ -78,21 +80,49 @@ function buildSections(isReseller: boolean): SidebarSection[] {
     {
       heading: "Train & Configure",
       items: [
-        { label: "Knowledge Base", href: "/dashboard/knowledge-base", icon: BookOpen },
-        { label: "Guardrails", href: "/dashboard/agent/guardrails", icon: ShieldCheck },
-        { label: "Templates", href: "/dashboard/agent/templates", icon: Sparkles },
+        {
+          label: "Knowledge Base",
+          href: "/dashboard/knowledge-base",
+          icon: BookOpen,
+        },
+        {
+          label: "Guardrails",
+          href: "/dashboard/agent/guardrails",
+          icon: ShieldCheck,
+        },
+        {
+          label: "Templates",
+          href: "/dashboard/agent/templates",
+          icon: Sparkles,
+        },
         { label: "Appearance", href: "/dashboard/appearance", icon: Palette },
         { label: "Channels", href: "/dashboard/channels", icon: Radio },
-        { label: "Re-run Setup Wizard", href: "/dashboard/onboarding", icon: RefreshCw },
+        {
+          label: "Re-run Setup Wizard",
+          href: "/dashboard/onboarding",
+          icon: RefreshCw,
+        },
       ],
     },
     {
       heading: "Account",
       items: [
         { label: "Settings", href: "/dashboard/settings", icon: Settings },
-        { label: "Billing", href: "/dashboard/settings/billing", icon: CreditCard },
-        { label: "API Keys", href: "/dashboard/settings/api-keys", icon: KeyRound },
-        { label: "Webhooks", href: "/dashboard/settings/webhooks", icon: Webhook },
+        {
+          label: "Billing",
+          href: "/dashboard/settings/billing",
+          icon: CreditCard,
+        },
+        {
+          label: "API Keys",
+          href: "/dashboard/settings/api-keys",
+          icon: KeyRound,
+        },
+        {
+          label: "Webhooks",
+          href: "/dashboard/settings/webhooks",
+          icon: Webhook,
+        },
       ],
     },
   ];
@@ -109,7 +139,8 @@ function getActiveHref(pathname: string, items: SidebarLeaf[]): string | null {
   for (const item of items) {
     const isRoot = item.href === "/dashboard";
     const matches =
-      pathname === item.href || (!isRoot && pathname.startsWith(`${item.href}/`));
+      pathname === item.href ||
+      (!isRoot && pathname.startsWith(`${item.href}/`));
     if (matches && (best === null || item.href.length > best.length)) {
       best = item.href;
     }
@@ -117,13 +148,17 @@ function getActiveHref(pathname: string, items: SidebarLeaf[]): string | null {
   return best;
 }
 
-const STATUS_CONFIG: Record
+const STATUS_CONFIG: Record<
   AgentStatus,
   { label: string; dot: string; text: string }
 > = {
   live: { label: "Live", dot: "bg-success", text: "text-success" },
   trial: { label: "Trial", dot: "bg-warning", text: "text-warning" },
-  paused: { label: "Paused", dot: "bg-muted-foreground", text: "text-secondary-text" },
+  paused: {
+    label: "Paused",
+    dot: "bg-muted-foreground",
+    text: "text-secondary-text",
+  },
 };
 
 /* ────────────────────────────────────────────────────────────────
@@ -152,9 +187,7 @@ export function AgentSidebarShell({
 
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const drawerRef = useState<{ current: HTMLDivElement | null }>({
-    current: null,
-  })[0] as unknown as React.RefObject<HTMLDivElement>;
+  const drawerRef = useRef<HTMLDivElement>(null);
 
   useFocusTrap(drawerRef, mobileOpen, () => setMobileOpen(false));
 
@@ -190,7 +223,10 @@ export function AgentSidebarShell({
 
   /* ── Shared nav list markup (used by both desktop + mobile) ── */
   const renderSections = (opts: { collapsedMode: boolean }) => (
-    <nav className="flex-1 space-y-6 overflow-y-auto px-3 pb-4" aria-label="Agent management">
+    <nav
+      className="flex-1 space-y-6 overflow-y-auto px-3 pb-4"
+      aria-label="Agent management"
+    >
       {sections.map((section) => (
         <div key={section.heading}>
           {!opts.collapsedMode && (
@@ -219,7 +255,10 @@ export function AgentSidebarShell({
                   {isActive && !opts.collapsedMode && (
                     <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-primary" />
                   )}
-                  <item.icon className="h-[18px] w-[18px] flex-shrink-0" strokeWidth={1.8} />
+                  <item.icon
+                    className="h-[18px] w-[18px] flex-shrink-0"
+                    strokeWidth={1.8}
+                  />
                   {!opts.collapsedMode && (
                     <span className="flex flex-1 items-center justify-between">
                       {item.label}
@@ -249,7 +288,12 @@ export function AgentSidebarShell({
         collapsedMode && "flex justify-center px-0",
       )}
     >
-      <div className={cn("flex items-center gap-3", collapsedMode && "flex-col gap-1.5")}>
+      <div
+        className={cn(
+          "flex items-center gap-3",
+          collapsedMode && "flex-col gap-1.5",
+        )}
+      >
         <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-sm">
           <Bot className="h-[18px] w-[18px]" strokeWidth={1.8} />
         </div>
@@ -258,7 +302,12 @@ export function AgentSidebarShell({
             <div className="truncate font-heading text-sm font-semibold text-foreground">
               {agentName}
             </div>
-            <div className={cn("flex items-center gap-1.5 font-body text-xs", status.text)}>
+            <div
+              className={cn(
+                "flex items-center gap-1.5 font-body text-xs",
+                status.text,
+              )}
+            >
               <span className={cn("h-1.5 w-1.5 rounded-full", status.dot)} />
               {status.label}
             </div>
@@ -270,11 +319,15 @@ export function AgentSidebarShell({
 
   const Footer = ({ collapsedMode }: { collapsedMode: boolean }) => (
     <div className="border-t border-border p-3">
-      <div className={cn("flex items-center gap-2", collapsedMode && "flex-col")}>
+      <div
+        className={cn("flex items-center gap-2", collapsedMode && "flex-col")}
+      >
         <button
           type="button"
           onClick={toggleTheme}
-          aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+          aria-label={
+            theme === "dark" ? "Switch to light theme" : "Switch to dark theme"
+          }
           className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-secondary-text transition-colors hover:bg-foreground/5 hover:text-foreground"
         >
           {theme === "dark" ? (
@@ -326,7 +379,11 @@ export function AgentSidebarShell({
               </DropdownMenu.Item>
             </DropdownMenu.Content>
           </DropdownMenu.Portal>
-          <form id="agent-shell-signout-form" action={signOut} className="hidden" />
+          <form
+            id="agent-shell-signout-form"
+            action={signOut}
+            className="hidden"
+          />
         </DropdownMenu.Root>
       </div>
     </div>
@@ -396,7 +453,10 @@ export function AgentSidebarShell({
           <Bot className="h-4 w-4 text-primary" strokeWidth={1.8} />
           {agentName}
         </div>
-        <span className={cn("h-2 w-2 rounded-full", status.dot)} aria-label={status.label} />
+        <span
+          className={cn("h-2 w-2 rounded-full", status.dot)}
+          aria-label={status.label}
+        />
       </header>
 
       {/* ═══ MOBILE DRAWER ═══ */}
