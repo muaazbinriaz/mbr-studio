@@ -95,6 +95,14 @@ export function RouteLoaderProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     setProgress(12); // instant jump so it feels immediate on click
 
+    // Safety net: if stop() is never called (same-page click, edge case
+    // we haven't anticipated, etc.), force-hide after 4s so the bar can
+    // never get permanently stuck again.
+    hideTimeoutRef.current = setTimeout(() => {
+      setIsLoading(false);
+      setProgress(0);
+    }, 4000);
+
     // Simulate progress creeping forward while we wait for real navigation
     timerRef.current = setInterval(() => {
       setProgress((prev) => {

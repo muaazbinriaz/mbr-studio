@@ -217,7 +217,12 @@ export function PlatformShell({
           <div className="flex items-center gap-3">
             <Link
               href={variant === "admin" ? "/admin" : "/dashboard"}
-              onClick={() => start()}
+              onClick={() => {
+                if (
+                  pathname !== (variant === "admin" ? "/admin" : "/dashboard")
+                )
+                  start();
+              }}
               className="flex items-center gap-2 font-heading text-base font-semibold tracking-tight text-foreground"
             >
               <Logo markClassName="h-6 w-6" />

@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   useTransition,
+  useEffect, // Added for RelativeTime
   type FormEvent,
 } from "react";
 import {
@@ -122,6 +123,21 @@ function formatRelativeTime(iso: string): string {
     day: "numeric",
     year: "numeric",
   });
+}
+
+// Client-only relative time to avoid hydration mismatches
+function RelativeTime({ iso }: { iso: string }) {
+  const [text, setText] = useState<string | null>(null);
+  useEffect(() => {
+    setText(formatRelativeTime(iso));
+  }, [iso]);
+  // Render nothing (or the absolute date) until after mount, so server
+  // and client never disagree on the text.
+  return (
+    <span suppressHydrationWarning>
+      {text ?? new Date(iso).toLocaleDateString()}
+    </span>
+  );
 }
 
 function getPreview(text?: string | null, max = 72): string {
@@ -337,7 +353,7 @@ export function KnowledgeBaseClient({
                           ·
                         </span>
                         <span className="font-body text-[10px] text-secondary-text">
-                          {formatRelativeTime(doc.updated_at)}
+                          <RelativeTime iso={doc.updated_at} />
                         </span>
                       </div>
                     </button>
