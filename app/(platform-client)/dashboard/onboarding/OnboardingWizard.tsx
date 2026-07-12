@@ -67,6 +67,7 @@ const EMBED_TABS = ["HTML", "WordPress", "Wix", "Webflow"] as const;
 
 export function OnboardingWizard({
   org,
+  alreadyLive = false,
   agentName: initialAgentName,
   publicKey,
   templates,
@@ -76,6 +77,7 @@ export function OnboardingWizard({
   documents,
 }: {
   org: OrgInfo;
+  alreadyLive?: boolean;
   agentId: string | null;
   agentName: string;
   publicKey: string | null;
@@ -224,6 +226,17 @@ export function OnboardingWizard({
 
   return (
     <div>
+      {/* ---------- Already‑live banner ---------- */}
+      {alreadyLive && (
+        <div className="mb-6 flex items-center gap-2.5 rounded-lg border border-primary/25 bg-primary/5 px-4 py-3">
+          <span className="text-base">ℹ️</span>
+          <p className="font-body text-xs text-secondary-text">
+            Your agent is already live — changes you make here update it
+            directly. Nothing will be lost.
+          </p>
+        </div>
+      )}
+
       <div className="mb-6 flex items-center gap-2">
         {STEPS.map((label, i) => (
           <div key={label} className="flex flex-1 items-center gap-2">

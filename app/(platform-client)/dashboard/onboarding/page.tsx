@@ -30,6 +30,7 @@ export default async function OnboardingPage() {
   let agentName = "";
   let publicKey: string | null = null;
   let initialStep = 0;
+  let alreadyLive = false;
   let guardrails: GuardrailToggles | null = null;
   let leadCaptureSettings: LeadCaptureSettings | null = null;
   let documents: {
@@ -57,15 +58,10 @@ export default async function OnboardingPage() {
       .limit(1)
       .maybeSingle();
 
-    // Already set up? Don't let a returning user silently re-run the
-    // wizard and overwrite their real settings with template defaults.
-    if (agent?.setup_complete) {
-      redirect("/dashboard");
-    }
-
     agentId = agent?.id ?? null;
     agentName = agent?.name ?? "";
     initialStep = Math.min(Math.max(agent?.onboarding_step ?? 0, 0), 4);
+    alreadyLive = agent?.setup_complete ?? false;
     const keys = agent?.embed_keys as { public_key: string }[] | undefined;
     publicKey = keys?.[0]?.public_key ?? null;
 
