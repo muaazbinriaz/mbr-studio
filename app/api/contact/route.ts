@@ -131,6 +131,24 @@ export async function POST(request: Request) {
       `,
     });
 
+    // This is the email that actually matters for the business — if it
+    // fails, the lead is lost even though the visitor may still get a
+    // reassuring auto-reply below. Previously this error was captured
+    // but never checked, so a failed internal notification looked
+    // identical to a successful submission from both the API response
+    // and the visitor's point of view. Fail loudly instead.
+    if (notifyError) {
+      console.error("Resend internal notification email failed:", notifyError);
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Something went wrong sending your message. Please try again or reach us on WhatsApp.",
+        },
+        { status: 502 },
+      );
+    }
+
     // Auto-reply to the visitor.
     const { error: replyError } = await resend.emails.send({
       from: `MBR Studio <notifications@mbrstudio.dev>`,
@@ -152,6 +170,10 @@ export async function POST(request: Request) {
     });
 
     if (replyError) {
+      // The internal notification above already succeeded, so the lead
+      // itself is safe — this is just the visitor's confirmation email
+      // failing, which is lower stakes but still worth surfacing so
+      // they don't wonder if the form actually worked.
       console.error("Resend auto-reply email failed:", replyError);
       return NextResponse.json(
         {

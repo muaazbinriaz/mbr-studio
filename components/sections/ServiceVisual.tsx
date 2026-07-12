@@ -113,7 +113,7 @@ export function ServiceVisual({ slug }: { slug: string }) {
           </div>
           <div className="space-y-2">
             <div className="max-w-[85%] rounded-lg rounded-tl-none bg-secondary-background px-3 py-2 text-xs text-secondary-text">
-              Hi! I'd like to book a table for 4 on Friday
+              Hi! I&apos;d like to book a table for 4 on Friday
             </div>
             <div className="ml-auto max-w-[85%] rounded-lg rounded-tr-none bg-primary px-3 py-2 text-xs text-primary-foreground">
               Got it — Friday, 4 guests. 7:00 PM or 8:30 PM?
