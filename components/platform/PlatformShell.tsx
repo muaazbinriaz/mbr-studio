@@ -35,6 +35,7 @@ import {
   AgentSidebarShell,
   type AgentStatus,
 } from "@/components/platform/AgentSidebarShell";
+import type { OrgMembership } from "@/lib/auth/current-org";
 export type PlatformVariant = "admin" | "client";
 
 const NAV_GROUPS_BY_VARIANT: Record<
@@ -230,6 +231,8 @@ export function PlatformShell({
   setupComplete = true,
   agentName,
   agentStatus,
+  memberships = [],
+  activeOrgId = null,
   children,
 }: {
   variant: PlatformVariant;
@@ -242,6 +245,8 @@ export function PlatformShell({
   /** Client variant + setupComplete only — used by the agent sidebar shell. */
   agentName?: string;
   agentStatus?: AgentStatus;
+  memberships?: OrgMembership[];
+  activeOrgId?: string | null;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -261,6 +266,8 @@ export function PlatformShell({
         userEmail={userEmail}
         isReseller={isReseller}
         navBadges={navBadges}
+        memberships={memberships}
+        activeOrgId={activeOrgId}
       >
         {children}
       </AgentSidebarShell>

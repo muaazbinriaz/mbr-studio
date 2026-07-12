@@ -13,6 +13,7 @@ export default async function AppearancePage() {
       "organization_id, organizations(name, primary_color, accent_color, welcome_message, logo_url)",
     )
     .eq("user_id", user?.id ?? "")
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
 

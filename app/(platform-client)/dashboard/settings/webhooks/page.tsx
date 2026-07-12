@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { WebhooksClient } from "./WebhooksClient";
+import { getCurrentOrg } from "@/lib/auth/current-org";
 
 export default async function WebhooksPage() {
   const supabase = await createClient();
@@ -7,12 +8,10 @@ export default async function WebhooksPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("organization_id")
-    .eq("user_id", user?.id ?? "")
-    .limit(1)
-    .maybeSingle();
+  const orgResult = await getCurrentOrg(supabase, user?.id ?? "");
+  const membership = orgResult
+    ? { organization_id: orgResult.active.organizationId }
+    : null;
 
   let endpoints: {
     id: string;

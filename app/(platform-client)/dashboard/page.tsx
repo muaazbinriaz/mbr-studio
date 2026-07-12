@@ -21,6 +21,7 @@ import {
   type ChecklistItem,
 } from "@/components/platform/GettingStartedChecklist";
 import { ResumeOnboardingBanner } from "@/components/platform/ResumeOnboardingBanner";
+import { getCurrentOrg } from "@/lib/auth/current-org";
 
 export default async function DashboardPage({
   searchParams,
@@ -34,16 +35,9 @@ export default async function DashboardPage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select(
-      "organization_id, organizations(id, name, status, monthly_message_limit, plan, is_reseller)",
-    )
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle();
+  const orgResult = await getCurrentOrg(supabase, user.id);
 
-  if (!membership) {
+  if (!orgResult) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border bg-card/50 px-8 py-20 text-center">
         <p className="font-body text-sm text-secondary-text">
@@ -53,7 +47,15 @@ export default async function DashboardPage({
     );
   }
 
-  const org = membership.organizations as unknown as {
+  const orgId = orgResult.active.organizationId;
+
+  const { data: orgRow } = await supabase
+    .from("organizations")
+    .select("id, name, status, monthly_message_limit, plan, is_reseller")
+    .eq("id", orgId)
+    .maybeSingle();
+
+  const org = orgRow as {
     id: string;
     name: string;
     status: string;
@@ -61,8 +63,6 @@ export default async function DashboardPage({
     plan: string;
     is_reseller: boolean;
   };
-
-  const orgId = membership.organization_id;
 
   const { data: agent } = await supabase
     .from("agents")

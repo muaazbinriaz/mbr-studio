@@ -2,19 +2,23 @@ import { createClient } from "@/lib/supabase/server";
 import { getInboxConversations } from "@/lib/inbox/queries";
 import { InboxClient } from "./InboxClient";
 import { LockedFeatureEmptyState } from "@/components/platform/LockedFeatureEmptyState";
+import { getCurrentOrg } from "@/lib/auth/current-org";
 
-export default async function InboxPage() {
+export default async function InboxPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ conversation?: string }>;
+}) {
+  const { conversation: initialSelectedId } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("organization_id")
-    .eq("user_id", user?.id ?? "")
-    .limit(1)
-    .maybeSingle();
+  const orgResult = await getCurrentOrg(supabase, user?.id ?? "");
+  const membership = orgResult
+    ? { organization_id: orgResult.active.organizationId }
+    : null;
 
   const organizationId = membership?.organization_id ?? null;
 
@@ -36,11 +40,12 @@ export default async function InboxPage() {
       : [];
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] flex-col">
+    <div className="flex h-[calc(100dvh-7.5rem)] flex-col md:h-[calc(100dvh-5rem)]">
       <div className="mb-4 flex-none">
         <h1 className="font-heading text-2xl font-bold text-foreground">
           Inbox
         </h1>
+
         <p className="mt-1 font-body text-sm text-secondary-text">
           Every conversation, across every channel, as it happens.
         </p>

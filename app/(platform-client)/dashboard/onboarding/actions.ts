@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
   getCurrentOrgId,
@@ -135,5 +136,16 @@ export async function markOnboardingComplete() {
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/onboarding");
-  return { error: null };
+
+  // Redirecting HERE (server-side, inside the action) instead of via
+  // client router.push()+router.refresh() is deliberate. (platform-client)
+  // /layout.tsx — which decides top-nav-shell vs. the full "Manage" agent
+  // sidebar — is the SHARED parent layout for both /dashboard/onboarding
+  // and /dashboard. Next.js's Router Cache can reuse that shared layout's
+  // last-rendered output across a client-side push() even when refresh()
+  // is called right after (classic push+refresh race), which is exactly
+  // why the sidebar previously failed to appear right after finishing
+  // setup. redirect() forces a real, full route-tree re-render from the
+  // server with fresh data — no race possible.
+  redirect("/dashboard?justLaunched=1");
 }

@@ -25,7 +25,7 @@ export function SignupClient() {
     setLoading(true);
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -40,10 +40,22 @@ export function SignupClient() {
       return;
     }
 
-    // With email confirmation off, signUp returns an active session
-    // immediately — send the user straight to their dashboard instead
-    // of showing "check your email" (which would never arrive).
-    window.location.href = "/dashboard";
+    if (data.session) {
+      // Email confirmation is off (or auto-confirmed) — signUp already
+      // returned an active session, so send the user straight to their
+      // dashboard instead of showing "check your email" (which would
+      // never arrive). Hard navigation, not router.push — this is the
+      // user's very first visit to /dashboard this session, nothing to
+      // gain from a soft nav here and it sidesteps any Router Cache edge
+      // cases entirely.
+      window.location.href = "/dashboard";
+    } else {
+      // No session came back — email confirmation IS required on this
+      // project. Show the "check your inbox" screen instead of silently
+      // sending them to /dashboard, where middleware would just bounce
+      // them to /login with no explanation.
+      setSubmitted(true);
+    }
   };
 
   const handleResend = async () => {

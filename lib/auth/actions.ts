@@ -1,7 +1,9 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { ACTIVE_ORG_COOKIE, getCurrentOrg } from "@/lib/auth/current-org";
 
 /**
  * Shared sign-out action. Used as a form action from a button, e.g.:
@@ -44,14 +46,8 @@ export async function getCurrentOrgId() {
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("organization_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle();
-
-  return membership?.organization_id ?? null;
+  const orgResult = await getCurrentOrg(supabase, user.id);
+  return orgResult?.active.organizationId ?? null;
 }
 
 /**
@@ -97,4 +93,39 @@ export async function requireAdmin() {
 
   if (!adminRow) return { userId: null, error: "Not authorized." } as const;
   return { userId: user.id, error: null } as const;
+}
+
+/**
+ * Switches the caller's active organization. Verifies membership before
+ * trusting the id — never set the cookie to an org the user doesn't
+ * actually belong to.
+ */
+export async function switchActiveOrg(organizationId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in." };
+
+  const { data: membership } = await supabase
+    .from("organization_members")
+    .select("organization_id")
+    .eq("user_id", user.id)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+
+  if (!membership) {
+    return { error: "You don't have access to that organization." };
+  }
+
+  const cookieStore = await cookies();
+  cookieStore.set(ACTIVE_ORG_COOKIE, organizationId, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30,
+  });
+
+  redirect("/dashboard");
 }

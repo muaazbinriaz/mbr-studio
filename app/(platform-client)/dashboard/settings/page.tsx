@@ -13,6 +13,7 @@ export default async function SettingsPage() {
       "organization_id, organizations(primary_domain, domain_verify_token, domain_verify_status, domain_verified_at, domain_grace_started_at)",
     )
     .eq("user_id", user?.id ?? "")
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
 

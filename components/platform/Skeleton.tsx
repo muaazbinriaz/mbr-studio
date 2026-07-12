@@ -149,7 +149,7 @@ export function SkeletonDetailHeader() {
 // Two-pane split layout for inbox/knowledge-base (full-height list + detail).
 export function SkeletonSplitPane() {
   return (
-    <div className="flex h-[calc(100vh-8rem)] gap-4">
+    <div className="flex h-[calc(100dvh-7.5rem)] gap-4 md:h-[calc(100dvh-5rem)]">
       <div className="flex w-full max-w-xs flex-none flex-col gap-3 rounded-2xl border border-border bg-card p-3">
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="flex items-center gap-3 rounded-xl p-2">

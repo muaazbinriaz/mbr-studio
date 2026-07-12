@@ -24,7 +24,7 @@ import {
   markOnboardingComplete,
 } from "./actions";
 import { Button } from "@/components/ui/button";
-import { useLoaderRouter } from "@/components/loader/RouteLoader";
+import { useRouteLoader } from "@/components/loader/RouteLoader";
 
 type OrgInfo = {
   name: string;
@@ -87,7 +87,7 @@ export function OnboardingWizard({
   leadCaptureSettings: LeadCaptureSettings | null;
   documents: DocumentRow[];
 }) {
-  const router = useLoaderRouter();
+  const { start } = useRouteLoader();
   const [step, setStep] = useState(initialStep);
   const [mobileView, setMobileView] = useState<"form" | "preview">("form");
   const [isPending, startTransition] = useTransition();
@@ -194,14 +194,15 @@ export function OnboardingWizard({
 
   const handleFinish = () => {
     setError(null);
+    start(); // show the top progress bar immediately, same feel as before
     startTransition(async () => {
       const result = await markOnboardingComplete();
+      // On success, markOnboardingComplete() redirects server-side — this
+      // component unmounts before execution reaches past that call, so
+      // only the error path is ever actually reached here.
       if (result?.error) {
         setError(result.error);
-        return;
       }
-      router.push("/dashboard?justLaunched=1");
-      router.refresh();
     });
   };
 

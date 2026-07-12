@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useTransition } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -28,12 +28,15 @@ import {
   Sun,
   Moon,
   ArrowLeft,
+  ArrowLeftRight,
+  Check,
   Bot,
   type LucideIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { signOut } from "@/lib/auth/actions";
+import { signOut, switchActiveOrg } from "@/lib/auth/actions";
+import type { OrgMembership } from "@/lib/auth/current-org";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import { useRouteLoader } from "@/components/loader/RouteLoader";
 import { useFocusTrap } from "@/components/chatbot/useFocusTrap";
@@ -171,6 +174,8 @@ export function AgentSidebarShell({
   userEmail,
   isReseller = false,
   navBadges,
+  memberships = [],
+  activeOrgId = null,
   children,
 }: {
   agentName: string;
@@ -178,12 +183,15 @@ export function AgentSidebarShell({
   userEmail?: string | null;
   isReseller?: boolean;
   navBadges?: Record<string, number>;
+  memberships?: OrgMembership[];
+  activeOrgId?: string | null;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
   const { start } = useRouteLoader();
   const shouldReduceMotion = useReducedMotion();
+  const [isSwitching, startSwitch] = useTransition();
 
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -364,6 +372,44 @@ export function AgentSidebarShell({
               sideOffset={8}
               className="z-50 w-56 rounded-xl border border-border bg-card p-1.5 shadow-xl shadow-black/[0.06] dark:shadow-black/30"
             >
+              {memberships.length > 1 && (
+                <>
+                  <DropdownMenu.Label className="px-3 pb-1 pt-1.5 font-body text-[11px] font-medium uppercase tracking-wide text-secondary-text/70">
+                    Switch organization
+                  </DropdownMenu.Label>
+                  {memberships.map((m) => (
+                    <DropdownMenu.Item
+                      key={m.organizationId}
+                      disabled={isSwitching || m.organizationId === activeOrgId}
+                      onSelect={() => {
+                        if (m.organizationId === activeOrgId) return;
+                        start();
+                        startSwitch(() => {
+                          switchActiveOrg(m.organizationId);
+                        });
+                      }}
+                      className="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 font-body text-sm font-medium text-secondary-text outline-none transition-colors data-[highlighted]:bg-background data-[highlighted]:text-foreground data-[disabled]:cursor-default"
+                    >
+                      {m.organizationId === activeOrgId ? (
+                        <Check
+                          className="h-4 w-4 flex-none text-primary"
+                          strokeWidth={2}
+                        />
+                      ) : (
+                        <ArrowLeftRight
+                          className="h-4 w-4 flex-none"
+                          strokeWidth={1.75}
+                        />
+                      )}
+                      <span className="min-w-0 flex-1 truncate">
+                        {m.organizationName}
+                      </span>
+                    </DropdownMenu.Item>
+                  ))}
+                  <DropdownMenu.Separator className="mx-1 my-1.5 h-px bg-border" />
+                </>
+              )}
+
               <DropdownMenu.Item
                 onSelect={() => {
                   const form = document.getElementById(

@@ -84,16 +84,26 @@ export function InboxClient({
   organizationId,
   currentUserId,
   initialConversations,
+  initialSelectedId = null,
 }: {
   organizationId: string;
   currentUserId: string | null;
   initialConversations: InboxConversationRow[];
+  /** Deep-link support, e.g. /dashboard/inbox?conversation=<id> from the
+   * Leads page — falls back to the first conversation when absent or when
+   * the id isn't in this org's list (stale/bad link). */
+  initialSelectedId?: string | null;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const [conversations, setConversations] =
     useState<InboxConversationRow[]>(initialConversations);
+  const deepLinkedId =
+    initialSelectedId &&
+    initialConversations.some((c) => c.id === initialSelectedId)
+      ? initialSelectedId
+      : null;
   const [selectedId, setSelectedId] = useState<string | null>(
-    initialConversations[0]?.id ?? null,
+    deepLinkedId ?? initialConversations[0]?.id ?? null,
   );
   const [messages, setMessages] = useState<InboxMessageRow[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
@@ -107,7 +117,9 @@ export function InboxClient({
   // Mobile only: which single pane is visible. Desktop always shows both
   // panes side by side regardless of this value (see md:flex overrides
   // below), so this never affects tablet/desktop layout.
-  const [mobileView, setMobileView] = useState<"list" | "thread">("list");
+  const [mobileView, setMobileView] = useState<"list" | "thread">(
+    deepLinkedId ? "thread" : "list",
+  );
 
   const threadRef = useRef<HTMLDivElement>(null);
 
@@ -391,10 +403,10 @@ export function InboxClient({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 md:grid md:grid-cols-[340px_1fr]">
+    <div className="flex h-full min-h-0 flex-col gap-4 lg:grid lg:grid-cols-[340px_1fr]">
       {/* Left pane — conversation list */}
       <div
-        className={`min-h-0 flex-1 flex-col rounded-2xl border border-border bg-card md:flex md:flex-none ${
+        className={`min-h-0 flex-1 flex-col rounded-2xl border border-border bg-card lg:flex lg:flex-none ${
           mobileView === "thread" ? "hidden" : "flex"
         }`}
       >
@@ -497,7 +509,7 @@ export function InboxClient({
 
       {/* Right pane — thread + composer */}
       <div
-        className={`min-h-0 flex-1 flex-col rounded-2xl border border-border bg-card md:flex ${
+        className={`min-h-0 flex-1 flex-col rounded-2xl border border-border bg-card lg:flex ${
           mobileView === "thread" ? "flex" : "hidden"
         }`}
       >
@@ -519,7 +531,7 @@ export function InboxClient({
                   type="button"
                   onClick={() => setMobileView("list")}
                   aria-label="Back to conversation list"
-                  className="-ml-1.5 flex h-9 w-9 flex-none items-center justify-center rounded-lg text-secondary-text hover:bg-background hover:text-foreground md:hidden"
+                  className="-ml-1.5 flex h-9 w-9 flex-none items-center justify-center rounded-lg text-secondary-text hover:bg-background hover:text-foreground lg:hidden"
                 >
                   <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
                 </button>

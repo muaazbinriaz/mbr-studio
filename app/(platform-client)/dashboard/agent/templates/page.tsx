@@ -1,20 +1,19 @@
-import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { AGENT_TEMPLATES } from "@/lib/agents/templates";
 import { TemplatesClient } from "./TemplatesClient";
 import { LockedFeatureEmptyState } from "@/components/platform/LockedFeatureEmptyState";
+import { getCurrentOrg } from "@/lib/auth/current-org";
 
 export default async function TemplatesPage() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("x-user-id") ?? "";
-
   const supabase = await createClient();
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("organization_id")
-    .eq("user_id", userId)
-    .limit(1)
-    .maybeSingle();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const orgResult = await getCurrentOrg(supabase, user?.id ?? "");
+  const membership = orgResult
+    ? { organization_id: orgResult.active.organizationId }
+    : null;
 
   let setupComplete = false;
   if (membership) {

@@ -13,6 +13,7 @@ export default async function BillingPage() {
       "organization_id, organizations(plan, status, monthly_message_limit, parent_organization_id)",
     )
     .eq("user_id", user?.id ?? "")
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
 

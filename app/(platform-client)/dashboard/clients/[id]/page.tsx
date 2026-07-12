@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ArrowLeftRight } from "lucide-react";
+import { switchActiveOrg } from "@/lib/auth/actions";
 
 export default async function ClientDetailPage({
   params,
@@ -22,6 +24,11 @@ export default async function ClientDetailPage({
     .maybeSingle();
 
   if (!org) notFound();
+
+  const boundAction = switchActiveOrg.bind(null, org.id);
+  const switchToThisClient = async (formData: FormData) => {
+    await boundAction();
+  };
 
   const { data: agent } = await supabase
     .from("agents")
@@ -47,13 +54,21 @@ export default async function ClientDetailPage({
 
   return (
     <div>
-      <Link
-        href="/dashboard/clients"
-        className="mb-4 inline-flex items-center gap-1.5 font-body text-sm text-secondary-text hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to clients
-      </Link>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <Link
+          href="/dashboard/clients"
+          className="inline-flex items-center gap-1.5 font-body text-sm text-secondary-text hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to clients
+        </Link>
+        <form action={switchToThisClient}>
+          <Button type="submit" variant="outline" size="sm" className="gap-1.5">
+            <ArrowLeftRight className="h-3.5 w-3.5" strokeWidth={1.75} />
+            Manage this client
+          </Button>
+        </form>
+      </div>
       <div className="flex items-center gap-3">
         <h1 className="font-heading text-2xl font-bold text-foreground">
           {org.name}
@@ -99,11 +114,10 @@ export default async function ClientDetailPage({
       )}
 
       <p className="mt-6 font-body text-xs text-secondary-text">
-        Note: full knowledge-base editing, guardrails, and the live inbox for
-        this client aren&apos;t wired into this view yet — those pages currently
-        resolve &quot;your org&quot; from your own membership rather than an
-        org-id param. That&apos;s a follow-up routing change, not a data/RLS
-        change; the security model here already fully supports it.
+        Tap &quot;Manage this client&quot; above to switch your active
+        organization — the full dashboard (Inbox, Knowledge Base, Guardrails,
+        etc.) will then operate on {org.name} until you switch back from the
+        account menu in the sidebar.
       </p>
     </div>
   );

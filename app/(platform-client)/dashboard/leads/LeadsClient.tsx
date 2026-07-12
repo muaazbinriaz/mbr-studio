@@ -8,6 +8,7 @@ import {
   Phone,
   MessageSquareText,
   UsersRound,
+  ArrowUpRight,
 } from "lucide-react";
 import { formatDate } from "@/lib/formatters";
 
@@ -101,9 +102,20 @@ export function LeadsClient({ leads }: { leads: Lead[] }) {
                 </p>
               )}
             </div>
-            <span className="flex-none font-body text-xs text-secondary-text">
-              {formatDate(lead.captured_at)}
-            </span>
+            <div className="flex flex-none items-center gap-3">
+              <span className="font-body text-xs text-secondary-text">
+                {formatDate(lead.captured_at)}
+              </span>
+              {lead.conversation_id && (
+                <Link
+                  href={`/dashboard/inbox?conversation=${lead.conversation_id}`}
+                  className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 font-body text-xs font-medium text-secondary-text transition-colors hover:border-primary/40 hover:text-foreground"
+                >
+                  View chat
+                  <ArrowUpRight className="h-3 w-3" strokeWidth={2} />
+                </Link>
+              )}
+            </div>
           </div>
         ))}
       </div>

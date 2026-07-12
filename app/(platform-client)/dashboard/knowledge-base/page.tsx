@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { KnowledgeBaseClient } from "./KnowledgeBaseClient";
+import { getCurrentOrg } from "@/lib/auth/current-org";
 
 export default async function KnowledgeBasePage() {
   const supabase = await createClient();
@@ -7,12 +8,10 @@ export default async function KnowledgeBasePage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("organization_id")
-    .eq("user_id", user?.id ?? "")
-    .limit(1)
-    .maybeSingle();
+  const orgResult = await getCurrentOrg(supabase, user?.id ?? "");
+  const membership = orgResult
+    ? { organization_id: orgResult.active.organizationId }
+    : null;
 
   let agentId: string | null = null;
   let documents: {
@@ -73,7 +72,7 @@ export default async function KnowledgeBasePage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] flex-col">
+    <div className="flex h-[calc(100dvh-7.5rem)] flex-col md:h-[calc(100dvh-5rem)]">
       <div className="mb-4 flex-none">
         <h1 className="font-heading text-2xl font-bold text-foreground">
           Knowledge Base

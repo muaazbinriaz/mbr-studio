@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { LeadsClient } from "./LeadsClient";
 import { LockedFeatureEmptyState } from "@/components/platform/LockedFeatureEmptyState";
+import { getCurrentOrg } from "@/lib/auth/current-org";
 
 export default async function LeadsPage() {
   const supabase = await createClient();
@@ -8,12 +9,10 @@ export default async function LeadsPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("organization_id")
-    .eq("user_id", user?.id ?? "")
-    .limit(1)
-    .maybeSingle();
+  const orgResult = await getCurrentOrg(supabase, user?.id ?? "");
+  const membership = orgResult
+    ? { organization_id: orgResult.active.organizationId }
+    : null;
 
   let leads: {
     id: string;

@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { PlatformShell } from "@/components/platform/PlatformShell";
 import { getUnreadInboxCount } from "@/lib/inbox/queries";
+import { getCurrentOrg } from "@/lib/auth/current-org";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
@@ -24,16 +25,10 @@ export default async function ClientDashboardLayout({
   const userEmail = requestHeaders.get("x-user-email");
 
   const supabase = await createClient();
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("organization_id, organizations(is_reseller)")
-    .eq("user_id", userId)
-    .limit(1)
-    .maybeSingle();
-
-  const org = membership?.organizations as unknown as {
-    is_reseller: boolean;
-  } | null;
+  const orgResult = await getCurrentOrg(supabase, userId);
+  const membership = orgResult
+    ? { organization_id: orgResult.active.organizationId }
+    : null;
 
   const unreadCount = membership
     ? await getUnreadInboxCount(supabase, membership.organization_id)
@@ -75,10 +70,12 @@ export default async function ClientDashboardLayout({
       variant="client"
       userEmail={userEmail}
       navBadges={{ "/dashboard/inbox": unreadCount }}
-      isReseller={!!org?.is_reseller}
+      isReseller={!!orgResult?.active.isReseller}
       setupComplete={setupComplete}
       agentName={agentName}
       agentStatus={agentStatus}
+      memberships={orgResult?.memberships ?? []}
+      activeOrgId={orgResult?.active.organizationId ?? null}
     >
       {children}
     </PlatformShell>

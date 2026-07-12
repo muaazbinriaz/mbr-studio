@@ -19,6 +19,7 @@ export default async function GuardrailsPage() {
     .from("organization_members")
     .select("organization_id, organizations(name)")
     .eq("user_id", user?.id ?? "")
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
 

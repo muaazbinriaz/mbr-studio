@@ -13,6 +13,7 @@ export default async function ClientsPage() {
     .from("organization_members")
     .select("organization_id, organizations(is_reseller)")
     .eq("user_id", user?.id ?? "")
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
 
@@ -81,24 +82,27 @@ export default async function ClientsPage() {
             {clients.map((client) => (
               <div
                 key={client.id}
-                className="flex items-center justify-between p-5"
+                className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between"
               >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="font-heading text-sm font-semibold text-foreground">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate font-heading text-sm font-semibold text-foreground">
                       {client.name}
                     </p>
-                    <Badge variant="outline" className="text-xs capitalize">
+                    <Badge
+                      variant="outline"
+                      className="flex-none text-xs capitalize"
+                    >
                       {client.status}
                     </Badge>
                   </div>
-                  <p className="mt-1 font-body text-xs text-secondary-text">
+                  <p className="mt-1 truncate font-body text-xs text-secondary-text">
                     slug: {client.slug}
                   </p>
                 </div>
                 <Link
                   href={`/dashboard/clients/${client.id}`}
-                  className="font-body text-xs font-medium text-primary hover:text-accent"
+                  className="flex-none font-body text-xs font-medium text-primary hover:text-accent"
                 >
                   Manage
                 </Link>
