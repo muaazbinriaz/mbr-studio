@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/brand/Logo";
-import { navLinks, primaryCta, secondaryCta, siteConfig } from "@/config/site";
+import { navLinks, primaryCta, siteConfig } from "@/config/site";
 import { blogPosts } from "@/data/blog";
 import { useFocusTrap } from "@/components/chatbot/useFocusTrap";
 import { useChatPanel } from "@/components/chatbot/useChat";
@@ -158,9 +158,6 @@ export function Navbar() {
                 <Moon className="h-4 w-4" />
               )}
             </button>
-            <Button asChild variant="outline" size="sm">
-              <Link href={secondaryCta.href}>{secondaryCta.label}</Link>
-            </Button>
             <Button asChild size="sm">
               <Link
                 href={primaryCta.href}
@@ -288,19 +285,6 @@ export function Navbar() {
                 </button>
 
                 <div className="mt-2 flex flex-col gap-2">
-                  <Button
-                    asChild
-                    variant="outline"
-                    size="lg"
-                    className="w-full"
-                  >
-                    <Link
-                      href={secondaryCta.href}
-                      onClick={() => setOpen(false)}
-                    >
-                      {secondaryCta.label}
-                    </Link>
-                  </Button>
                   <Button asChild size="lg" className="w-full">
                     <Link
                       href={primaryCta.href}
