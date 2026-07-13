@@ -163,10 +163,14 @@ export function buildSystemPrompt({
       : "(No matching knowledge base content was found for this question.)";
 
   const guardrailBlock = buildGuardrailInstructions(guardrails, orgName);
+  // Every channel this agent replies through — the website widget bubble
+  // AND WhatsApp/Messenger/Instagram — renders replies as plain text, not
+  // parsed markdown. Without this instruction the model defaults to
+  // markdown-style structure (**bold**, "- " bullets, headers) for
+  // anything list-like, which shows up to real visitors as literal
+  // asterisks and dashes instead of formatting.
   const channelNote =
-    channel && channel !== "website"
-      ? "\n- You're replying inside a chat app (not a website widget) — keep replies short and conversational, avoid long paragraphs or markdown formatting that won't render well in a chat bubble."
-      : "";
+    "\n- Reply in plain text only — no markdown (no **, no #, no bullet dashes). Use short sentences or numbered points in prose instead of lists.";
 
   return `You are the AI assistant for ${orgName}, embedded on their website via a chat widget.
 

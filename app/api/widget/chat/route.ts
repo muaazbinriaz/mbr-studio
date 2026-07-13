@@ -195,6 +195,7 @@ export async function POST(req: NextRequest) {
     retrievedChunks: matches.map((m) => m.content),
     guardrails: guardrails ?? null,
     industryContext: agentRow?.system_prompt ?? null,
+    channel: "website",
   });
 
   // -- Unique-visitor tracking for analytics. ------------------------------
@@ -258,14 +259,6 @@ export async function POST(req: NextRequest) {
     isNewConversation = true;
   }
 
-  await supabase.from("messages").insert({
-    conversation_id: conversationId,
-    agent_id: agentId,
-    organization_id: organizationId,
-    role: "user",
-    content: message,
-  });
-
   if (isNewConversation) {
     await bumpDailyAnalytics(supabase, agentId, organizationId, {
       total_conversations: 1,
@@ -277,15 +270,41 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // Pull prior turns BEFORE inserting this one, so the model actually has
+  // memory of the conversation — without this, every reply was generated
+  // from the single latest message only, with no idea what was said
+  // before it, even though the full history was sitting in the DB the
+  // whole time.
+  const HISTORY_LIMIT = 12;
+  const { data: priorMessages } = await supabase
+    .from("messages")
+    .select("role, content")
+    .eq("conversation_id", conversationId as string)
+    .order("created_at", { ascending: true })
+    .limit(HISTORY_LIMIT);
+
+  await supabase.from("messages").insert({
+    conversation_id: conversationId,
+    agent_id: agentId,
+    organization_id: organizationId,
+    role: "user",
+    content: message,
+  });
+
   // -- Call the LLM. --------------------------------------------------------
   const model = openrouter(WIDGET_MODEL, {
     extraBody: { models: FALLBACK_MODELS },
   });
 
+  const conversationHistory = (priorMessages ?? []).map((m) => ({
+    role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
+    content: m.content as string,
+  }));
+
   const result = streamText({
     model,
     system: systemPrompt,
-    messages: [{ role: "user", content: message }],
+    messages: [...conversationHistory, { role: "user", content: message }],
     maxOutputTokens: 500,
     onFinish: async ({ text }) => {
       await supabase.from("messages").insert({
