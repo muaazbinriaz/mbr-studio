@@ -217,12 +217,28 @@ export function OnboardingWizard({
   // user sees the widget work outside the dashboard too — not a simulation.
   const openLiveTest = () => {
     if (!embedSnippet) return;
-    const win = window.open("", "_blank");
-    if (!win) return;
-    win.document.write(
-      `<!DOCTYPE html><html><head><title>Widget test</title></head><body style="font-family:sans-serif;padding:48px;color:#333"><h1>This is a blank page</h1><p>Your chat widget should appear in the corner below — this is exactly how it'll look on your real site.</p>${embedSnippet}</body></html>`,
-    );
-    win.document.close();
+
+    // Building a real Blob URL and pointing window.open() straight at it
+    // (instead of opening a blank tab and injecting HTML into it after
+    // the fact with the deprecated document.write) is what makes this
+    // reliably pass through popup blockers — a window.open() call that
+    // resolves to an actual URL immediately is treated very differently
+    // than an empty about:blank tab written into afterward.
+    const html = `<!DOCTYPE html><html><head><title>Widget test</title></head><body style="font-family:sans-serif;padding:48px;color:#333"><h1>This is a blank page</h1><p>Your chat widget should appear in the corner below — this is exactly how it'll look on your real site.</p>${embedSnippet}</body></html>`;
+    const blob = new Blob([html], { type: "text/html" });
+    const blobUrl = URL.createObjectURL(blob);
+
+    const win = window.open(blobUrl, "_blank", "noopener,noreferrer");
+    if (!win) {
+      setError(
+        "Your browser blocked the popup — check the popup-blocker icon in your address bar and allow it for this site.",
+      );
+      return;
+    }
+
+    // Blob URLs are only valid for as long as the tab needs them to load;
+    // freeing it after a short delay avoids leaking memory on repeated tests.
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
   };
 
   // Steps 1 (Train) and 2 (Behavior) embed the full Knowledge Base /
