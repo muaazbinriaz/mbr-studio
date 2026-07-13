@@ -15,15 +15,11 @@ import { widgetChatSchema } from "@/lib/validations/widget-chat";
 export const runtime = "nodejs";
 
 const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
-const WIDGET_MODEL = "openrouter/free";
-const FALLBACK_MODELS = [
-  "meta-llama/llama-3.3-70b-instruct:free",
-  "deepseek/deepseek-r1:free",
-  "qwen/qwen-2.5-7b-instruct:free",
-];
 
 const WIDGET_RATE_WINDOW_MS = 60_000;
 const WIDGET_MAX_MESSAGES_PER_ORG_PER_MINUTE = 20;
+const WIDGET_MODEL = "openai/gpt-4o-mini";
+const FALLBACK_MODELS = ["openai/gpt-4o-mini"];
 
 export async function POST(req: NextRequest) {
   const origin = req.headers.get("origin");
