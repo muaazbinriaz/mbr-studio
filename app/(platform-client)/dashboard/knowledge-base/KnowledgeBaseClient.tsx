@@ -262,7 +262,11 @@ export function KnowledgeBaseClient({
   const filtered = useMemo(() => {
     if (!search.trim()) return tabDocuments;
     const q = search.trim().toLowerCase();
-    return tabDocuments.filter((d) => d.title.toLowerCase().includes(q));
+    return tabDocuments.filter(
+      (d) =>
+        d.title.toLowerCase().includes(q) ||
+        (d.source_url ?? "").toLowerCase().includes(q),
+    );
   }, [tabDocuments, search]);
 
   const selected = documents.find((d) => d.id === selectedId) ?? null;

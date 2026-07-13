@@ -313,6 +313,13 @@ const BOILERPLATE_SELECTORS = [
   "nav",
   "header",
   "footer",
+  "form",
+  "select",
+  "option",
+  "input",
+  "button",
+  "svg",
+  "iframe",
   "a[href^='#main']",
   ".sr-only",
   "[class*='skip-link' i]",
@@ -347,7 +354,23 @@ export async function scrapePage(
   // possible container after the fact. Falls back to <body> for pages
   // that don't use <main> (e.g. a client's non-Next.js site).
   const contentRoot = $("main").first().length ? $("main").first() : $("body");
-  const text = contentRoot.text().replace(/\s+/g, " ").trim();
+
+  // .text() concatenates every text node with no separator, so
+  // "<h1>Hello</h1><p>World</p>" collapses into "HelloWorld". Injecting a
+  // newline after every block-level element before extracting text is what
+  // gives the AI (and humans reading it in the detail pane) real paragraph
+  // breaks instead of one giant run-on string.
+  const BLOCK_TAGS =
+    "p, div, section, article, li, h1, h2, h3, h4, h5, h6, tr, blockquote";
+  contentRoot.find("br").replaceWith("\n");
+  contentRoot.find(BLOCK_TAGS).append("\n");
+
+  const text = contentRoot
+    .text()
+    .replace(/[ \t]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 
   return { title, text };
 }
