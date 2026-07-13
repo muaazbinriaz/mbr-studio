@@ -14837,326 +14837,6 @@ export async function saveGuardrails(formData: FormData) {
 }
 </file>
 
-<file path="app/(platform-client)/dashboard/agent/guardrails/page.tsx">
-import { createClient } from "@/lib/supabase/server";
-import { GuardrailsClient } from "./GuardrailsClient";
-import type { GuardrailToggles } from "@/lib/agents/build-system-prompt";
-
-interface LeadCaptureSettings {
-  ask_name: boolean;
-  ask_email: boolean;
-  ask_phone: boolean;
-  ask_message: boolean;
-}
-
-export default async function GuardrailsPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("organization_id, organizations(name)")
-    .eq("user_id", user?.id ?? "")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  let agentId: string | null = null;
-  let guardrails: GuardrailToggles | null = null;
-  let leadCaptureSettings: LeadCaptureSettings | null = null;
-
-  if (membership) {
-    const { data: agent } = await supabase
-      .from("agents")
-      .select("id")
-      .eq("organization_id", membership.organization_id)
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
-
-    agentId = agent?.id ?? null;
-
-    if (agentId) {
-      const { data: gr } = await supabase
-        .from("agent_guardrails")
-        .select(
-          "no_competitors, stay_on_topic, no_pricing, always_polite, no_opinions, push_contact, no_refund_promise, capture_leads, custom_rules, tone, reply_language, lead_capture_settings",
-        )
-        .eq("agent_id", agentId)
-        .maybeSingle();
-      guardrails = gr ?? null;
-      leadCaptureSettings =
-        (gr?.lead_capture_settings as LeadCaptureSettings) ?? null;
-    }
-  }
-
-  const orgRecord = membership?.organizations as unknown as {
-    name: string;
-  } | null;
-  const orgName = orgRecord?.name ?? "Your Business";
-
-  return (
-    <div>
-      <h1 className="font-heading text-2xl font-bold text-foreground">
-        Guardrails
-      </h1>
-      <p className="mt-2 font-body text-sm text-secondary-text">
-        Control how your AI agent behaves — what it will and won&apos;t say, its
-        tone, and its reply language.
-      </p>
-
-      {!agentId ? (
-        <div className="mt-8 rounded-2xl border border-dashed border-border bg-card/50 px-8 py-16 text-center">
-          <p className="font-body text-sm text-secondary-text">
-            Setting up your AI agent... this usually takes just a second.
-            Refresh if this doesn&apos;t clear in a moment.
-          </p>
-        </div>
-      ) : (
-        <div className="mt-8">
-          <GuardrailsClient
-            guardrails={guardrails}
-            leadCaptureSettings={leadCaptureSettings}
-            orgName={orgName}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-</file>
-
-<file path="app/(platform-client)/dashboard/agent/templates/page.tsx">
-import { createClient } from "@/lib/supabase/server";
-import { AGENT_TEMPLATES } from "@/lib/agents/templates";
-import { TemplatesClient } from "./TemplatesClient";
-import { LockedFeatureEmptyState } from "@/components/platform/LockedFeatureEmptyState";
-import { getCurrentOrg } from "@/lib/auth/current-org";
-
-export default async function TemplatesPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const orgResult = await getCurrentOrg(supabase, user?.id ?? "");
-  const membership = orgResult
-    ? { organization_id: orgResult.active.organizationId }
-    : null;
-
-  let setupComplete = false;
-  if (membership) {
-    const { data: agent } = await supabase
-      .from("agents")
-      .select("setup_complete")
-      .eq("organization_id", membership.organization_id)
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
-    setupComplete = agent?.setup_complete ?? false;
-  }
-
-  return (
-    <div>
-      <h1 className="font-heading text-2xl font-bold text-foreground">
-        Industry Templates
-      </h1>
-      <p className="mt-2 font-body text-sm text-secondary-text">
-        Apply a template to instantly set up guardrails, starter FAQs, and
-        greeting chips for your industry. You can edit everything afterward — a
-        template is a starting point, not a lock-in.
-      </p>
-      <div className="mt-8">
-        {setupComplete ? (
-          <TemplatesClient templates={AGENT_TEMPLATES} />
-        ) : (
-          <LockedFeatureEmptyState feature="Industry Templates" />
-        )}
-      </div>
-    </div>
-  );
-}
-</file>
-
-<file path="app/(platform-client)/dashboard/channels/page.tsx">
-import { createClient } from "@/lib/supabase/server";
-import { ChannelsClient } from "./ChannelsClient";
-import { maskToken, decryptToken } from "@/lib/channels/encryption";
-import { LockedFeatureEmptyState } from "@/components/platform/LockedFeatureEmptyState";
-
-export default async function ChannelsPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("organization_id")
-    .eq("user_id", user?.id ?? "")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  let agentId: string | null = null;
-  let setupComplete = false;
-  let connections: {
-    id: string;
-    channel: string;
-    external_account_id: string;
-    phone_number_id: string | null;
-    status: string;
-    maskedToken: string;
-  }[] = [];
-
-  if (membership) {
-    const { data: agent } = await supabase
-      .from("agents")
-      .select("id, setup_complete")
-      .eq("organization_id", membership.organization_id)
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
-
-    agentId = agent?.id ?? null;
-    setupComplete = agent?.setup_complete ?? false;
-
-    if (agentId && setupComplete) {
-      const { data: rows } = await supabase
-        .from("channel_connections")
-        .select(
-          "id, channel, external_account_id, phone_number_id, status, access_token",
-        )
-        .eq("agent_id", agentId);
-
-      connections = (rows ?? []).map((row) => {
-        let maskedToken = "••••";
-        try {
-          const decrypted = decryptToken(row.access_token);
-          maskedToken = maskToken(decrypted);
-        } catch {
-          // If decryption fails (bad/legacy value), just show generic mask.
-        }
-        return {
-          id: row.id,
-          channel: row.channel,
-          external_account_id: row.external_account_id,
-          phone_number_id: row.phone_number_id,
-          status: row.status,
-          maskedToken,
-        };
-      });
-    }
-  }
-
-  return (
-    <div>
-      <h1 className="font-heading text-2xl font-bold text-foreground">
-        Channels
-      </h1>
-      <p className="mt-2 font-body text-sm text-secondary-text">
-        Connect WhatsApp, Instagram, and Messenger so your AI agent answers
-        consistently everywhere your customers reach out.
-      </p>
-
-      {!agentId ? (
-        <div className="mt-8 rounded-2xl border border-dashed border-border bg-card/50 px-8 py-16 text-center">
-          <p className="font-body text-sm text-secondary-text">
-            No active agent found for your organization yet.
-          </p>
-        </div>
-      ) : !setupComplete ? (
-        <div className="mt-8">
-          <LockedFeatureEmptyState feature="Channels" />
-        </div>
-      ) : (
-        <div className="mt-8">
-          <ChannelsClient connections={connections} />
-        </div>
-      )}
-    </div>
-  );
-}
-</file>
-
-<file path="app/(platform-client)/dashboard/inbox/page.tsx">
-import { createClient } from "@/lib/supabase/server";
-import { getInboxConversations } from "@/lib/inbox/queries";
-import { InboxClient } from "./InboxClient";
-import { LockedFeatureEmptyState } from "@/components/platform/LockedFeatureEmptyState";
-import { getCurrentOrg } from "@/lib/auth/current-org";
-
-export default async function InboxPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ conversation?: string }>;
-}) {
-  const { conversation: initialSelectedId } = await searchParams;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const orgResult = await getCurrentOrg(supabase, user?.id ?? "");
-  const membership = orgResult
-    ? { organization_id: orgResult.active.organizationId }
-    : null;
-
-  const organizationId = membership?.organization_id ?? null;
-
-  let setupComplete = false;
-  if (organizationId) {
-    const { data: agent } = await supabase
-      .from("agents")
-      .select("setup_complete")
-      .eq("organization_id", organizationId)
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
-    setupComplete = agent?.setup_complete ?? false;
-  }
-
-  const initialConversations =
-    organizationId && setupComplete
-      ? await getInboxConversations(supabase, organizationId)
-      : [];
-
-  return (
-    <div className="flex h-[calc(100dvh-7.5rem)] flex-col md:h-[calc(100dvh-5rem)]">
-      <div className="mb-4 flex-none">
-        <h1 className="font-heading text-2xl font-bold text-foreground">
-          Inbox
-        </h1>
-
-        <p className="mt-1 font-body text-sm text-secondary-text">
-          Every conversation, across every channel, as it happens.
-        </p>
-      </div>
-
-      {!organizationId ? (
-        <div className="rounded-2xl border border-dashed border-border bg-card/50 px-8 py-16 text-center">
-          <p className="font-body text-sm text-secondary-text">
-            No organization found for your account yet.
-          </p>
-        </div>
-      ) : !setupComplete ? (
-        <LockedFeatureEmptyState feature="the Inbox" />
-      ) : (
-        <div className="min-h-0 flex-1">
-          <InboxClient
-            organizationId={organizationId}
-            currentUserId={user?.id ?? null}
-            initialConversations={initialConversations}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-</file>
-
 <file path="app/(platform-client)/dashboard/leads/LeadsClient.tsx">
 "use client";
 
@@ -15278,75 +14958,6 @@ export function LeadsClient({ leads }: { leads: Lead[] }) {
             </div>
           </div>
         ))}
-      </div>
-    </div>
-  );
-}
-</file>
-
-<file path="app/(platform-client)/dashboard/leads/page.tsx">
-import { createClient } from "@/lib/supabase/server";
-import { LeadsClient } from "./LeadsClient";
-import { LockedFeatureEmptyState } from "@/components/platform/LockedFeatureEmptyState";
-import { getCurrentOrg } from "@/lib/auth/current-org";
-
-export default async function LeadsPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const orgResult = await getCurrentOrg(supabase, user?.id ?? "");
-  const membership = orgResult
-    ? { organization_id: orgResult.active.organizationId }
-    : null;
-
-  let leads: {
-    id: string;
-    visitor_name: string | null;
-    visitor_email: string | null;
-    visitor_phone: string | null;
-    notes: string | null;
-    captured_at: string;
-    conversation_id: string | null;
-  }[] = [];
-  let setupComplete = false;
-
-  if (membership) {
-    const { data: agent } = await supabase
-      .from("agents")
-      .select("setup_complete")
-      .eq("organization_id", membership.organization_id)
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
-    setupComplete = agent?.setup_complete ?? false;
-
-    if (setupComplete) {
-      const { data } = await supabase
-        .from("leads")
-        .select(
-          "id, visitor_name, visitor_email, visitor_phone, notes, captured_at, conversation_id",
-        )
-        .eq("organization_id", membership.organization_id)
-        .order("captured_at", { ascending: false });
-      leads = data ?? [];
-    }
-  }
-
-  return (
-    <div>
-      <h1 className="font-heading text-2xl font-bold text-foreground">Leads</h1>
-      <p className="mt-2 font-body text-sm text-secondary-text">
-        Visitors the AI captured when it couldn&apos;t answer their question
-        directly.
-      </p>
-      <div className="mt-8">
-        {setupComplete ? (
-          <LeadsClient leads={leads} />
-        ) : (
-          <LockedFeatureEmptyState feature="Leads" />
-        )}
       </div>
     </div>
   );
@@ -17504,140 +17115,6 @@ export function useAIChat(id?: string) {
 }
 </file>
 
-<file path="lib/auth/actions.ts">
-"use server";
-
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { ACTIVE_ORG_COOKIE, getCurrentOrg } from "@/lib/auth/current-org";
-
-/**
- * Shared sign-out action. Used as a form action from a button, e.g.:
- *
- *   <form action={signOut}>
- *     <button type="submit">Log out</button>
- *   </form>
- *
- * This will be wired into the admin/client sidebar shells next.
- */
-export async function signOut() {
-  const supabase = await createClient();
-  await supabase.auth.signOut();
-  redirect("/login");
-}
-
-/**
- * Resolves the current user's id, or throws if unauthenticated.
- * Shared across dashboard action files that previously redefined
- * this locally (e.g. inbox/actions.ts).
- */
-export async function getCurrentUserId() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
-  return user.id;
-}
-
-/**
- * Resolves the current user's organization id via their
- * organization_members row. Shared across every dashboard action
- * file that previously redefined this locally.
- */
-export async function getCurrentOrgId() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const orgResult = await getCurrentOrg(supabase, user.id);
-  return orgResult?.active.organizationId ?? null;
-}
-
-/**
- * Resolves the current user's org's active agent. Composed from
- * getCurrentOrgId() — same shape onboarding/actions.ts already used.
- */
-export async function getActiveAgentForCurrentUser() {
-  const organizationId = await getCurrentOrgId();
-  if (!organizationId) return null;
-
-  const supabase = await createClient();
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("id, organization_id")
-    .eq("organization_id", organizationId)
-    .eq("is_active", true)
-    .limit(1)
-    .maybeSingle();
-
-  return agent;
-}
-
-/**
- * Gate for every admin-only server action. Checks the `admins` table
- * (never trusts client-supplied role claims). Shared across every
- * app/(platform-admin)/admin/** actions.ts file — each one MUST call
- * this before doing anything, even if RLS also happens to protect the
- * underlying table, since RLS gaps (e.g. a table's policy allowing org
- * members too) must not become silent privilege escalations.
- */
-export async function requireAdmin() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { userId: null, error: "Not authenticated." } as const;
-
-  const { data: adminRow } = await supabase
-    .from("admins")
-    .select("user_id")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (!adminRow) return { userId: null, error: "Not authorized." } as const;
-  return { userId: user.id, error: null } as const;
-}
-
-/**
- * Switches the caller's active organization. Verifies membership before
- * trusting the id — never set the cookie to an org the user doesn't
- * actually belong to.
- */
-export async function switchActiveOrg(organizationId: string) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Not signed in." };
-
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("organization_id")
-    .eq("user_id", user.id)
-    .eq("organization_id", organizationId)
-    .maybeSingle();
-
-  if (!membership) {
-    return { error: "You don't have access to that organization." };
-  }
-
-  const cookieStore = await cookies();
-  cookieStore.set(ACTIVE_ORG_COOKIE, organizationId, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30,
-  });
-
-  redirect("/dashboard");
-}
-</file>
-
 <file path="lib/channels/process-inbound-message.ts">
 import { createAdminClient } from "@/lib/supabase/admin";
 import { triggerWebhookDispatch } from "@/lib/webhooks/trigger";
@@ -18714,6 +18191,98 @@ function InfoCard({
 }
 </file>
 
+<file path="app/(platform-client)/dashboard/agent/guardrails/page.tsx">
+import { createClient } from "@/lib/supabase/server";
+import { GuardrailsClient } from "./GuardrailsClient";
+import type { GuardrailToggles } from "@/lib/agents/build-system-prompt";
+
+interface LeadCaptureSettings {
+  ask_name: boolean;
+  ask_email: boolean;
+  ask_phone: boolean;
+  ask_message: boolean;
+}
+
+export default async function GuardrailsPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { data: membership } = await supabase
+    .from("organization_members")
+    .select("organization_id, organizations(name)")
+    .eq("user_id", user?.id ?? "")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  let agentId: string | null = null;
+  let guardrails: GuardrailToggles | null = null;
+  let leadCaptureSettings: LeadCaptureSettings | null = null;
+
+  if (membership) {
+    const { data: agent } = await supabase
+      .from("agents")
+      .select("id")
+      .eq("organization_id", membership.organization_id)
+      .eq("is_active", true)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    agentId = agent?.id ?? null;
+
+    if (agentId) {
+      const { data: gr } = await supabase
+        .from("agent_guardrails")
+        .select(
+          "no_competitors, stay_on_topic, no_pricing, always_polite, no_opinions, push_contact, no_refund_promise, capture_leads, custom_rules, tone, reply_language, lead_capture_settings",
+        )
+        .eq("agent_id", agentId)
+        .maybeSingle();
+      guardrails = gr ?? null;
+      leadCaptureSettings =
+        (gr?.lead_capture_settings as LeadCaptureSettings) ?? null;
+    }
+  }
+
+  const orgRecord = membership?.organizations as unknown as {
+    name: string;
+  } | null;
+  const orgName = orgRecord?.name ?? "Your Business";
+
+  return (
+    <div>
+      <h1 className="font-heading text-2xl font-bold text-foreground">
+        Guardrails
+      </h1>
+      <p className="mt-2 font-body text-sm text-secondary-text">
+        Control how your AI agent behaves — what it will and won&apos;t say, its
+        tone, and its reply language.
+      </p>
+
+      {!agentId ? (
+        <div className="mt-8 rounded-2xl border border-dashed border-border bg-card/50 px-8 py-16 text-center">
+          <p className="font-body text-sm text-secondary-text">
+            Setting up your AI agent... this usually takes just a second.
+            Refresh if this doesn&apos;t clear in a moment.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-8">
+          <GuardrailsClient
+            guardrails={guardrails}
+            leadCaptureSettings={leadCaptureSettings}
+            orgName={orgName}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+</file>
+
 <file path="app/(platform-client)/dashboard/agent/templates/actions.ts">
 "use server";
 
@@ -18790,6 +18359,59 @@ export async function applyTemplate(templateId: string) {
   revalidatePath("/dashboard/onboarding");
 
   return { error: null };
+}
+</file>
+
+<file path="app/(platform-client)/dashboard/agent/templates/page.tsx">
+import { createClient } from "@/lib/supabase/server";
+import { AGENT_TEMPLATES } from "@/lib/agents/templates";
+import { TemplatesClient } from "./TemplatesClient";
+import { LockedFeatureEmptyState } from "@/components/platform/LockedFeatureEmptyState";
+import { getCurrentOrg } from "@/lib/auth/current-org";
+
+export default async function TemplatesPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const orgResult = await getCurrentOrg(supabase, user?.id ?? "");
+  const membership = orgResult
+    ? { organization_id: orgResult.active.organizationId }
+    : null;
+
+  let setupComplete = false;
+  if (membership) {
+    const { data: agent } = await supabase
+      .from("agents")
+      .select("setup_complete")
+      .eq("organization_id", membership.organization_id)
+      .eq("is_active", true)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    setupComplete = agent?.setup_complete ?? false;
+  }
+
+  return (
+    <div>
+      <h1 className="font-heading text-2xl font-bold text-foreground">
+        Industry Templates
+      </h1>
+      <p className="mt-2 font-body text-sm text-secondary-text">
+        Apply a template to instantly set up guardrails, starter FAQs, and
+        greeting chips for your industry. You can edit everything afterward — a
+        template is a starting point, not a lock-in.
+      </p>
+      <div className="mt-8">
+        {setupComplete ? (
+          <TemplatesClient templates={AGENT_TEMPLATES} />
+        ) : (
+          <LockedFeatureEmptyState feature="Industry Templates" />
+        )}
+      </div>
+    </div>
+  );
 }
 </file>
 
@@ -19002,128 +18624,250 @@ export async function sendTestMessage(
 }
 </file>
 
-<file path="app/(platform-client)/dashboard/clients/[id]/page.tsx">
-import { notFound } from "next/navigation";
+<file path="app/(platform-client)/dashboard/channels/page.tsx">
 import { createClient } from "@/lib/supabase/server";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
-import { ArrowLeft, ArrowLeftRight } from "lucide-react";
-import { switchActiveOrg } from "@/lib/auth/actions";
+import { ChannelsClient } from "./ChannelsClient";
+import { maskToken, decryptToken } from "@/lib/channels/encryption";
+import { LockedFeatureEmptyState } from "@/components/platform/LockedFeatureEmptyState";
 
-export default async function ClientDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
+export default async function ChannelsPage() {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  // No manual ownership check needed beyond this select — RLS's
-  // is_org_accessible() already returns zero rows if this org isn't
-  // a sub-client of a reseller org the current user belongs to.
-  const { data: org } = await supabase
-    .from("organizations")
-    .select("id, name, slug, status, created_at")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (!org) notFound();
-
-  const boundAction = switchActiveOrg.bind(null, org.id);
-  const switchToThisClient = async (formData: FormData) => {
-    await boundAction();
-  };
-
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("id, name, embed_keys(public_key)")
-    .eq("organization_id", org.id)
-    .eq("is_active", true)
+  const { data: membership } = await supabase
+    .from("organization_members")
+    .select("organization_id")
+    .eq("user_id", user?.id ?? "")
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
 
-  const { count: docCount } = await supabase
-    .from("knowledge_base_documents")
-    .select("*", { count: "exact", head: true })
-    .eq("organization_id", org.id);
+  let agentId: string | null = null;
+  let setupComplete = false;
+  let connections: {
+    id: string;
+    channel: string;
+    external_account_id: string;
+    phone_number_id: string | null;
+    status: string;
+    maskedToken: string;
+  }[] = [];
 
-  const { count: convCount } = await supabase
-    .from("conversations")
-    .select("*", { count: "exact", head: true })
-    .eq("organization_id", org.id);
+  if (membership) {
+    const { data: agent } = await supabase
+      .from("agents")
+      .select("id, setup_complete")
+      .eq("organization_id", membership.organization_id)
+      .eq("is_active", true)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
 
-  const publicKey = (
-    agent?.embed_keys as { public_key: string }[] | undefined
-  )?.[0]?.public_key;
+    agentId = agent?.id ?? null;
+    setupComplete = agent?.setup_complete ?? false;
+
+    if (agentId && setupComplete) {
+      const { data: rows } = await supabase
+        .from("channel_connections")
+        .select(
+          "id, channel, external_account_id, phone_number_id, status, access_token",
+        )
+        .eq("agent_id", agentId);
+
+      connections = (rows ?? []).map((row) => {
+        let maskedToken = "••••";
+        try {
+          const decrypted = decryptToken(row.access_token);
+          maskedToken = maskToken(decrypted);
+        } catch {
+          // If decryption fails (bad/legacy value), just show generic mask.
+        }
+        return {
+          id: row.id,
+          channel: row.channel,
+          external_account_id: row.external_account_id,
+          phone_number_id: row.phone_number_id,
+          status: row.status,
+          maskedToken,
+        };
+      });
+    }
+  }
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <Link
-          href="/dashboard/clients"
-          className="inline-flex items-center gap-1.5 font-body text-sm text-secondary-text hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to clients
-        </Link>
-        <form action={switchToThisClient}>
-          <Button type="submit" variant="outline" size="sm" className="gap-1.5">
-            <ArrowLeftRight className="h-3.5 w-3.5" strokeWidth={1.75} />
-            Manage this client
-          </Button>
-        </form>
-      </div>
-      <div className="flex items-center gap-3">
-        <h1 className="font-heading text-2xl font-bold text-foreground">
-          {org.name}
-        </h1>
-        <Badge variant="outline" className="text-xs capitalize">
-          {org.status}
-        </Badge>
-      </div>
+      <h1 className="font-heading text-2xl font-bold text-foreground">
+        Channels
+      </h1>
       <p className="mt-2 font-body text-sm text-secondary-text">
-        slug: {org.slug}
+        Connect WhatsApp, Instagram, and Messenger so your AI agent answers
+        consistently everywhere your customers reach out.
       </p>
 
-      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded-2xl border border-border bg-card p-6">
-          <p className="font-body text-xs text-secondary-text">Agent</p>
-          <p className="mt-1 font-heading text-lg font-semibold text-foreground">
-            {agent?.name ?? "—"}
+      {!agentId ? (
+        <div className="mt-8 rounded-2xl border border-dashed border-border bg-card/50 px-8 py-16 text-center">
+          <p className="font-body text-sm text-secondary-text">
+            No active agent found for your organization yet.
           </p>
         </div>
-        <div className="rounded-2xl border border-border bg-card p-6">
-          <p className="font-body text-xs text-secondary-text">KB documents</p>
-          <p className="mt-1 font-heading text-lg font-semibold text-foreground">
-            {docCount ?? 0}
-          </p>
+      ) : !setupComplete ? (
+        <div className="mt-8">
+          <LockedFeatureEmptyState feature="Channels" />
         </div>
-        <div className="rounded-2xl border border-border bg-card p-6">
-          <p className="font-body text-xs text-secondary-text">Conversations</p>
-          <p className="mt-1 font-heading text-lg font-semibold text-foreground">
-            {convCount ?? 0}
-          </p>
-        </div>
-      </div>
-
-      {publicKey && (
-        <div className="mt-6 rounded-2xl border border-border bg-card p-6">
-          <p className="font-body text-xs text-secondary-text">
-            Embed public key
-          </p>
-          <code className="mt-1 block rounded-md bg-background px-2.5 py-1 font-mono text-xs text-secondary-text">
-            {publicKey}
-          </code>
+      ) : (
+        <div className="mt-8">
+          <ChannelsClient connections={connections} />
         </div>
       )}
+    </div>
+  );
+}
+</file>
 
-      <p className="mt-6 font-body text-xs text-secondary-text">
-        Tap &quot;Manage this client&quot; above to switch your active
-        organization — the full dashboard (Inbox, Knowledge Base, Guardrails,
-        etc.) will then operate on {org.name} until you switch back from the
-        account menu in the sidebar.
+<file path="app/(platform-client)/dashboard/inbox/page.tsx">
+import { createClient } from "@/lib/supabase/server";
+import { getInboxConversations } from "@/lib/inbox/queries";
+import { InboxClient } from "./InboxClient";
+import { LockedFeatureEmptyState } from "@/components/platform/LockedFeatureEmptyState";
+import { getCurrentOrg } from "@/lib/auth/current-org";
+
+export default async function InboxPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ conversation?: string }>;
+}) {
+  const { conversation: initialSelectedId } = await searchParams;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const orgResult = await getCurrentOrg(supabase, user?.id ?? "");
+  const membership = orgResult
+    ? { organization_id: orgResult.active.organizationId }
+    : null;
+
+  const organizationId = membership?.organization_id ?? null;
+
+  let setupComplete = false;
+  if (organizationId) {
+    const { data: agent } = await supabase
+      .from("agents")
+      .select("setup_complete")
+      .eq("organization_id", organizationId)
+      .eq("is_active", true)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    setupComplete = agent?.setup_complete ?? false;
+  }
+
+  const initialConversations =
+    organizationId && setupComplete
+      ? await getInboxConversations(supabase, organizationId)
+      : [];
+
+  return (
+    <div className="flex h-[calc(100dvh-7.5rem)] flex-col md:h-[calc(100dvh-5rem)]">
+      <div className="mb-4 flex-none">
+        <h1 className="font-heading text-2xl font-bold text-foreground">
+          Inbox
+        </h1>
+
+        <p className="mt-1 font-body text-sm text-secondary-text">
+          Every conversation, across every channel, as it happens.
+        </p>
+      </div>
+
+      {!organizationId ? (
+        <div className="rounded-2xl border border-dashed border-border bg-card/50 px-8 py-16 text-center">
+          <p className="font-body text-sm text-secondary-text">
+            No organization found for your account yet.
+          </p>
+        </div>
+      ) : !setupComplete ? (
+        <LockedFeatureEmptyState feature="the Inbox" />
+      ) : (
+        <div className="min-h-0 flex-1">
+          <InboxClient
+            organizationId={organizationId}
+            currentUserId={user?.id ?? null}
+            initialConversations={initialConversations}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+</file>
+
+<file path="app/(platform-client)/dashboard/leads/page.tsx">
+import { createClient } from "@/lib/supabase/server";
+import { LeadsClient } from "./LeadsClient";
+import { LockedFeatureEmptyState } from "@/components/platform/LockedFeatureEmptyState";
+import { getCurrentOrg } from "@/lib/auth/current-org";
+
+export default async function LeadsPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const orgResult = await getCurrentOrg(supabase, user?.id ?? "");
+  const membership = orgResult
+    ? { organization_id: orgResult.active.organizationId }
+    : null;
+
+  let leads: {
+    id: string;
+    visitor_name: string | null;
+    visitor_email: string | null;
+    visitor_phone: string | null;
+    notes: string | null;
+    captured_at: string;
+    conversation_id: string | null;
+  }[] = [];
+  let setupComplete = false;
+
+  if (membership) {
+    const { data: agent } = await supabase
+      .from("agents")
+      .select("setup_complete")
+      .eq("organization_id", membership.organization_id)
+      .eq("is_active", true)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    setupComplete = agent?.setup_complete ?? false;
+
+    if (setupComplete) {
+      const { data } = await supabase
+        .from("leads")
+        .select(
+          "id, visitor_name, visitor_email, visitor_phone, notes, captured_at, conversation_id",
+        )
+        .eq("organization_id", membership.organization_id)
+        .order("captured_at", { ascending: false });
+      leads = data ?? [];
+    }
+  }
+
+  return (
+    <div>
+      <h1 className="font-heading text-2xl font-bold text-foreground">Leads</h1>
+      <p className="mt-2 font-body text-sm text-secondary-text">
+        Visitors the AI captured when it couldn&apos;t answer their question
+        directly.
       </p>
+      <div className="mt-8">
+        {setupComplete ? (
+          <LeadsClient leads={leads} />
+        ) : (
+          <LockedFeatureEmptyState feature="Leads" />
+        )}
+      </div>
     </div>
   );
 }
@@ -22149,6 +21893,141 @@ export function WhyChooseUs() {
 }
 </file>
 
+<file path="lib/auth/actions.ts">
+"use server";
+
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { ACTIVE_ORG_COOKIE, getCurrentOrg } from "@/lib/auth/current-org";
+
+/**
+ * Shared sign-out action. Used as a form action from a button, e.g.:
+ *
+ *   <form action={signOut}>
+ *     <button type="submit">Log out</button>
+ *   </form>
+ *
+ * This will be wired into the admin/client sidebar shells next.
+ */
+export async function signOut() {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  redirect("/login");
+}
+
+/**
+ * Resolves the current user's id, or throws if unauthenticated.
+ * Shared across dashboard action files that previously redefined
+ * this locally (e.g. inbox/actions.ts).
+ */
+export async function getCurrentUserId() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  return user.id;
+}
+
+/**
+ * Resolves the current user's organization id via their
+ * organization_members row. Shared across every dashboard action
+ * file that previously redefined this locally.
+ */
+export async function getCurrentOrgId() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const orgResult = await getCurrentOrg(supabase, user.id);
+  return orgResult?.active.organizationId ?? null;
+}
+
+/**
+ * Resolves the current user's org's active agent. Composed from
+ * getCurrentOrgId() — same shape onboarding/actions.ts already used.
+ */
+export async function getActiveAgentForCurrentUser() {
+  const organizationId = await getCurrentOrgId();
+  if (!organizationId) return null;
+
+  const supabase = await createClient();
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("id, organization_id")
+    .eq("organization_id", organizationId)
+    .eq("is_active", true)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  return agent;
+}
+
+/**
+ * Gate for every admin-only server action. Checks the `admins` table
+ * (never trusts client-supplied role claims). Shared across every
+ * app/(platform-admin)/admin/** actions.ts file — each one MUST call
+ * this before doing anything, even if RLS also happens to protect the
+ * underlying table, since RLS gaps (e.g. a table's policy allowing org
+ * members too) must not become silent privilege escalations.
+ */
+export async function requireAdmin() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { userId: null, error: "Not authenticated." } as const;
+
+  const { data: adminRow } = await supabase
+    .from("admins")
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (!adminRow) return { userId: null, error: "Not authorized." } as const;
+  return { userId: user.id, error: null } as const;
+}
+
+/**
+ * Switches the caller's active organization. Verifies membership before
+ * trusting the id — never set the cookie to an org the user doesn't
+ * actually belong to.
+ */
+export async function switchActiveOrg(organizationId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in." };
+
+  const { data: membership } = await supabase
+    .from("organization_members")
+    .select("organization_id")
+    .eq("user_id", user.id)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+
+  if (!membership) {
+    return { error: "You don't have access to that organization." };
+  }
+
+  const cookieStore = await cookies();
+  cookieStore.set(ACTIVE_ORG_COOKIE, organizationId, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30,
+  });
+
+  redirect("/dashboard");
+}
+</file>
+
 <file path="app/(marketing)/blog/[slug]/page.tsx">
 // app/(marketing)/blog/[slug]/page.tsx
 import type { Metadata } from "next";
@@ -22821,6 +22700,134 @@ function ServiceSection({
         </div>
       </div>
     </section>
+  );
+}
+</file>
+
+<file path="app/(platform-client)/dashboard/clients/[id]/page.tsx">
+import { notFound } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { ArrowLeft, ArrowLeftRight } from "lucide-react";
+import { switchActiveOrg } from "@/lib/auth/actions";
+
+export default async function ClientDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const supabase = await createClient();
+
+  // No manual ownership check needed beyond this select — RLS's
+  // is_org_accessible() already returns zero rows if this org isn't
+  // a sub-client of a reseller org the current user belongs to.
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("id, name, slug, status, created_at")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!org) notFound();
+
+  const boundAction = switchActiveOrg.bind(null, org.id);
+  const switchToThisClient = async (formData: FormData) => {
+    await boundAction();
+  };
+
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("id, name, embed_keys(public_key)")
+    .eq("organization_id", org.id)
+    .eq("is_active", true)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  const { count: docCount } = await supabase
+    .from("knowledge_base_documents")
+    .select("*", { count: "exact", head: true })
+    .eq("organization_id", org.id);
+
+  const { count: convCount } = await supabase
+    .from("conversations")
+    .select("*", { count: "exact", head: true })
+    .eq("organization_id", org.id);
+
+  const publicKey = (
+    agent?.embed_keys as { public_key: string }[] | undefined
+  )?.[0]?.public_key;
+
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <Link
+          href="/dashboard/clients"
+          className="inline-flex items-center gap-1.5 font-body text-sm text-secondary-text hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to clients
+        </Link>
+        <form action={switchToThisClient}>
+          <Button type="submit" variant="outline" size="sm" className="gap-1.5">
+            <ArrowLeftRight className="h-3.5 w-3.5" strokeWidth={1.75} />
+            Manage this client
+          </Button>
+        </form>
+      </div>
+      <div className="flex items-center gap-3">
+        <h1 className="font-heading text-2xl font-bold text-foreground">
+          {org.name}
+        </h1>
+        <Badge variant="outline" className="text-xs capitalize">
+          {org.status}
+        </Badge>
+      </div>
+      <p className="mt-2 font-body text-sm text-secondary-text">
+        slug: {org.slug}
+      </p>
+
+      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="rounded-2xl border border-border bg-card p-6">
+          <p className="font-body text-xs text-secondary-text">Agent</p>
+          <p className="mt-1 font-heading text-lg font-semibold text-foreground">
+            {agent?.name ?? "—"}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-6">
+          <p className="font-body text-xs text-secondary-text">KB documents</p>
+          <p className="mt-1 font-heading text-lg font-semibold text-foreground">
+            {docCount ?? 0}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-6">
+          <p className="font-body text-xs text-secondary-text">Conversations</p>
+          <p className="mt-1 font-heading text-lg font-semibold text-foreground">
+            {convCount ?? 0}
+          </p>
+        </div>
+      </div>
+
+      {publicKey && (
+        <div className="mt-6 rounded-2xl border border-border bg-card p-6">
+          <p className="font-body text-xs text-secondary-text">
+            Embed public key
+          </p>
+          <code className="mt-1 block rounded-md bg-background px-2.5 py-1 font-mono text-xs text-secondary-text">
+            {publicKey}
+          </code>
+        </div>
+      )}
+
+      <p className="mt-6 font-body text-xs text-secondary-text">
+        Tap &quot;Manage this client&quot; above to switch your active
+        organization — the full dashboard (Inbox, Knowledge Base, Guardrails,
+        etc.) will then operate on {org.name} until you switch back from the
+        account menu in the sidebar.
+      </p>
+    </div>
   );
 }
 </file>
@@ -25900,109 +25907,6 @@ export async function testKnowledgeBaseQuery(query: string) {
 }
 </file>
 
-<file path="app/(platform-client)/dashboard/knowledge-base/page.tsx">
-import { createClient } from "@/lib/supabase/server";
-import { KnowledgeBaseClient } from "./KnowledgeBaseClient";
-import { getCurrentOrg } from "@/lib/auth/current-org";
-
-export default async function KnowledgeBasePage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const orgResult = await getCurrentOrg(supabase, user?.id ?? "");
-  const membership = orgResult
-    ? { organization_id: orgResult.active.organizationId }
-    : null;
-
-  let agentId: string | null = null;
-  let documents: {
-    id: string;
-    title: string;
-    status: string;
-    source_type: string;
-    source_url: string | null;
-    created_at: string;
-    updated_at: string;
-    last_refreshed_at: string | null;
-    error_message: string | null;
-    raw_content: string | null;
-    chunkCount: number;
-  }[] = [];
-
-  if (membership) {
-    const { data: agent } = await supabase
-      .from("agents")
-      .select("id")
-      .eq("organization_id", membership.organization_id)
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
-
-    agentId = agent?.id ?? null;
-
-    if (agentId) {
-      const { data: docs } = await supabase
-        .from("knowledge_base_documents")
-        .select(
-          "id, title, status, source_type, source_url, created_at, updated_at, last_refreshed_at, error_message, raw_content",
-        )
-        .eq("agent_id", agentId)
-        .order("updated_at", { ascending: false });
-
-      // Client-side scale is small enough (typical small-business KB) that
-      // one extra query for chunk counts, reduced in JS, beats N+1 queries
-      // per document.
-      const { data: chunks } = await supabase
-        .from("knowledge_base_chunks")
-        .select("document_id")
-        .eq("agent_id", agentId);
-
-      const chunkCounts = new Map<string, number>();
-      for (const c of chunks ?? []) {
-        chunkCounts.set(
-          c.document_id,
-          (chunkCounts.get(c.document_id) ?? 0) + 1,
-        );
-      }
-
-      documents = (docs ?? []).map((d) => ({
-        ...d,
-        chunkCount: chunkCounts.get(d.id) ?? 0,
-      }));
-    }
-  }
-
-  return (
-    <div className="flex h-[calc(100dvh-7.5rem)] flex-col md:h-[calc(100dvh-5rem)]">
-      <div className="mb-4 flex-none">
-        <h1 className="font-heading text-2xl font-bold text-foreground">
-          Knowledge Base
-        </h1>
-        <p className="mt-2 font-body text-sm text-secondary-text">
-          Add the facts your AI agent should answer from — FAQs, policies,
-          pricing, hours. The embedded widget only ever answers from what&apos;s
-          here.
-        </p>
-      </div>
-
-      {!agentId ? (
-        <div className="rounded-2xl border border-dashed border-border bg-card/50 px-8 py-16 text-center">
-          <p className="font-body text-sm text-secondary-text">
-            No active agent found for your organization yet.
-          </p>
-        </div>
-      ) : (
-        <div className="min-h-0 flex-1">
-          <KnowledgeBaseClient documents={documents} />
-        </div>
-      )}
-    </div>
-  );
-}
-</file>
-
 <file path="app/(platform-client)/dashboard/onboarding/actions.ts">
 "use server";
 
@@ -26154,157 +26058,6 @@ export async function markOnboardingComplete() {
   // setup. redirect() forces a real, full route-tree re-render from the
   // server with fresh data — no race possible.
   redirect("/dashboard?justLaunched=1");
-}
-</file>
-
-<file path="app/(platform-client)/dashboard/onboarding/page.tsx">
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { OnboardingWizard } from "./OnboardingWizard";
-import { AGENT_TEMPLATES } from "@/lib/agents/templates";
-import type { GuardrailToggles } from "@/lib/agents/build-system-prompt";
-import { getCurrentOrg } from "@/lib/auth/current-org";
-
-interface LeadCaptureSettings {
-  ask_name: boolean;
-  ask_email: boolean;
-  ask_phone: boolean;
-  ask_message: boolean;
-}
-
-export default async function OnboardingPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const orgResult = user ? await getCurrentOrg(supabase, user.id) : null;
-  const membership = orgResult
-    ? { organization_id: orgResult.active.organizationId }
-    : null;
-
-  const { data: orgRow } = orgResult
-    ? await supabase
-        .from("organizations")
-        .select(
-          "name, primary_color, accent_color, welcome_message, logo_url, widget_position",
-        )
-        .eq("id", orgResult.active.organizationId)
-        .maybeSingle()
-    : { data: null };
-
-  let agentId: string | null = null;
-  let agentName = "";
-  let publicKey: string | null = null;
-  let initialStep = 0;
-  let alreadyLive = false;
-  let guardrails: GuardrailToggles | null = null;
-  let leadCaptureSettings: LeadCaptureSettings | null = null;
-  let documents: {
-    id: string;
-    title: string;
-    status: string;
-    source_type: string;
-    source_url: string | null;
-    created_at: string;
-    updated_at: string;
-    last_refreshed_at: string | null;
-    error_message: string | null;
-    raw_content: string | null;
-    chunkCount: number;
-  }[] = [];
-
-  if (membership) {
-    const { data: agent } = await supabase
-      .from("agents")
-      .select(
-        "id, name, setup_complete, onboarding_step, embed_keys(public_key)",
-      )
-      .eq("organization_id", membership.organization_id)
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
-
-    agentId = agent?.id ?? null;
-    agentName = agent?.name ?? "";
-    initialStep = Math.min(Math.max(agent?.onboarding_step ?? 0, 0), 4);
-    alreadyLive = agent?.setup_complete ?? false;
-    const keys = agent?.embed_keys as { public_key: string }[] | undefined;
-    publicKey = keys?.[0]?.public_key ?? null;
-
-    if (agentId) {
-      const { data: gr } = await supabase
-        .from("agent_guardrails")
-        .select(
-          "no_competitors, stay_on_topic, no_pricing, always_polite, no_opinions, push_contact, no_refund_promise, capture_leads, custom_rules, tone, reply_language, lead_capture_settings",
-        )
-        .eq("agent_id", agentId)
-        .maybeSingle();
-      guardrails = gr ?? null;
-      leadCaptureSettings =
-        (gr?.lead_capture_settings as LeadCaptureSettings) ?? null;
-
-      const { data: docs } = await supabase
-        .from("knowledge_base_documents")
-        .select(
-          "id, title, status, source_type, source_url, created_at, updated_at, last_refreshed_at, error_message, raw_content",
-        )
-        .eq("agent_id", agentId)
-        .order("updated_at", { ascending: false });
-
-      const { data: chunks } = await supabase
-        .from("knowledge_base_chunks")
-        .select("document_id")
-        .eq("agent_id", agentId);
-
-      const chunkCounts = new Map<string, number>();
-      for (const c of chunks ?? []) {
-        chunkCounts.set(
-          c.document_id,
-          (chunkCounts.get(c.document_id) ?? 0) + 1,
-        );
-      }
-
-      documents = (docs ?? []).map((d) => ({
-        ...d,
-        chunkCount: chunkCounts.get(d.id) ?? 0,
-      }));
-    }
-  }
-
-  const org = orgRow as {
-    name: string;
-    primary_color: string;
-    accent_color: string;
-    welcome_message: string;
-    logo_url: string | null;
-    widget_position: string;
-  } | null;
-
-  return (
-    <div>
-      <h1 className="font-heading text-2xl font-bold text-foreground">
-        Get set up
-      </h1>
-      <p className="mt-2 font-body text-sm text-secondary-text">
-        Five quick steps — you&apos;ll see your live widget the whole way
-        through.
-      </p>
-      <div className="mt-8">
-        <OnboardingWizard
-          org={org}
-          agentId={agentId}
-          agentName={agentName}
-          publicKey={publicKey}
-          templates={AGENT_TEMPLATES}
-          initialStep={initialStep}
-          guardrails={guardrails}
-          leadCaptureSettings={leadCaptureSettings}
-          documents={documents}
-        />
-      </div>
-    </div>
-  );
 }
 </file>
 
@@ -29080,88 +28833,258 @@ export function GuardrailsClient({
 }
 </file>
 
-<file path="app/(platform-client)/layout.tsx">
-import type { Metadata } from "next";
-import { headers } from "next/headers";
+<file path="app/(platform-client)/dashboard/knowledge-base/page.tsx">
 import { createClient } from "@/lib/supabase/server";
-import { PlatformShell } from "@/components/platform/PlatformShell";
-import { getUnreadInboxCount } from "@/lib/inbox/queries";
+import { KnowledgeBaseClient } from "./KnowledgeBaseClient";
 import { getCurrentOrg } from "@/lib/auth/current-org";
 
-export const metadata: Metadata = {
-  robots: { index: false, follow: false },
-};
-
-export default async function ClientDashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  // middleware.ts already ran auth.getUser() for this exact request and
-  // redirects unauthenticated visitors before they ever reach this layout —
-  // calling getUser() again here was a fully redundant Supabase round-trip
-  // that added to the blocking window before any HTML (theme-init script
-  // included) could reach the browser. Read its result from the header
-  // middleware sets instead.
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("x-user-id") ?? "";
-  const userEmail = requestHeaders.get("x-user-email");
-
+export default async function KnowledgeBasePage() {
   const supabase = await createClient();
-  const orgResult = await getCurrentOrg(supabase, userId);
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const orgResult = await getCurrentOrg(supabase, user?.id ?? "");
   const membership = orgResult
     ? { organization_id: orgResult.active.organizationId }
     : null;
 
-  const unreadCount = membership
-    ? await getUnreadInboxCount(supabase, membership.organization_id)
-    : 0;
-
-  let setupComplete = true;
-  let agentName = "Your Agent";
-  let agentStatus: "live" | "trial" | "paused" = "live";
+  let agentId: string | null = null;
+  let documents: {
+    id: string;
+    title: string;
+    status: string;
+    source_type: string;
+    source_url: string | null;
+    created_at: string;
+    updated_at: string;
+    last_refreshed_at: string | null;
+    error_message: string | null;
+    raw_content: string | null;
+    chunkCount: number;
+  }[] = [];
 
   if (membership) {
     const { data: agent } = await supabase
       .from("agents")
-      .select("setup_complete, agent_name, is_active")
+      .select("id")
       .eq("organization_id", membership.organization_id)
       .eq("is_active", true)
+      .order("created_at", { ascending: true })
       .limit(1)
       .maybeSingle();
-    // No agent row yet (mid-provisioning) is treated as "not complete" —
-    // safer default than briefly flashing the full sidebar.
-    setupComplete = agent?.setup_complete ?? false;
 
-    if (agent?.agent_name) agentName = agent.agent_name;
+    agentId = agent?.id ?? null;
 
-    const { data: orgRow } = await supabase
-      .from("organizations")
-      .select("status")
-      .eq("id", membership.organization_id)
-      .maybeSingle();
+    if (agentId) {
+      const { data: docs } = await supabase
+        .from("knowledge_base_documents")
+        .select(
+          "id, title, status, source_type, source_url, created_at, updated_at, last_refreshed_at, error_message, raw_content",
+        )
+        .eq("agent_id", agentId)
+        .order("updated_at", { ascending: false });
 
-    agentStatus = !agent?.is_active
-      ? "paused"
-      : orgRow?.status === "trial"
-        ? "trial"
-        : "live";
+      // Client-side scale is small enough (typical small-business KB) that
+      // one extra query for chunk counts, reduced in JS, beats N+1 queries
+      // per document.
+      const { data: chunks } = await supabase
+        .from("knowledge_base_chunks")
+        .select("document_id")
+        .eq("agent_id", agentId);
+
+      const chunkCounts = new Map<string, number>();
+      for (const c of chunks ?? []) {
+        chunkCounts.set(
+          c.document_id,
+          (chunkCounts.get(c.document_id) ?? 0) + 1,
+        );
+      }
+
+      documents = (docs ?? []).map((d) => ({
+        ...d,
+        chunkCount: chunkCounts.get(d.id) ?? 0,
+      }));
+    }
   }
 
   return (
-    <PlatformShell
-      variant="client"
-      userEmail={userEmail}
-      navBadges={{ "/dashboard/inbox": unreadCount }}
-      isReseller={!!orgResult?.active.isReseller}
-      setupComplete={setupComplete}
-      agentName={agentName}
-      agentStatus={agentStatus}
-      memberships={orgResult?.memberships ?? []}
-      activeOrgId={orgResult?.active.organizationId ?? null}
-    >
-      {children}
-    </PlatformShell>
+    <div className="flex h-[calc(100dvh-7.5rem)] flex-col md:h-[calc(100dvh-5rem)]">
+      <div className="mb-4 flex-none">
+        <h1 className="font-heading text-2xl font-bold text-foreground">
+          Knowledge Base
+        </h1>
+        <p className="mt-2 font-body text-sm text-secondary-text">
+          Add the facts your AI agent should answer from — FAQs, policies,
+          pricing, hours. The embedded widget only ever answers from what&apos;s
+          here.
+        </p>
+      </div>
+
+      {!agentId ? (
+        <div className="rounded-2xl border border-dashed border-border bg-card/50 px-8 py-16 text-center">
+          <p className="font-body text-sm text-secondary-text">
+            No active agent found for your organization yet.
+          </p>
+        </div>
+      ) : (
+        <div className="min-h-0 flex-1">
+          <KnowledgeBaseClient documents={documents} />
+        </div>
+      )}
+    </div>
+  );
+}
+</file>
+
+<file path="app/(platform-client)/dashboard/onboarding/page.tsx">
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { OnboardingWizard } from "./OnboardingWizard";
+import { AGENT_TEMPLATES } from "@/lib/agents/templates";
+import type { GuardrailToggles } from "@/lib/agents/build-system-prompt";
+import { getCurrentOrg } from "@/lib/auth/current-org";
+
+interface LeadCaptureSettings {
+  ask_name: boolean;
+  ask_email: boolean;
+  ask_phone: boolean;
+  ask_message: boolean;
+}
+
+export default async function OnboardingPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const orgResult = user ? await getCurrentOrg(supabase, user.id) : null;
+  const membership = orgResult
+    ? { organization_id: orgResult.active.organizationId }
+    : null;
+
+  const { data: orgRow } = orgResult
+    ? await supabase
+        .from("organizations")
+        .select(
+          "name, primary_color, accent_color, welcome_message, logo_url, widget_position",
+        )
+        .eq("id", orgResult.active.organizationId)
+        .maybeSingle()
+    : { data: null };
+
+  let agentId: string | null = null;
+  let agentName = "";
+  let publicKey: string | null = null;
+  let initialStep = 0;
+  let alreadyLive = false;
+  let guardrails: GuardrailToggles | null = null;
+  let leadCaptureSettings: LeadCaptureSettings | null = null;
+  let documents: {
+    id: string;
+    title: string;
+    status: string;
+    source_type: string;
+    source_url: string | null;
+    created_at: string;
+    updated_at: string;
+    last_refreshed_at: string | null;
+    error_message: string | null;
+    raw_content: string | null;
+    chunkCount: number;
+  }[] = [];
+
+  if (membership) {
+    const { data: agent } = await supabase
+      .from("agents")
+      .select(
+        "id, name, setup_complete, onboarding_step, embed_keys(public_key)",
+      )
+      .eq("organization_id", membership.organization_id)
+      .eq("is_active", true)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    agentId = agent?.id ?? null;
+    agentName = agent?.name ?? "";
+    initialStep = Math.min(Math.max(agent?.onboarding_step ?? 0, 0), 4);
+    alreadyLive = agent?.setup_complete ?? false;
+    const keys = agent?.embed_keys as { public_key: string }[] | undefined;
+    publicKey = keys?.[0]?.public_key ?? null;
+
+    if (agentId) {
+      const { data: gr } = await supabase
+        .from("agent_guardrails")
+        .select(
+          "no_competitors, stay_on_topic, no_pricing, always_polite, no_opinions, push_contact, no_refund_promise, capture_leads, custom_rules, tone, reply_language, lead_capture_settings",
+        )
+        .eq("agent_id", agentId)
+        .maybeSingle();
+      guardrails = gr ?? null;
+      leadCaptureSettings =
+        (gr?.lead_capture_settings as LeadCaptureSettings) ?? null;
+
+      const { data: docs } = await supabase
+        .from("knowledge_base_documents")
+        .select(
+          "id, title, status, source_type, source_url, created_at, updated_at, last_refreshed_at, error_message, raw_content",
+        )
+        .eq("agent_id", agentId)
+        .order("updated_at", { ascending: false });
+
+      const { data: chunks } = await supabase
+        .from("knowledge_base_chunks")
+        .select("document_id")
+        .eq("agent_id", agentId);
+
+      const chunkCounts = new Map<string, number>();
+      for (const c of chunks ?? []) {
+        chunkCounts.set(
+          c.document_id,
+          (chunkCounts.get(c.document_id) ?? 0) + 1,
+        );
+      }
+
+      documents = (docs ?? []).map((d) => ({
+        ...d,
+        chunkCount: chunkCounts.get(d.id) ?? 0,
+      }));
+    }
+  }
+
+  const org = orgRow as {
+    name: string;
+    primary_color: string;
+    accent_color: string;
+    welcome_message: string;
+    logo_url: string | null;
+    widget_position: string;
+  } | null;
+
+  return (
+    <div>
+      <h1 className="font-heading text-2xl font-bold text-foreground">
+        Get set up
+      </h1>
+      <p className="mt-2 font-body text-sm text-secondary-text">
+        Five quick steps — you&apos;ll see your live widget the whole way
+        through.
+      </p>
+      <div className="mt-8">
+        <OnboardingWizard
+          org={org}
+          agentId={agentId}
+          agentName={agentName}
+          publicKey={publicKey}
+          templates={AGENT_TEMPLATES}
+          initialStep={initialStep}
+          guardrails={guardrails}
+          leadCaptureSettings={leadCaptureSettings}
+          documents={documents}
+        />
+      </div>
+    </div>
   );
 }
 </file>
@@ -32004,6 +31927,93 @@ export function OnboardingWizard({
 }
 </file>
 
+<file path="app/(platform-client)/layout.tsx">
+import type { Metadata } from "next";
+import { headers } from "next/headers";
+import { createClient } from "@/lib/supabase/server";
+import { PlatformShell } from "@/components/platform/PlatformShell";
+import { getUnreadInboxCount } from "@/lib/inbox/queries";
+import { getCurrentOrg } from "@/lib/auth/current-org";
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
+
+export default async function ClientDashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  // middleware.ts already ran auth.getUser() for this exact request and
+  // redirects unauthenticated visitors before they ever reach this layout —
+  // calling getUser() again here was a fully redundant Supabase round-trip
+  // that added to the blocking window before any HTML (theme-init script
+  // included) could reach the browser. Read its result from the header
+  // middleware sets instead.
+  const requestHeaders = await headers();
+  const userId = requestHeaders.get("x-user-id") ?? "";
+  const userEmail = requestHeaders.get("x-user-email");
+
+  const supabase = await createClient();
+  const orgResult = await getCurrentOrg(supabase, userId);
+  const membership = orgResult
+    ? { organization_id: orgResult.active.organizationId }
+    : null;
+
+  const unreadCount = membership
+    ? await getUnreadInboxCount(supabase, membership.organization_id)
+    : 0;
+
+  let setupComplete = true;
+  let agentName = "Your Agent";
+  let agentStatus: "live" | "trial" | "paused" = "live";
+
+  if (membership) {
+    const { data: agent } = await supabase
+      .from("agents")
+      .select("setup_complete, name, is_active")
+      .eq("organization_id", membership.organization_id)
+      .eq("is_active", true)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    // No agent row yet (mid-provisioning) is treated as "not complete" —
+    // safer default than briefly flashing the full sidebar.
+    setupComplete = agent?.setup_complete ?? false;
+
+    if (agent?.name) agentName = agent.name;
+
+    const { data: orgRow } = await supabase
+      .from("organizations")
+      .select("status")
+      .eq("id", membership.organization_id)
+      .maybeSingle();
+
+    agentStatus = !agent?.is_active
+      ? "paused"
+      : orgRow?.status === "trial"
+        ? "trial"
+        : "live";
+  }
+
+  return (
+    <PlatformShell
+      variant="client"
+      userEmail={userEmail}
+      navBadges={{ "/dashboard/inbox": unreadCount }}
+      isReseller={!!orgResult?.active.isReseller}
+      setupComplete={setupComplete}
+      agentName={agentName}
+      agentStatus={agentStatus}
+      memberships={orgResult?.memberships ?? []}
+      activeOrgId={orgResult?.active.organizationId ?? null}
+    >
+      {children}
+    </PlatformShell>
+  );
+}
+</file>
+
 <file path="app/(platform-client)/dashboard/page.tsx">
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
@@ -32076,6 +32086,7 @@ export default async function DashboardPage({
     .select("id, setup_complete, onboarding_step, embed_added_self_reported")
     .eq("organization_id", orgId)
     .eq("is_active", true)
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
 

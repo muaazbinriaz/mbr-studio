@@ -385,7 +385,7 @@ export function OnboardingWizard({
                     Scan your website, upload files, or type it in directly —
                     this is the real Knowledge Base, not a simplified copy.
                   </p>
-                  <div className="h-[520px] min-h-0 overflow-hidden rounded-xl border border-border">
+                  <div className="h-[min(75vh,680px)] min-h-[560px] overflow-y-auto rounded-xl border border-border">
                     <KnowledgeBaseClient documents={documents} />
                   </div>
                 </div>
