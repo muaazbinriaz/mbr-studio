@@ -109,11 +109,9 @@ export function OnboardingWizard({
     org?.welcome_message ?? "Hi! How can I help you today?",
   );
   const [logoUrl, setLogoUrl] = useState(org?.logo_url ?? "");
-  const [widgetPosition, setWidgetPosition] = useState;
-  "bottom-right" |
-    ("bottom-left" >
-      ((org?.widget_position as "bottom-right" | "bottom-left") ??
-        "bottom-right"));
+  const [widgetPosition, setWidgetPosition] = useState<
+    "bottom-right" | "bottom-left"
+  >((org?.widget_position as "bottom-right" | "bottom-left") ?? "bottom-right");
 
   const [embedTab, setEmbedTab] = useState<(typeof EMBED_TABS)[number]>("HTML");
   const [copied, setCopied] = useState(false);
