@@ -9,6 +9,7 @@ import {
   ArrowRight,
   ArrowLeft,
   ExternalLink,
+  X,
 } from "lucide-react";
 import { WidgetPreview } from "@/components/platform/WidgetPreview";
 import type { AgentTemplate } from "@/lib/agents/templates";
@@ -108,12 +109,15 @@ export function OnboardingWizard({
     org?.welcome_message ?? "Hi! How can I help you today?",
   );
   const [logoUrl, setLogoUrl] = useState(org?.logo_url ?? "");
-  const [widgetPosition, setWidgetPosition] = useState<
-    "bottom-right" | "bottom-left"
-  >((org?.widget_position as "bottom-right" | "bottom-left") ?? "bottom-right");
+  const [widgetPosition, setWidgetPosition] = useState;
+  "bottom-right" |
+    ("bottom-left" >
+      ((org?.widget_position as "bottom-right" | "bottom-left") ??
+        "bottom-right"));
 
   const [embedTab, setEmbedTab] = useState<(typeof EMBED_TABS)[number]>("HTML");
   const [copied, setCopied] = useState(false);
+  const [showLiveTest, setShowLiveTest] = useState(false);
 
   // Fire-and-forget: persists the step server-side so closing the tab and
   // coming back to /dashboard resumes here instead of restarting at 0.
@@ -213,33 +217,14 @@ export function OnboardingWizard({
     });
   };
 
-  // Opens a genuinely blank page and injects the real embed snippet, so the
-  // user sees the widget work outside the dashboard too — not a simulation.
-  const openLiveTest = () => {
-    if (!embedSnippet) return;
-
-    // Building a real Blob URL and pointing window.open() straight at it
-    // (instead of opening a blank tab and injecting HTML into it after
-    // the fact with the deprecated document.write) is what makes this
-    // reliably pass through popup blockers — a window.open() call that
-    // resolves to an actual URL immediately is treated very differently
-    // than an empty about:blank tab written into afterward.
-    const html = `<!DOCTYPE html><html><head><title>Widget test</title></head><body style="font-family:sans-serif;padding:48px;color:#333"><h1>This is a blank page</h1><p>Your chat widget should appear in the corner below — this is exactly how it'll look on your real site.</p>${embedSnippet}</body></html>`;
-    const blob = new Blob([html], { type: "text/html" });
-    const blobUrl = URL.createObjectURL(blob);
-
-    const win = window.open(blobUrl, "_blank", "noopener,noreferrer");
-    if (!win) {
-      setError(
-        "Your browser blocked the popup — check the popup-blocker icon in your address bar and allow it for this site.",
-      );
-      return;
-    }
-
-    // Blob URLs are only valid for as long as the tab needs them to load;
-    // freeing it after a short delay avoids leaking memory on repeated tests.
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
-  };
+  // Rendered inline in a modal (see the iframe near the bottom of this
+  // component) instead of a new tab — window.open() was getting caught by
+  // ordinary popup blockers, which every real customer of this product
+  // would hit with no way to know why. An iframe needs no browser
+  // permission at all and works identically in every browser.
+  const liveTestHtml = embedSnippet
+    ? `<!DOCTYPE html><html><head><title>Widget test</title></head><body style="font-family:sans-serif;padding:48px;color:#333"><h1>This is a blank page</h1><p>Your chat widget should appear in the corner below — this is exactly how it'll look on your real site.</p>${embedSnippet}</body></html>`
+    : "";
 
   // Steps 1 (Train) and 2 (Behavior) embed the full Knowledge Base /
   // Guardrails settings components, which are built for full page width.
@@ -590,10 +575,10 @@ export function OnboardingWizard({
 
                       <button
                         type="button"
-                        onClick={openLiveTest}
+                        onClick={() => setShowLiveTest(true)}
                         className="mt-4 inline-flex items-center gap-1.5 font-body text-sm font-medium text-primary underline underline-offset-2"
                       >
-                        Test it live on a blank page
+                        Test it live
                         <ExternalLink className="h-3.5 w-3.5" />
                       </button>
 
@@ -673,6 +658,38 @@ export function OnboardingWizard({
           </div>
         )}
       </div>
+
+      {showLiveTest && liveTestHtml && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setShowLiveTest(false)}
+        >
+          <div
+            className="relative flex h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-card shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-none items-center justify-between border-b border-border px-4 py-3">
+              <p className="font-body text-sm font-medium text-foreground">
+                Live widget test
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowLiveTest(false)}
+                aria-label="Close"
+                className="rounded-md p-1.5 text-secondary-text hover:bg-background hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <iframe
+              title="Widget live test"
+              srcDoc={liveTestHtml}
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+              className="min-h-0 flex-1 border-0"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
