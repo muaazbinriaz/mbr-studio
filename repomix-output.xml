@@ -4127,197 +4127,6 @@ export function useMediaQuery(query: string): boolean {
 }
 </file>
 
-<file path="lib/agents/build-system-prompt.ts">
-/**
- * Single source of truth for turning an agent's guardrail settings into
- * system-prompt instructions. Two exports:
- *
- * - buildGuardrailInstructions(): just the guardrail text block. Pure
- *   function, no I/O — safe to import into a CLIENT component too, for
- *   the live preview in the Guardrails settings UI.
- * - buildSystemPrompt(): the full widget system prompt (knowledge base
- *   context + guardrails + fallback behavior). This is what
- *   app/api/widget/chat/route.ts calls, replacing
- *   lib/chat/agent-system-prompt.ts's buildAgentSystemPrompt().
- *
- * capture_leads is intentionally NOT translated into a prompt line here
- * — it doesn't change how the AI talks, it changes what the widget/API
- * do with a fallback reply (see LEAD_CAPTURE_TRIGGER_POINT in the widget
- * chat route, built in a later step of Prompt 03).
- */
-
-export interface GuardrailToggles {
-  no_competitors: boolean;
-  stay_on_topic: boolean;
-  no_pricing: boolean;
-  always_polite: boolean;
-  no_opinions: boolean;
-  push_contact: boolean;
-  no_refund_promise: boolean;
-  capture_leads: boolean;
-  custom_rules: string | null;
-  tone: string;
-  reply_language: string;
-}
-
-export const DEFAULT_GUARDRAILS: GuardrailToggles = {
-  no_competitors: false,
-  stay_on_topic: true,
-  no_pricing: false,
-  always_polite: true,
-  no_opinions: false,
-  push_contact: false,
-  no_refund_promise: false,
-  capture_leads: true,
-  custom_rules: null,
-  tone: "professional",
-  reply_language: "auto",
-};
-
-const TONE_DESCRIPTIONS: Record<string, string> = {
-  professional:
-    "Clear, competent, and businesslike. No slang, no emojis, no exclamation marks.",
-  friendly:
-    "Warm and approachable, like a helpful staff member. Contractions are fine; light warmth, no corporate stiffness.",
-  formal:
-    "Precise and respectful, keeping a professional distance. No contractions, no casual phrasing.",
-  casual:
-    "Relaxed and conversational, like texting a helpful friend. Contractions and simple words, short sentences.",
-  fun: "Upbeat and a little playful. An occasional tasteful emoji is fine, but never at the cost of clarity.",
-  concise:
-    "As short as possible while still fully answering. No pleasantries, no filler — get straight to the point.",
-};
-
-type RuleKey = keyof Pick<
-  GuardrailToggles,
-  | "stay_on_topic"
-  | "no_competitors"
-  | "no_pricing"
-  | "no_refund_promise"
-  | "no_opinions"
-  | "always_polite"
-  | "push_contact"
->;
-
-const GUARDRAIL_RULE_DEFS: {
-  key: RuleKey;
-  instruction: (orgName: string) => string;
-}[] = [
-  {
-    key: "stay_on_topic",
-    instruction: (orgName) =>
-      `Stay strictly on topics related to ${orgName}'s business. If a question is unrelated (general knowledge, other countries, other companies, coding help, personal advice, etc.), do NOT answer any part of it — not even a brief factual answer before redirecting. Just decline in one short sentence and redirect back to ${orgName}.`,
-  },
-  {
-    key: "no_competitors",
-    instruction: (orgName) =>
-      `Never mention, compare against, or recommend competing businesses, products, or brands — even if the visitor asks directly. Redirect to what ${orgName} offers instead.`,
-  },
-  {
-    key: "no_pricing",
-    instruction: () =>
-      `Never state a specific price, discount, or number, even if a price appears in your knowledge base context. If asked about pricing, say it depends on their specific needs and encourage them to contact the business directly.`,
-  },
-  {
-    key: "no_refund_promise",
-    instruction: () =>
-      `Never promise, guarantee, or commit to a refund, return, exchange, or any binding policy outcome. Say refund/return requests must go through the business directly.`,
-  },
-  {
-    key: "no_opinions",
-    instruction: () =>
-      `Never share personal opinions, preferences, or subjective judgments. Stick to stating facts about the business.`,
-  },
-  {
-    key: "always_polite",
-    instruction: () =>
-      `Always remain calm, courteous, and patient — even if the visitor is rude, frustrated, or repeats themselves. Never mirror hostility.`,
-  },
-  {
-    key: "push_contact",
-    instruction: () =>
-      `For anything beyond a simple factual question already answered by the knowledge base, actively encourage the visitor to reach out to the business directly.`,
-  },
-];
-
-function buildLanguageInstruction(replyLanguage: string): string {
-  if (!replyLanguage || replyLanguage === "auto") {
-    return "Reply in the same language the visitor writes in.";
-  }
-  return `Always reply in ${replyLanguage}, regardless of what language the visitor writes in.`;
-}
-
-export function buildGuardrailInstructions(
-  guardrails: GuardrailToggles | null,
-  orgName: string,
-): string {
-  const g = guardrails ?? DEFAULT_GUARDRAILS;
-  const lines: string[] = [];
-
-  for (const rule of GUARDRAIL_RULE_DEFS) {
-    if (g[rule.key]) {
-      lines.push(`- ${rule.instruction(orgName)}`);
-    }
-  }
-
-  const toneDescription =
-    TONE_DESCRIPTIONS[g.tone] ?? TONE_DESCRIPTIONS.professional;
-  lines.push(`- Tone: ${toneDescription}`);
-  lines.push(`- ${buildLanguageInstruction(g.reply_language)}`);
-
-  if (g.custom_rules && g.custom_rules.trim()) {
-    lines.push(`- ${g.custom_rules.trim()}`);
-  }
-
-  return lines.join("\n");
-}
-
-export interface BuildSystemPromptInput {
-  orgName: string;
-  retrievedChunks: string[];
-  guardrails: GuardrailToggles | null;
-  industryContext?: string | null;
-  channel?: "website" | "whatsapp" | "messenger" | "instagram";
-}
-
-export function buildSystemPrompt({
-  orgName,
-  retrievedChunks,
-  guardrails,
-  industryContext,
-  channel,
-}: BuildSystemPromptInput): string {
-  const contextBlock =
-    retrievedChunks.length > 0
-      ? retrievedChunks.map((chunk, i) => `[${i + 1}] ${chunk}`).join("\n\n")
-      : "(No matching knowledge base content was found for this question.)";
-
-  const guardrailBlock = buildGuardrailInstructions(guardrails, orgName);
-  const channelNote =
-    channel && channel !== "website"
-      ? "\n- You're replying inside a chat app (not a website widget) — keep replies short and conversational, avoid long paragraphs or markdown formatting that won't render well in a chat bubble."
-      : "";
-
-  return `You are the AI assistant for ${orgName}, embedded on their website via a chat widget.
-
-## Hard rules
-- If asked who built you, who made you, who created you, or who you work for — answer directly and confidently: you are the AI assistant built for ${orgName}. This is NOT a knowledge-base question; never give the "I don't have that on hand" fallback for it.
-- For questions about ${orgName}'s specific facts (prices, hours, policies, history, products) — answer ONLY using the "Knowledge base context" below. Do not invent facts that aren't present in the context.
-- If the knowledge base context doesn't cover a question that IS about ${orgName}'s business, say so plainly and offer to connect them with the team — never guess to fill the gap.
-- Never claim to be human.
-
-## Behavior rules for this agent
-${guardrailBlock}${channelNote}
-${industryContext ? `\n## Business context\n${industryContext}\n` : ""}
-## Knowledge base context
-${contextBlock}
-
-## Fallback behavior
-When the context doesn't cover a question, respond naturally along the lines of: "I don't have that on hand, but I can let the team know you're asking" — don't dress up a non-answer as if it were one.
-`;
-}
-</file>
-
 <file path="lib/agents/templates.ts">
 export interface AgentTemplate {
   id: string;
@@ -12901,6 +12710,201 @@ export const testimonials: Testimonial[] = [
 ];
 </file>
 
+<file path="lib/agents/build-system-prompt.ts">
+/**
+ * Single source of truth for turning an agent's guardrail settings into
+ * system-prompt instructions. Two exports:
+ *
+ * - buildGuardrailInstructions(): just the guardrail text block. Pure
+ *   function, no I/O — safe to import into a CLIENT component too, for
+ *   the live preview in the Guardrails settings UI.
+ * - buildSystemPrompt(): the full widget system prompt (knowledge base
+ *   context + guardrails + fallback behavior). This is what
+ *   app/api/widget/chat/route.ts calls, replacing
+ *   lib/chat/agent-system-prompt.ts's buildAgentSystemPrompt().
+ *
+ * capture_leads is intentionally NOT translated into a prompt line here
+ * — it doesn't change how the AI talks, it changes what the widget/API
+ * do with a fallback reply (see LEAD_CAPTURE_TRIGGER_POINT in the widget
+ * chat route, built in a later step of Prompt 03).
+ */
+
+export interface GuardrailToggles {
+  no_competitors: boolean;
+  stay_on_topic: boolean;
+  no_pricing: boolean;
+  always_polite: boolean;
+  no_opinions: boolean;
+  push_contact: boolean;
+  no_refund_promise: boolean;
+  capture_leads: boolean;
+  custom_rules: string | null;
+  tone: string;
+  reply_language: string;
+}
+
+export const DEFAULT_GUARDRAILS: GuardrailToggles = {
+  no_competitors: false,
+  stay_on_topic: true,
+  no_pricing: false,
+  always_polite: true,
+  no_opinions: false,
+  push_contact: false,
+  no_refund_promise: false,
+  capture_leads: true,
+  custom_rules: null,
+  tone: "professional",
+  reply_language: "auto",
+};
+
+const TONE_DESCRIPTIONS: Record<string, string> = {
+  professional:
+    "Clear, competent, and businesslike. No slang, no emojis, no exclamation marks.",
+  friendly:
+    "Warm and approachable, like a helpful staff member. Contractions are fine; light warmth, no corporate stiffness.",
+  formal:
+    "Precise and respectful, keeping a professional distance. No contractions, no casual phrasing.",
+  casual:
+    "Relaxed and conversational, like texting a helpful friend. Contractions and simple words, short sentences.",
+  fun: "Upbeat and a little playful. An occasional tasteful emoji is fine, but never at the cost of clarity.",
+  concise:
+    "As short as possible while still fully answering. No pleasantries, no filler — get straight to the point.",
+};
+
+type RuleKey = keyof Pick<
+  GuardrailToggles,
+  | "stay_on_topic"
+  | "no_competitors"
+  | "no_pricing"
+  | "no_refund_promise"
+  | "no_opinions"
+  | "always_polite"
+  | "push_contact"
+>;
+
+const GUARDRAIL_RULE_DEFS: {
+  key: RuleKey;
+  instruction: (orgName: string) => string;
+}[] = [
+  {
+    key: "stay_on_topic",
+    instruction: (orgName) =>
+      `Stay strictly on topics related to ${orgName}'s business. If a question is unrelated (general knowledge, other countries, other companies, coding help, personal advice, etc.), do NOT answer any part of it — not even a brief factual answer before redirecting. Just decline in one short sentence and redirect back to ${orgName}.`,
+  },
+  {
+    key: "no_competitors",
+    instruction: (orgName) =>
+      `Never mention, compare against, or recommend competing businesses, products, or brands — even if the visitor asks directly. Redirect to what ${orgName} offers instead.`,
+  },
+  {
+    key: "no_pricing",
+    instruction: () =>
+      `Never state a specific price, discount, or number, even if a price appears in your knowledge base context. If asked about pricing, say it depends on their specific needs and encourage them to contact the business directly.`,
+  },
+  {
+    key: "no_refund_promise",
+    instruction: () =>
+      `Never promise, guarantee, or commit to a refund, return, exchange, or any binding policy outcome. Say refund/return requests must go through the business directly.`,
+  },
+  {
+    key: "no_opinions",
+    instruction: () =>
+      `Never share personal opinions, preferences, or subjective judgments. Stick to stating facts about the business.`,
+  },
+  {
+    key: "always_polite",
+    instruction: () =>
+      `Always remain calm, courteous, and patient — even if the visitor is rude, frustrated, or repeats themselves. Never mirror hostility.`,
+  },
+  {
+    key: "push_contact",
+    instruction: () =>
+      `For anything beyond a simple factual question already answered by the knowledge base, actively encourage the visitor to reach out to the business directly.`,
+  },
+];
+
+function buildLanguageInstruction(replyLanguage: string): string {
+  if (!replyLanguage || replyLanguage === "auto") {
+    return "Reply in the same language the visitor writes in.";
+  }
+  return `Always reply in ${replyLanguage}, regardless of what language the visitor writes in.`;
+}
+
+export function buildGuardrailInstructions(
+  guardrails: GuardrailToggles | null,
+  orgName: string,
+): string {
+  const g = guardrails ?? DEFAULT_GUARDRAILS;
+  const lines: string[] = [];
+
+  for (const rule of GUARDRAIL_RULE_DEFS) {
+    if (g[rule.key]) {
+      lines.push(`- ${rule.instruction(orgName)}`);
+    }
+  }
+
+  const toneDescription =
+    TONE_DESCRIPTIONS[g.tone] ?? TONE_DESCRIPTIONS.professional;
+  lines.push(`- Tone: ${toneDescription}`);
+  lines.push(`- ${buildLanguageInstruction(g.reply_language)}`);
+
+  if (g.custom_rules && g.custom_rules.trim()) {
+    lines.push(`- ${g.custom_rules.trim()}`);
+  }
+
+  return lines.join("\n");
+}
+
+export interface BuildSystemPromptInput {
+  orgName: string;
+  retrievedChunks: string[];
+  guardrails: GuardrailToggles | null;
+  industryContext?: string | null;
+  channel?: "website" | "whatsapp" | "messenger" | "instagram";
+}
+
+export function buildSystemPrompt({
+  orgName,
+  retrievedChunks,
+  guardrails,
+  industryContext,
+  channel,
+}: BuildSystemPromptInput): string {
+  const contextBlock =
+    retrievedChunks.length > 0
+      ? retrievedChunks.map((chunk, i) => `[${i + 1}] ${chunk}`).join("\n\n")
+      : "(No matching knowledge base content was found for this question.)";
+
+  const guardrailBlock = buildGuardrailInstructions(guardrails, orgName);
+  // Every channel this agent replies through — the website widget bubble
+  // AND WhatsApp/Messenger/Instagram — renders replies as plain text, not
+  // parsed markdown. Without this instruction the model defaults to
+  // markdown-style structure (**bold**, "- " bullets, headers) for
+  // anything list-like, which shows up to real visitors as literal
+  // asterisks and dashes instead of formatting.
+  const channelNote =
+    "\n- Reply in plain text only — no markdown (no **, no #, no bullet dashes). Use short sentences or numbered points in prose instead of lists.";
+
+  return `You are the AI assistant for ${orgName}, embedded on their website via a chat widget.
+
+## Hard rules
+- If asked who built you, who made you, who created you, or who you work for — answer directly and confidently: you are the AI assistant built for ${orgName}. This is NOT a knowledge-base question; never give the "I don't have that on hand" fallback for it.
+- For questions about ${orgName}'s specific facts (prices, hours, policies, history, products) — answer ONLY using the "Knowledge base context" below. Do not invent facts that aren't present in the context.
+- If the knowledge base context doesn't cover a question that IS about ${orgName}'s business, say so plainly and offer to connect them with the team — never guess to fill the gap.
+- Never claim to be human.
+
+## Behavior rules for this agent
+${guardrailBlock}${channelNote}
+${industryContext ? `\n## Business context\n${industryContext}\n` : ""}
+## Knowledge base context
+${contextBlock}
+
+## Fallback behavior
+When the context doesn't cover a question, respond naturally along the lines of: "I don't have that on hand, but I can let the team know you're asking" — don't dress up a non-answer as if it were one.
+`;
+}
+</file>
+
 <file path="lib/analytics/queries.ts">
 import type { createClient } from "@/lib/supabase/server";
 
@@ -17484,362 +17488,6 @@ export async function embedText(text: string): Promise<number[]> {
 }
 </file>
 
-<file path="lib/knowledge-base/scrape.ts">
-import * as cheerio from "cheerio";
-import { isIP } from "node:net";
-import { lookup as dnsLookup } from "node:dns/promises";
-
-const USER_AGENT = "MBRStudioBot/1.0 (+https://mbrstudio.dev)";
-const REQUEST_TIMEOUT_MS = 8000;
-const MAX_DISCOVERED_PAGES = 18;
-const MAX_REDIRECTS = 5;
-const PRIORITY_PATH_HINTS = [
-  "/about",
-  "/services",
-  "/pricing",
-  "/faq",
-  "/contact",
-];
-
-export interface DiscoveredPage {
-  url: string;
-  title: string;
-}
-
-interface RobotsRules {
-  disallowedPaths: string[];
-}
-
-/**
- * SSRF guard. Rejects any URL whose hostname is not http/https, or whose
- * resolved IP falls in a loopback / private / link-local / reserved range —
- * this is what blocks cloud metadata endpoints (169.254.169.254), localhost,
- * and internal 10.x/172.16-31.x/192.168.x addresses from being fetched by
- * this server-side scraper on behalf of an authenticated org member.
- */
-function isBlockedIp(ip: string): boolean {
-  const version = isIP(ip);
-  if (version === 4) {
-    const parts = ip.split(".").map(Number);
-    const [a, b] = parts;
-    if (a === 127) return true; // loopback
-    if (a === 10) return true; // private
-    if (a === 172 && b >= 16 && b <= 31) return true; // private
-    if (a === 192 && b === 168) return true; // private
-    if (a === 169 && b === 254) return true; // link-local / cloud metadata
-    if (a === 0) return true; // "this" network
-    if (a >= 224) return true; // multicast/reserved
-    return false;
-  }
-  if (version === 6) {
-    const lower = ip.toLowerCase();
-    if (lower === "::1") return true; // loopback
-    if (lower.startsWith("fe80:")) return true; // link-local
-    if (lower.startsWith("fc") || lower.startsWith("fd")) return true; // unique local
-    if (lower.startsWith("::ffff:")) {
-      // IPv4-mapped IPv6 — re-check the embedded v4 address
-      const mapped = lower.replace("::ffff:", "");
-      return isIP(mapped) === 4 ? isBlockedIp(mapped) : true;
-    }
-    return false;
-  }
-  return true; // couldn't parse — fail closed
-}
-
-async function assertSafeUrl(urlString: string): Promise<void> {
-  let parsed: URL;
-  try {
-    parsed = new URL(urlString);
-  } catch {
-    throw new Error("Invalid URL.");
-  }
-
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("Only http/https URLs are allowed.");
-  }
-
-  const hostname = parsed.hostname.toLowerCase();
-  if (hostname === "localhost" || hostname.endsWith(".localhost")) {
-    throw new Error("Requests to localhost are not allowed.");
-  }
-
-  // If the hostname is already a literal IP, check it directly.
-  if (isIP(hostname)) {
-    if (isBlockedIp(hostname)) {
-      throw new Error(
-        "Requests to internal or private addresses are not allowed.",
-      );
-    }
-    return;
-  }
-
-  // Otherwise resolve DNS ourselves and check every returned address —
-  // this is what catches DNS rebinding (a public hostname that resolves
-  // to a private IP either now or on a subsequent lookup).
-  let addresses: { address: string }[];
-  try {
-    addresses = await dnsLookup(hostname, { all: true });
-  } catch {
-    throw new Error(`Could not resolve host: ${hostname}`);
-  }
-
-  if (addresses.length === 0 || addresses.some((a) => isBlockedIp(a.address))) {
-    throw new Error(
-      "Requests to internal or private addresses are not allowed.",
-    );
-  }
-}
-
-/**
- * Fetch with the SSRF guard applied on the initial URL and re-applied on
- * every redirect hop. Redirects are followed manually (redirect: "manual")
- * so a public URL that later 302s to an internal address can't bypass the
- * check the way it would under fetch's default automatic redirect handling.
- */
-async function fetchWithTimeout(url: string, timeoutMs = REQUEST_TIMEOUT_MS) {
-  let currentUrl = url;
-
-  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    await assertSafeUrl(currentUrl);
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    let res: Response;
-    try {
-      res = await fetch(currentUrl, {
-        signal: controller.signal,
-        headers: { "User-Agent": USER_AGENT },
-        redirect: "manual",
-      });
-    } finally {
-      clearTimeout(timer);
-    }
-
-    const isRedirect = res.status >= 300 && res.status < 400;
-    const location = res.headers.get("location");
-    if (!isRedirect || !location) return res;
-
-    currentUrl = new URL(location, currentUrl).href;
-  }
-
-  throw new Error("Too many redirects.");
-}
-
-/**
- * Minimal robots.txt parser — good enough for the small-business sites
- * this feature targets. Reads the block matching our bot's user-agent
- * if present, otherwise the `*` block, and collects every Disallow
- * path from that block. Doesn't handle every edge case of the spec
- * (e.g. multiple User-agent lines sharing one rule block) but that's
- * rare in practice and failing open (treating unparseable robots.txt
- * as "nothing disallowed") is the safer default than blocking a crawl
- * over a parsing gap.
- */
-async function fetchRobotsRules(origin: string): Promise<RobotsRules> {
-  try {
-    const res = await fetchWithTimeout(`${origin}/robots.txt`, 5000);
-    if (!res.ok) return { disallowedPaths: [] };
-    const body = await res.text();
-
-    const lines = body.split("\n").map((l) => l.trim());
-    let matchesUs = false;
-    let matchesWildcard = false;
-    const wildcardDisallows: string[] = [];
-    const usDisallows: string[] = [];
-
-    for (const rawLine of lines) {
-      const line = rawLine.split("#")[0].trim();
-      if (!line) continue;
-
-      const [rawKey, ...rest] = line.split(":");
-      const key = rawKey.trim().toLowerCase();
-      const value = rest.join(":").trim();
-
-      if (key === "user-agent") {
-        const agent = value.toLowerCase();
-        matchesWildcard = agent === "*";
-        matchesUs = agent.includes("mbrstudiobot");
-        continue;
-      }
-
-      if (key === "disallow" && value) {
-        if (matchesUs) usDisallows.push(value);
-        else if (matchesWildcard) wildcardDisallows.push(value);
-      }
-    }
-
-    return {
-      disallowedPaths: usDisallows.length > 0 ? usDisallows : wildcardDisallows,
-    };
-  } catch {
-    return { disallowedPaths: [] };
-  }
-}
-
-function isDisallowed(pathname: string, rules: RobotsRules): boolean {
-  return rules.disallowedPaths.some(
-    (disallowed) => disallowed !== "" && pathname.startsWith(disallowed),
-  );
-}
-
-function isContentLink(href: string): boolean {
-  if (!href) return false;
-  const lower = href.toLowerCase();
-  if (lower.startsWith("mailto:") || lower.startsWith("tel:")) return false;
-  if (lower.startsWith("#")) return false;
-  if (/\.(pdf|jpe?g|png|gif|svg|zip|docx?|xlsx?|mp4|mp3)$/.test(lower))
-    return false;
-  return true;
-}
-
-async function tryDiscoverViaSitemap(
-  origin: string,
-  rules: RobotsRules,
-): Promise<DiscoveredPage[] | null> {
-  try {
-    const res = await fetchWithTimeout(`${origin}/sitemap.xml`, 6000);
-    if (!res.ok) return null;
-    const xml = await res.text();
-    const $ = cheerio.load(xml, { xmlMode: true });
-
-    const urls: string[] = [];
-    $("url > loc").each((_, el) => {
-      const loc = $(el).text().trim();
-      if (loc) urls.push(loc);
-    });
-    if (urls.length === 0) return null;
-
-    const filtered = urls
-      .filter((url) => {
-        try {
-          const parsed = new URL(url);
-          return (
-            parsed.origin === origin && !isDisallowed(parsed.pathname, rules)
-          );
-        } catch {
-          return false;
-        }
-      })
-      .slice(0, MAX_DISCOVERED_PAGES);
-
-    return filtered.map((url) => ({ url, title: url }));
-  } catch {
-    return null;
-  }
-}
-
-export async function discoverPages(
-  rootUrl: string,
-): Promise<DiscoveredPage[]> {
-  const root = new URL(rootUrl);
-  const origin = root.origin;
-  const rules = await fetchRobotsRules(origin);
-
-  const viaSitemap = await tryDiscoverViaSitemap(origin, rules);
-  if (viaSitemap && viaSitemap.length > 0) return viaSitemap;
-
-  if (isDisallowed(root.pathname, rules)) return [];
-
-  const res = await fetchWithTimeout(rootUrl);
-  if (!res.ok)
-    throw new Error(`Could not fetch ${rootUrl} (status ${res.status}).`);
-
-  const html = await res.text();
-  const $ = cheerio.load(html);
-
-  const seen = new Set<string>([root.href]);
-  const candidates: DiscoveredPage[] = [
-    { url: root.href, title: $("title").first().text().trim() || root.href },
-  ];
-
-  $("a[href]").each((_, el) => {
-    const href = $(el).attr("href");
-    if (!href || !isContentLink(href)) return;
-
-    let resolved: URL;
-    try {
-      resolved = new URL(href, origin);
-    } catch {
-      return;
-    }
-
-    if (resolved.origin !== origin) return;
-    if (isDisallowed(resolved.pathname, rules)) return;
-
-    const normalized = resolved.href.split("#")[0];
-    if (seen.has(normalized)) return;
-    seen.add(normalized);
-
-    candidates.push({
-      url: normalized,
-      title: $(el).text().trim() || normalized,
-    });
-  });
-
-  const prioritized = candidates.filter((page) =>
-    PRIORITY_PATH_HINTS.some((hint) =>
-      new URL(page.url).pathname.toLowerCase().includes(hint),
-    ),
-  );
-  const rest = candidates.filter((page) => !prioritized.includes(page));
-
-  return [...prioritized, ...rest].slice(0, MAX_DISCOVERED_PAGES);
-}
-
-// Elements that are structurally never real page content. Cookie/consent
-// banners and skip-links in particular live OUTSIDE <nav>/<header>/<footer>
-// on most sites (including this one — see CookieConsent and SkipLink in
-// app/layout.tsx, both siblings of <main>, not nested inside it), so
-// removing just nav/footer/header misses them entirely. Matched
-// heuristically since every consent-banner library names things
-// differently and there's no single semantic tag for "cookie banner".
-const BOILERPLATE_SELECTORS = [
-  "script",
-  "style",
-  "noscript",
-  "nav",
-  "header",
-  "footer",
-  "a[href^='#main']",
-  ".sr-only",
-  "[class*='skip-link' i]",
-  "[class*='cookie' i]",
-  "[id*='cookie' i]",
-  "[class*='consent' i]",
-  "[id*='consent' i]",
-  "[aria-label*='cookie' i]",
-  "[role='banner']",
-  "[role='navigation']",
-].join(", ");
-
-export async function scrapePage(
-  url: string,
-): Promise<{ title: string; text: string }> {
-  const res = await fetchWithTimeout(url);
-  if (!res.ok)
-    throw new Error(`Could not fetch ${url} (status ${res.status}).`);
-
-  const html = await res.text();
-  const $ = cheerio.load(html);
-  $(BOILERPLATE_SELECTORS).remove();
-
-  const title = $("title").first().text().trim() || url;
-
-  // Prefer the page's actual content region over the whole <body>. Sites
-  // built with a conventional layout (including this one — see
-  // <main id="main-content"> in app/(marketing)/layout.tsx) wrap real
-  // content in <main>, with nav, header CTAs, and cookie banners rendered
-  // as siblings outside it. Using <main> when present skips all of that
-  // boilerplate at the source instead of trying to blacklist every
-  // possible container after the fact. Falls back to <body> for pages
-  // that don't use <main> (e.g. a client's non-Next.js site).
-  const contentRoot = $("main").first().length ? $("main").first() : $("body");
-  const text = contentRoot.text().replace(/\s+/g, " ").trim();
-
-  return { title, text };
-}
-</file>
-
 <file path="lib/seo/schemas.ts">
 import { siteConfig } from "@/config/site";
 import type { Service } from "@/types";
@@ -19656,425 +19304,6 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
-}
-</file>
-
-<file path="app/api/widget/chat/route.ts">
-import { NextRequest, NextResponse } from "next/server";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { streamText } from "ai";
-
-import { createAdminClient } from "@/lib/supabase/admin";
-import { embedText } from "@/lib/knowledge-base/embed";
-import {
-  buildSystemPrompt,
-  type GuardrailToggles,
-} from "@/lib/agents/build-system-prompt";
-import { withLeadCaptureMarker } from "@/lib/chat/lead-capture";
-import { checkRateLimitFor } from "@/lib/rate-limit";
-import { widgetChatSchema } from "@/lib/validations/widget-chat";
-
-export const runtime = "nodejs";
-
-const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
-const WIDGET_MODEL = "openrouter/free";
-const FALLBACK_MODELS = [
-  "meta-llama/llama-3.3-70b-instruct:free",
-  "deepseek/deepseek-r1:free",
-  "qwen/qwen-2.5-7b-instruct:free",
-];
-
-const WIDGET_RATE_WINDOW_MS = 60_000;
-const WIDGET_MAX_MESSAGES_PER_ORG_PER_MINUTE = 20;
-
-export async function POST(req: NextRequest) {
-  const origin = req.headers.get("origin");
-  const cors = (extra?: Record<string, string>) => ({
-    "Access-Control-Allow-Origin": origin ?? "*",
-    ...extra,
-  });
-  const fail = (
-    status: number,
-    message: string,
-    extra?: Record<string, string>,
-  ) => NextResponse.json({ error: message }, { status, headers: cors(extra) });
-
-  let rawBody: unknown;
-  try {
-    rawBody = await req.json();
-  } catch {
-    return fail(400, "Invalid JSON body.");
-  }
-
-  const parsed = widgetChatSchema.safeParse(rawBody);
-  if (!parsed.success) {
-    return fail(400, "Invalid request.");
-  }
-  const { publicKey, visitorId, message, pageUrl } = parsed.data;
-
-  const supabase = createAdminClient();
-
-  // -- Resolve + verify the embed key. -------------------------------------
-  const { data: embedKey } = await supabase
-    .from("embed_keys")
-    .select("agent_id, organization_id, revoked_at")
-    .eq("public_key", publicKey)
-    .maybeSingle();
-
-  if (!embedKey || embedKey.revoked_at) {
-    return fail(404, "Invalid or revoked client key.");
-  }
-  const agentId = embedKey.agent_id;
-  const organizationId = embedKey.organization_id;
-
-  const { data: org } = await supabase
-    .from("organizations")
-    .select(
-      "name, slug, allowed_domains, monthly_message_limit, primary_domain, domain_verify_status",
-    )
-    .eq("id", organizationId)
-    .maybeSingle();
-
-  if (!org) {
-    return fail(404, "Organization not found.");
-  }
-
-  // -- Domain checks (Prompt 03, Section 6). -------------------------------
-  // Before verification (or no primary_domain set yet): fall back to the
-  // original allowlist-only behavior, so a client can test the widget
-  // before finishing DNS setup.
-  if (org.domain_verify_status === "suspended") {
-    return fail(
-      403,
-      "This domain's verification has lapsed. Please re-verify in your dashboard.",
-    );
-  }
-
-  if (org.domain_verify_status === "verified" && org.primary_domain) {
-    const isVerifiedOrigin = origin
-      ? originMatchesDomain(origin, org.primary_domain)
-      : false;
-    const isAllowlisted =
-      org.allowed_domains && org.allowed_domains.length > 0 && origin
-        ? org.allowed_domains.some((d: string) =>
-            originMatchesDomain(origin, d),
-          )
-        : false;
-
-    if (!isVerifiedOrigin && !isAllowlisted) {
-      return fail(
-        403,
-        "This domain is not authorized to use this chat widget.",
-      );
-    }
-  } else if (org.allowed_domains && org.allowed_domains.length > 0) {
-    const isAllowed = origin
-      ? org.allowed_domains.some((d: string) => originMatchesDomain(origin, d))
-      : false;
-    if (!isAllowed) {
-      return fail(
-        403,
-        "This domain is not authorized to use this chat widget.",
-      );
-    }
-  }
-
-  // -- Rate-limit per organization. ----------------------------------------
-  const { allowed, retryAfterSeconds } = checkRateLimitFor(
-    `widget-org:${organizationId}`,
-    {
-      windowMs: WIDGET_RATE_WINDOW_MS,
-      maxRequests: WIDGET_MAX_MESSAGES_PER_ORG_PER_MINUTE,
-    },
-  );
-  if (!allowed) {
-    return fail(
-      429,
-      "This chat is receiving a lot of traffic right now — please try again shortly.",
-      {
-        "Retry-After": String(retryAfterSeconds ?? 30),
-      },
-    );
-  }
-
-  // -- Monthly message limit. ----------------------------------------------
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
-
-  const { count: messagesThisMonth } = await supabase
-    .from("messages")
-    .select("id", { count: "exact", head: true })
-    .eq("organization_id", organizationId)
-    .gte("created_at", monthStart.toISOString());
-
-  if ((messagesThisMonth ?? 0) >= org.monthly_message_limit) {
-    return NextResponse.json(
-      {
-        limitReached: true,
-        reply:
-          "This business has reached its chat limit this month — please use their contact form instead.",
-      },
-      { headers: cors() },
-    );
-  }
-
-  // -- Guardrails + industry context. --------------------------------------
-  const { data: guardrails } = await supabase
-    .from("agent_guardrails")
-    .select(
-      "no_competitors, stay_on_topic, no_pricing, always_polite, no_opinions, push_contact, no_refund_promise, capture_leads, custom_rules, tone, reply_language",
-    )
-    .eq("agent_id", agentId)
-    .maybeSingle<GuardrailToggles>();
-
-  const { data: agentRow } = await supabase
-    .from("agents")
-    .select("system_prompt")
-    .eq("id", agentId)
-    .maybeSingle();
-
-  // -- Embed + vector search, scoped to the VERIFIED agentId only. ---------
-  let matches: { id: string; content: string; similarity: number }[] = [];
-  try {
-    const queryEmbedding = await embedText(message);
-    const { data: matchRows, error: matchError } = await supabase.rpc(
-      "match_knowledge_base_chunks",
-      {
-        query_embedding: queryEmbedding,
-        target_agent_id: agentId,
-        match_count: 5,
-      },
-    );
-    if (matchError) throw new Error(matchError.message);
-    matches = matchRows ?? [];
-  } catch (err) {
-    console.error("[widget/chat] embedding/vector search failed:", err);
-  }
-
-  const systemPrompt = buildSystemPrompt({
-    orgName: org.name,
-    retrievedChunks: matches.map((m) => m.content),
-    guardrails: guardrails ?? null,
-    industryContext: agentRow?.system_prompt ?? null,
-  });
-
-  // -- Unique-visitor tracking for analytics. ------------------------------
-  const today = new Date().toISOString().slice(0, 10);
-  const { data: visitorLogRows, error: visitorLogError } = await supabase
-    .from("agent_daily_visitors")
-    .upsert(
-      {
-        agent_id: agentId,
-        date: today,
-        visitor_id: visitorId,
-        channel: "website",
-      },
-      {
-        onConflict: "agent_id,date,visitor_id,channel",
-        ignoreDuplicates: true,
-      },
-    )
-    .select();
-
-  if (visitorLogError) {
-    console.error("[widget/chat] visitor log failed:", visitorLogError);
-  }
-  const isNewVisitorToday =
-    !visitorLogError && (visitorLogRows?.length ?? 0) > 0;
-
-  // -- Find-or-create the conversation. ------------------------------------
-  const { data: existingConversation } = await supabase
-    .from("conversations")
-    .select("id, lead_capture_shown")
-    .eq("agent_id", agentId)
-    .eq("visitor_id", visitorId)
-    .eq("channel", "website")
-    .order("last_message_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  let conversationId = existingConversation?.id as string | undefined;
-  let isNewConversation = false;
-  const leadCaptureAlreadyShown =
-    existingConversation?.lead_capture_shown ?? false;
-
-  if (!conversationId) {
-    const { data: newConversation, error: convError } = await supabase
-      .from("conversations")
-      .insert({
-        agent_id: agentId,
-        organization_id: organizationId,
-        channel: "website",
-        visitor_id: visitorId,
-        visitor_page_url: pageUrl || null,
-      })
-      .select("id")
-      .single();
-
-    if (convError || !newConversation) {
-      console.error("[widget/chat] failed to create conversation:", convError);
-      return fail(500, "Something went wrong starting the conversation.");
-    }
-    conversationId = newConversation.id;
-    isNewConversation = true;
-  }
-
-  await supabase.from("messages").insert({
-    conversation_id: conversationId,
-    agent_id: agentId,
-    organization_id: organizationId,
-    role: "user",
-    content: message,
-  });
-
-  if (isNewConversation) {
-    await bumpDailyAnalytics(supabase, agentId, organizationId, {
-      total_conversations: 1,
-    });
-    await supabase.from("webhook_events").insert({
-      organization_id: organizationId,
-      event_type: "conversation.started",
-      payload: { conversation_id: conversationId, channel: "website" },
-    });
-  }
-
-  // -- Call the LLM. --------------------------------------------------------
-  const model = openrouter(WIDGET_MODEL, {
-    extraBody: { models: FALLBACK_MODELS },
-  });
-
-  const result = streamText({
-    model,
-    system: systemPrompt,
-    messages: [{ role: "user", content: message }],
-    maxOutputTokens: 500,
-    onFinish: async ({ text }) => {
-      await supabase.from("messages").insert({
-        conversation_id: conversationId,
-        agent_id: agentId,
-        organization_id: organizationId,
-        role: "assistant",
-        content: text,
-      });
-      await supabase
-        .from("conversations")
-        .update({ last_message_at: new Date().toISOString() })
-        .eq("id", conversationId as string);
-
-      await bumpDailyAnalytics(supabase, agentId, organizationId, {
-        total_messages: 2,
-        resolved_by_ai: 1,
-        unique_visitors: isNewVisitorToday ? 1 : 0,
-      });
-    },
-  });
-
-  // -- Stream back, wrapped with the lead-capture sentinel marker. ---------
-  const shouldCheckLeadCapture =
-    (guardrails?.capture_leads ?? true) && !leadCaptureAlreadyShown;
-
-  const baseResponse = result.toTextStreamResponse({
-    headers: cors({
-      "X-Conversation-Id": conversationId as string,
-      "Access-Control-Expose-Headers": "X-Conversation-Id",
-    }),
-  });
-
-  const wrappedBody = withLeadCaptureMarker(
-    baseResponse.body as ReadableStream<Uint8Array>,
-    shouldCheckLeadCapture,
-    async () => {
-      await supabase
-        .from("conversations")
-        .update({ lead_capture_shown: true })
-        .eq("id", conversationId as string);
-    },
-  );
-
-  return new Response(wrappedBody, {
-    status: baseResponse.status,
-    headers: baseResponse.headers,
-  });
-}
-
-export async function OPTIONS(req: NextRequest) {
-  const origin = req.headers.get("origin");
-  return new NextResponse(null, {
-    status: 204,
-    headers: {
-      "Access-Control-Allow-Origin": origin ?? "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-    },
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function originMatchesDomain(originUrl: string, domain: string): boolean {
-  try {
-    const { hostname } = new URL(originUrl);
-    const cleanDomain = domain.trim().toLowerCase();
-    if (cleanDomain.startsWith("*.")) {
-      const base = cleanDomain.slice(2);
-      return hostname === base || hostname.endsWith(`.${base}`);
-    }
-    return hostname === cleanDomain || hostname.endsWith(`.${cleanDomain}`);
-  } catch {
-    return false;
-  }
-}
-
-async function bumpDailyAnalytics(
-  supabase: ReturnType<typeof createAdminClient>,
-  agentId: string,
-  organizationId: string,
-  fields: Partial<{
-    total_conversations: number;
-    total_messages: number;
-    resolved_by_ai: number;
-    unique_visitors: number;
-  }>,
-) {
-  const today = new Date().toISOString().slice(0, 10);
-
-  const { data: existing } = await supabase
-    .from("agent_daily_analytics")
-    .select(
-      "id, total_conversations, total_messages, resolved_by_ai, unique_visitors",
-    )
-    .eq("agent_id", agentId)
-    .eq("date", today)
-    .eq("channel", "website")
-    .maybeSingle();
-
-  if (!existing) {
-    await supabase.from("agent_daily_analytics").insert({
-      agent_id: agentId,
-      organization_id: organizationId,
-      date: today,
-      channel: "website",
-      total_conversations: fields.total_conversations ?? 0,
-      total_messages: fields.total_messages ?? 0,
-      resolved_by_ai: fields.resolved_by_ai ?? 0,
-      unique_visitors: fields.unique_visitors ?? 0,
-    });
-    return;
-  }
-
-  await supabase
-    .from("agent_daily_analytics")
-    .update({
-      total_conversations:
-        existing.total_conversations + (fields.total_conversations ?? 0),
-      total_messages: existing.total_messages + (fields.total_messages ?? 0),
-      resolved_by_ai: existing.resolved_by_ai + (fields.resolved_by_ai ?? 0),
-      unique_visitors: existing.unique_visitors + (fields.unique_visitors ?? 0),
-    })
-    .eq("id", existing.id);
 }
 </file>
 
@@ -22025,6 +21254,385 @@ export async function switchActiveOrg(organizationId: string) {
   });
 
   redirect("/dashboard");
+}
+</file>
+
+<file path="lib/knowledge-base/scrape.ts">
+import * as cheerio from "cheerio";
+import { isIP } from "node:net";
+import { lookup as dnsLookup } from "node:dns/promises";
+
+const USER_AGENT = "MBRStudioBot/1.0 (+https://mbrstudio.dev)";
+const REQUEST_TIMEOUT_MS = 8000;
+const MAX_DISCOVERED_PAGES = 18;
+const MAX_REDIRECTS = 5;
+const PRIORITY_PATH_HINTS = [
+  "/about",
+  "/services",
+  "/pricing",
+  "/faq",
+  "/contact",
+];
+
+export interface DiscoveredPage {
+  url: string;
+  title: string;
+}
+
+interface RobotsRules {
+  disallowedPaths: string[];
+}
+
+/**
+ * SSRF guard. Rejects any URL whose hostname is not http/https, or whose
+ * resolved IP falls in a loopback / private / link-local / reserved range —
+ * this is what blocks cloud metadata endpoints (169.254.169.254), localhost,
+ * and internal 10.x/172.16-31.x/192.168.x addresses from being fetched by
+ * this server-side scraper on behalf of an authenticated org member.
+ */
+function isBlockedIp(ip: string): boolean {
+  const version = isIP(ip);
+  if (version === 4) {
+    const parts = ip.split(".").map(Number);
+    const [a, b] = parts;
+    if (a === 127) return true; // loopback
+    if (a === 10) return true; // private
+    if (a === 172 && b >= 16 && b <= 31) return true; // private
+    if (a === 192 && b === 168) return true; // private
+    if (a === 169 && b === 254) return true; // link-local / cloud metadata
+    if (a === 0) return true; // "this" network
+    if (a >= 224) return true; // multicast/reserved
+    return false;
+  }
+  if (version === 6) {
+    const lower = ip.toLowerCase();
+    if (lower === "::1") return true; // loopback
+    if (lower.startsWith("fe80:")) return true; // link-local
+    if (lower.startsWith("fc") || lower.startsWith("fd")) return true; // unique local
+    if (lower.startsWith("::ffff:")) {
+      // IPv4-mapped IPv6 — re-check the embedded v4 address
+      const mapped = lower.replace("::ffff:", "");
+      return isIP(mapped) === 4 ? isBlockedIp(mapped) : true;
+    }
+    return false;
+  }
+  return true; // couldn't parse — fail closed
+}
+
+async function assertSafeUrl(urlString: string): Promise<void> {
+  let parsed: URL;
+  try {
+    parsed = new URL(urlString);
+  } catch {
+    throw new Error("Invalid URL.");
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Only http/https URLs are allowed.");
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  if (hostname === "localhost" || hostname.endsWith(".localhost")) {
+    throw new Error("Requests to localhost are not allowed.");
+  }
+
+  // If the hostname is already a literal IP, check it directly.
+  if (isIP(hostname)) {
+    if (isBlockedIp(hostname)) {
+      throw new Error(
+        "Requests to internal or private addresses are not allowed.",
+      );
+    }
+    return;
+  }
+
+  // Otherwise resolve DNS ourselves and check every returned address —
+  // this is what catches DNS rebinding (a public hostname that resolves
+  // to a private IP either now or on a subsequent lookup).
+  let addresses: { address: string }[];
+  try {
+    addresses = await dnsLookup(hostname, { all: true });
+  } catch {
+    throw new Error(`Could not resolve host: ${hostname}`);
+  }
+
+  if (addresses.length === 0 || addresses.some((a) => isBlockedIp(a.address))) {
+    throw new Error(
+      "Requests to internal or private addresses are not allowed.",
+    );
+  }
+}
+
+/**
+ * Fetch with the SSRF guard applied on the initial URL and re-applied on
+ * every redirect hop. Redirects are followed manually (redirect: "manual")
+ * so a public URL that later 302s to an internal address can't bypass the
+ * check the way it would under fetch's default automatic redirect handling.
+ */
+async function fetchWithTimeout(url: string, timeoutMs = REQUEST_TIMEOUT_MS) {
+  let currentUrl = url;
+
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    await assertSafeUrl(currentUrl);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let res: Response;
+    try {
+      res = await fetch(currentUrl, {
+        signal: controller.signal,
+        headers: { "User-Agent": USER_AGENT },
+        redirect: "manual",
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+
+    const isRedirect = res.status >= 300 && res.status < 400;
+    const location = res.headers.get("location");
+    if (!isRedirect || !location) return res;
+
+    currentUrl = new URL(location, currentUrl).href;
+  }
+
+  throw new Error("Too many redirects.");
+}
+
+/**
+ * Minimal robots.txt parser — good enough for the small-business sites
+ * this feature targets. Reads the block matching our bot's user-agent
+ * if present, otherwise the `*` block, and collects every Disallow
+ * path from that block. Doesn't handle every edge case of the spec
+ * (e.g. multiple User-agent lines sharing one rule block) but that's
+ * rare in practice and failing open (treating unparseable robots.txt
+ * as "nothing disallowed") is the safer default than blocking a crawl
+ * over a parsing gap.
+ */
+async function fetchRobotsRules(origin: string): Promise<RobotsRules> {
+  try {
+    const res = await fetchWithTimeout(`${origin}/robots.txt`, 5000);
+    if (!res.ok) return { disallowedPaths: [] };
+    const body = await res.text();
+
+    const lines = body.split("\n").map((l) => l.trim());
+    let matchesUs = false;
+    let matchesWildcard = false;
+    const wildcardDisallows: string[] = [];
+    const usDisallows: string[] = [];
+
+    for (const rawLine of lines) {
+      const line = rawLine.split("#")[0].trim();
+      if (!line) continue;
+
+      const [rawKey, ...rest] = line.split(":");
+      const key = rawKey.trim().toLowerCase();
+      const value = rest.join(":").trim();
+
+      if (key === "user-agent") {
+        const agent = value.toLowerCase();
+        matchesWildcard = agent === "*";
+        matchesUs = agent.includes("mbrstudiobot");
+        continue;
+      }
+
+      if (key === "disallow" && value) {
+        if (matchesUs) usDisallows.push(value);
+        else if (matchesWildcard) wildcardDisallows.push(value);
+      }
+    }
+
+    return {
+      disallowedPaths: usDisallows.length > 0 ? usDisallows : wildcardDisallows,
+    };
+  } catch {
+    return { disallowedPaths: [] };
+  }
+}
+
+function isDisallowed(pathname: string, rules: RobotsRules): boolean {
+  return rules.disallowedPaths.some(
+    (disallowed) => disallowed !== "" && pathname.startsWith(disallowed),
+  );
+}
+
+function isContentLink(href: string): boolean {
+  if (!href) return false;
+  const lower = href.toLowerCase();
+  if (lower.startsWith("mailto:") || lower.startsWith("tel:")) return false;
+  if (lower.startsWith("#")) return false;
+  if (/\.(pdf|jpe?g|png|gif|svg|zip|docx?|xlsx?|mp4|mp3)$/.test(lower))
+    return false;
+  return true;
+}
+
+async function tryDiscoverViaSitemap(
+  origin: string,
+  rules: RobotsRules,
+): Promise<DiscoveredPage[] | null> {
+  try {
+    const res = await fetchWithTimeout(`${origin}/sitemap.xml`, 6000);
+    if (!res.ok) return null;
+    const xml = await res.text();
+    const $ = cheerio.load(xml, { xmlMode: true });
+
+    const urls: string[] = [];
+    $("url > loc").each((_, el) => {
+      const loc = $(el).text().trim();
+      if (loc) urls.push(loc);
+    });
+    if (urls.length === 0) return null;
+
+    const filtered = urls
+      .filter((url) => {
+        try {
+          const parsed = new URL(url);
+          return (
+            parsed.origin === origin && !isDisallowed(parsed.pathname, rules)
+          );
+        } catch {
+          return false;
+        }
+      })
+      .slice(0, MAX_DISCOVERED_PAGES);
+
+    return filtered.map((url) => ({ url, title: url }));
+  } catch {
+    return null;
+  }
+}
+
+export async function discoverPages(
+  rootUrl: string,
+): Promise<DiscoveredPage[]> {
+  const root = new URL(rootUrl);
+  const origin = root.origin;
+  const rules = await fetchRobotsRules(origin);
+
+  const viaSitemap = await tryDiscoverViaSitemap(origin, rules);
+  if (viaSitemap && viaSitemap.length > 0) return viaSitemap;
+
+  if (isDisallowed(root.pathname, rules)) return [];
+
+  const res = await fetchWithTimeout(rootUrl);
+  if (!res.ok)
+    throw new Error(`Could not fetch ${rootUrl} (status ${res.status}).`);
+
+  const html = await res.text();
+  const $ = cheerio.load(html);
+
+  const seen = new Set<string>([root.href]);
+  const candidates: DiscoveredPage[] = [
+    { url: root.href, title: $("title").first().text().trim() || root.href },
+  ];
+
+  $("a[href]").each((_, el) => {
+    const href = $(el).attr("href");
+    if (!href || !isContentLink(href)) return;
+
+    let resolved: URL;
+    try {
+      resolved = new URL(href, origin);
+    } catch {
+      return;
+    }
+
+    if (resolved.origin !== origin) return;
+    if (isDisallowed(resolved.pathname, rules)) return;
+
+    const normalized = resolved.href.split("#")[0];
+    if (seen.has(normalized)) return;
+    seen.add(normalized);
+
+    candidates.push({
+      url: normalized,
+      title: $(el).text().trim() || normalized,
+    });
+  });
+
+  const prioritized = candidates.filter((page) =>
+    PRIORITY_PATH_HINTS.some((hint) =>
+      new URL(page.url).pathname.toLowerCase().includes(hint),
+    ),
+  );
+  const rest = candidates.filter((page) => !prioritized.includes(page));
+
+  return [...prioritized, ...rest].slice(0, MAX_DISCOVERED_PAGES);
+}
+
+// Elements that are structurally never real page content. Cookie/consent
+// banners and skip-links in particular live OUTSIDE <nav>/<header>/<footer>
+// on most sites (including this one — see CookieConsent and SkipLink in
+// app/layout.tsx, both siblings of <main>, not nested inside it), so
+// removing just nav/footer/header misses them entirely. Matched
+// heuristically since every consent-banner library names things
+// differently and there's no single semantic tag for "cookie banner".
+const BOILERPLATE_SELECTORS = [
+  "script",
+  "style",
+  "noscript",
+  "nav",
+  "header",
+  "footer",
+  "form",
+  "select",
+  "option",
+  "input",
+  "button",
+  "svg",
+  "iframe",
+  "a[href^='#main']",
+  ".sr-only",
+  "[class*='skip-link' i]",
+  "[class*='cookie' i]",
+  "[id*='cookie' i]",
+  "[class*='consent' i]",
+  "[id*='consent' i]",
+  "[aria-label*='cookie' i]",
+  "[role='banner']",
+  "[role='navigation']",
+].join(", ");
+
+export async function scrapePage(
+  url: string,
+): Promise<{ title: string; text: string }> {
+  const res = await fetchWithTimeout(url);
+  if (!res.ok)
+    throw new Error(`Could not fetch ${url} (status ${res.status}).`);
+
+  const html = await res.text();
+  const $ = cheerio.load(html);
+  $(BOILERPLATE_SELECTORS).remove();
+
+  const title = $("title").first().text().trim() || url;
+
+  // Prefer the page's actual content region over the whole <body>. Sites
+  // built with a conventional layout (including this one — see
+  // <main id="main-content"> in app/(marketing)/layout.tsx) wrap real
+  // content in <main>, with nav, header CTAs, and cookie banners rendered
+  // as siblings outside it. Using <main> when present skips all of that
+  // boilerplate at the source instead of trying to blacklist every
+  // possible container after the fact. Falls back to <body> for pages
+  // that don't use <main> (e.g. a client's non-Next.js site).
+  const contentRoot = $("main").first().length ? $("main").first() : $("body");
+
+  // .text() concatenates every text node with no separator, so
+  // "<h1>Hello</h1><p>World</p>" collapses into "HelloWorld". Injecting a
+  // newline after every block-level element before extracting text is what
+  // gives the AI (and humans reading it in the detail pane) real paragraph
+  // breaks instead of one giant run-on string.
+  const BLOCK_TAGS =
+    "p, div, section, article, li, h1, h2, h3, h4, h5, h6, tr, blockquote";
+  contentRoot.find("br").replaceWith("\n");
+  contentRoot.find(BLOCK_TAGS).append("\n");
+
+  const text = contentRoot
+    .text()
+    .replace(/[ \t]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return { title, text };
 }
 </file>
 
@@ -26061,6 +25669,440 @@ export async function markOnboardingComplete() {
 }
 </file>
 
+<file path="app/api/widget/chat/route.ts">
+import { NextRequest, NextResponse } from "next/server";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { streamText } from "ai";
+
+import { createAdminClient } from "@/lib/supabase/admin";
+import { embedText } from "@/lib/knowledge-base/embed";
+import {
+  buildSystemPrompt,
+  type GuardrailToggles,
+} from "@/lib/agents/build-system-prompt";
+import { withLeadCaptureMarker } from "@/lib/chat/lead-capture";
+import { checkRateLimitFor } from "@/lib/rate-limit";
+import { widgetChatSchema } from "@/lib/validations/widget-chat";
+
+export const runtime = "nodejs";
+
+const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
+
+const WIDGET_RATE_WINDOW_MS = 60_000;
+const WIDGET_MAX_MESSAGES_PER_ORG_PER_MINUTE = 20;
+const WIDGET_MODEL = "openai/gpt-4o-mini";
+const FALLBACK_MODELS = ["openai/gpt-4o-mini"];
+
+export async function POST(req: NextRequest) {
+  const origin = req.headers.get("origin");
+  const cors = (extra?: Record<string, string>) => ({
+    "Access-Control-Allow-Origin": origin ?? "*",
+    ...extra,
+  });
+  const fail = (
+    status: number,
+    message: string,
+    extra?: Record<string, string>,
+  ) => NextResponse.json({ error: message }, { status, headers: cors(extra) });
+
+  let rawBody: unknown;
+  try {
+    rawBody = await req.json();
+  } catch {
+    return fail(400, "Invalid JSON body.");
+  }
+
+  const parsed = widgetChatSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return fail(400, "Invalid request.");
+  }
+  const { publicKey, visitorId, message, pageUrl } = parsed.data;
+
+  const supabase = createAdminClient();
+
+  // -- Resolve + verify the embed key. -------------------------------------
+  const { data: embedKey } = await supabase
+    .from("embed_keys")
+    .select("agent_id, organization_id, revoked_at")
+    .eq("public_key", publicKey)
+    .maybeSingle();
+
+  if (!embedKey || embedKey.revoked_at) {
+    return fail(404, "Invalid or revoked client key.");
+  }
+  const agentId = embedKey.agent_id;
+  const organizationId = embedKey.organization_id;
+
+  const { data: org } = await supabase
+    .from("organizations")
+    .select(
+      "name, slug, allowed_domains, monthly_message_limit, primary_domain, domain_verify_status",
+    )
+    .eq("id", organizationId)
+    .maybeSingle();
+
+  if (!org) {
+    return fail(404, "Organization not found.");
+  }
+
+  // -- Domain checks (Prompt 03, Section 6). -------------------------------
+  // Before verification (or no primary_domain set yet): fall back to the
+  // original allowlist-only behavior, so a client can test the widget
+  // before finishing DNS setup.
+  if (org.domain_verify_status === "suspended") {
+    return fail(
+      403,
+      "This domain's verification has lapsed. Please re-verify in your dashboard.",
+    );
+  }
+
+  if (org.domain_verify_status === "verified" && org.primary_domain) {
+    const isVerifiedOrigin = origin
+      ? originMatchesDomain(origin, org.primary_domain)
+      : false;
+    const isAllowlisted =
+      org.allowed_domains && org.allowed_domains.length > 0 && origin
+        ? org.allowed_domains.some((d: string) =>
+            originMatchesDomain(origin, d),
+          )
+        : false;
+
+    if (!isVerifiedOrigin && !isAllowlisted) {
+      return fail(
+        403,
+        "This domain is not authorized to use this chat widget.",
+      );
+    }
+  } else if (org.allowed_domains && org.allowed_domains.length > 0) {
+    const isAllowed = origin
+      ? org.allowed_domains.some((d: string) => originMatchesDomain(origin, d))
+      : false;
+    if (!isAllowed) {
+      return fail(
+        403,
+        "This domain is not authorized to use this chat widget.",
+      );
+    }
+  }
+
+  // -- Rate-limit per organization. ----------------------------------------
+  const { allowed, retryAfterSeconds } = checkRateLimitFor(
+    `widget-org:${organizationId}`,
+    {
+      windowMs: WIDGET_RATE_WINDOW_MS,
+      maxRequests: WIDGET_MAX_MESSAGES_PER_ORG_PER_MINUTE,
+    },
+  );
+  if (!allowed) {
+    return fail(
+      429,
+      "This chat is receiving a lot of traffic right now — please try again shortly.",
+      {
+        "Retry-After": String(retryAfterSeconds ?? 30),
+      },
+    );
+  }
+
+  // -- Monthly message limit. ----------------------------------------------
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+
+  const { count: messagesThisMonth } = await supabase
+    .from("messages")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", organizationId)
+    .gte("created_at", monthStart.toISOString());
+
+  if ((messagesThisMonth ?? 0) >= org.monthly_message_limit) {
+    return NextResponse.json(
+      {
+        limitReached: true,
+        reply:
+          "This business has reached its chat limit this month — please use their contact form instead.",
+      },
+      { headers: cors() },
+    );
+  }
+
+  // -- Guardrails + industry context. --------------------------------------
+  const { data: guardrails } = await supabase
+    .from("agent_guardrails")
+    .select(
+      "no_competitors, stay_on_topic, no_pricing, always_polite, no_opinions, push_contact, no_refund_promise, capture_leads, custom_rules, tone, reply_language",
+    )
+    .eq("agent_id", agentId)
+    .maybeSingle<GuardrailToggles>();
+
+  const { data: agentRow } = await supabase
+    .from("agents")
+    .select("system_prompt")
+    .eq("id", agentId)
+    .maybeSingle();
+
+  // -- Embed + vector search, scoped to the VERIFIED agentId only. ---------
+  let matches: { id: string; content: string; similarity: number }[] = [];
+  try {
+    const queryEmbedding = await embedText(message);
+    const { data: matchRows, error: matchError } = await supabase.rpc(
+      "match_knowledge_base_chunks",
+      {
+        query_embedding: queryEmbedding,
+        target_agent_id: agentId,
+        match_count: 5,
+      },
+    );
+    if (matchError) throw new Error(matchError.message);
+    matches = matchRows ?? [];
+  } catch (err) {
+    console.error("[widget/chat] embedding/vector search failed:", err);
+  }
+
+  const systemPrompt = buildSystemPrompt({
+    orgName: org.name,
+    retrievedChunks: matches.map((m) => m.content),
+    guardrails: guardrails ?? null,
+    industryContext: agentRow?.system_prompt ?? null,
+    channel: "website",
+  });
+
+  // -- Unique-visitor tracking for analytics. ------------------------------
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: visitorLogRows, error: visitorLogError } = await supabase
+    .from("agent_daily_visitors")
+    .upsert(
+      {
+        agent_id: agentId,
+        date: today,
+        visitor_id: visitorId,
+        channel: "website",
+      },
+      {
+        onConflict: "agent_id,date,visitor_id,channel",
+        ignoreDuplicates: true,
+      },
+    )
+    .select();
+
+  if (visitorLogError) {
+    console.error("[widget/chat] visitor log failed:", visitorLogError);
+  }
+  const isNewVisitorToday =
+    !visitorLogError && (visitorLogRows?.length ?? 0) > 0;
+
+  // -- Find-or-create the conversation. ------------------------------------
+  const { data: existingConversation } = await supabase
+    .from("conversations")
+    .select("id, lead_capture_shown")
+    .eq("agent_id", agentId)
+    .eq("visitor_id", visitorId)
+    .eq("channel", "website")
+    .order("last_message_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  let conversationId = existingConversation?.id as string | undefined;
+  let isNewConversation = false;
+  const leadCaptureAlreadyShown =
+    existingConversation?.lead_capture_shown ?? false;
+
+  if (!conversationId) {
+    const { data: newConversation, error: convError } = await supabase
+      .from("conversations")
+      .insert({
+        agent_id: agentId,
+        organization_id: organizationId,
+        channel: "website",
+        visitor_id: visitorId,
+        visitor_page_url: pageUrl || null,
+      })
+      .select("id")
+      .single();
+
+    if (convError || !newConversation) {
+      console.error("[widget/chat] failed to create conversation:", convError);
+      return fail(500, "Something went wrong starting the conversation.");
+    }
+    conversationId = newConversation.id;
+    isNewConversation = true;
+  }
+
+  if (isNewConversation) {
+    await bumpDailyAnalytics(supabase, agentId, organizationId, {
+      total_conversations: 1,
+    });
+    await supabase.from("webhook_events").insert({
+      organization_id: organizationId,
+      event_type: "conversation.started",
+      payload: { conversation_id: conversationId, channel: "website" },
+    });
+  }
+
+  // Pull prior turns BEFORE inserting this one, so the model actually has
+  // memory of the conversation — without this, every reply was generated
+  // from the single latest message only, with no idea what was said
+  // before it, even though the full history was sitting in the DB the
+  // whole time.
+  const HISTORY_LIMIT = 12;
+  const { data: priorMessages } = await supabase
+    .from("messages")
+    .select("role, content")
+    .eq("conversation_id", conversationId as string)
+    .order("created_at", { ascending: true })
+    .limit(HISTORY_LIMIT);
+
+  await supabase.from("messages").insert({
+    conversation_id: conversationId,
+    agent_id: agentId,
+    organization_id: organizationId,
+    role: "user",
+    content: message,
+  });
+
+  // -- Call the LLM. --------------------------------------------------------
+  const model = openrouter(WIDGET_MODEL, {
+    extraBody: { models: FALLBACK_MODELS },
+  });
+
+  const conversationHistory = (priorMessages ?? []).map((m) => ({
+    role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
+    content: m.content as string,
+  }));
+
+  const result = streamText({
+    model,
+    system: systemPrompt,
+    messages: [...conversationHistory, { role: "user", content: message }],
+    maxOutputTokens: 500,
+    onFinish: async ({ text }) => {
+      await supabase.from("messages").insert({
+        conversation_id: conversationId,
+        agent_id: agentId,
+        organization_id: organizationId,
+        role: "assistant",
+        content: text,
+      });
+      await supabase
+        .from("conversations")
+        .update({ last_message_at: new Date().toISOString() })
+        .eq("id", conversationId as string);
+
+      await bumpDailyAnalytics(supabase, agentId, organizationId, {
+        total_messages: 2,
+        resolved_by_ai: 1,
+        unique_visitors: isNewVisitorToday ? 1 : 0,
+      });
+    },
+  });
+
+  // -- Stream back, wrapped with the lead-capture sentinel marker. ---------
+  const shouldCheckLeadCapture =
+    (guardrails?.capture_leads ?? true) && !leadCaptureAlreadyShown;
+
+  const baseResponse = result.toTextStreamResponse({
+    headers: cors({
+      "X-Conversation-Id": conversationId as string,
+      "Access-Control-Expose-Headers": "X-Conversation-Id",
+    }),
+  });
+
+  const wrappedBody = withLeadCaptureMarker(
+    baseResponse.body as ReadableStream<Uint8Array>,
+    shouldCheckLeadCapture,
+    async () => {
+      await supabase
+        .from("conversations")
+        .update({ lead_capture_shown: true })
+        .eq("id", conversationId as string);
+    },
+  );
+
+  return new Response(wrappedBody, {
+    status: baseResponse.status,
+    headers: baseResponse.headers,
+  });
+}
+
+export async function OPTIONS(req: NextRequest) {
+  const origin = req.headers.get("origin");
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": origin ?? "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function originMatchesDomain(originUrl: string, domain: string): boolean {
+  try {
+    const { hostname } = new URL(originUrl);
+    const cleanDomain = domain.trim().toLowerCase();
+    if (cleanDomain.startsWith("*.")) {
+      const base = cleanDomain.slice(2);
+      return hostname === base || hostname.endsWith(`.${base}`);
+    }
+    return hostname === cleanDomain || hostname.endsWith(`.${cleanDomain}`);
+  } catch {
+    return false;
+  }
+}
+
+async function bumpDailyAnalytics(
+  supabase: ReturnType<typeof createAdminClient>,
+  agentId: string,
+  organizationId: string,
+  fields: Partial<{
+    total_conversations: number;
+    total_messages: number;
+    resolved_by_ai: number;
+    unique_visitors: number;
+  }>,
+) {
+  const today = new Date().toISOString().slice(0, 10);
+
+  const { data: existing } = await supabase
+    .from("agent_daily_analytics")
+    .select(
+      "id, total_conversations, total_messages, resolved_by_ai, unique_visitors",
+    )
+    .eq("agent_id", agentId)
+    .eq("date", today)
+    .eq("channel", "website")
+    .maybeSingle();
+
+  if (!existing) {
+    await supabase.from("agent_daily_analytics").insert({
+      agent_id: agentId,
+      organization_id: organizationId,
+      date: today,
+      channel: "website",
+      total_conversations: fields.total_conversations ?? 0,
+      total_messages: fields.total_messages ?? 0,
+      resolved_by_ai: fields.resolved_by_ai ?? 0,
+      unique_visitors: fields.unique_visitors ?? 0,
+    });
+    return;
+  }
+
+  await supabase
+    .from("agent_daily_analytics")
+    .update({
+      total_conversations:
+        existing.total_conversations + (fields.total_conversations ?? 0),
+      total_messages: existing.total_messages + (fields.total_messages ?? 0),
+      resolved_by_ai: existing.resolved_by_ai + (fields.resolved_by_ai ?? 0),
+      unique_visitors: existing.unique_visitors + (fields.unique_visitors ?? 0),
+    })
+    .eq("id", existing.id);
+}
+</file>
+
 <file path="app/globals.css">
 @import "tailwindcss";
 @import "tw-animate-css";
@@ -29683,6 +29725,119 @@ CHANNEL_TOKEN_ENCRYPTION_KEY=
 # issues by default)
 </file>
 
+<file path="config/site.ts">
+import { buildWhatsAppLink } from "@/config/contact";
+import { Layers, Bot, Briefcase, Users, Newspaper, Mail } from "lucide-react";
+
+export const siteConfig = {
+  name: "MBR Studio",
+  title: "MBR Studio — Digital products, built to grow your business.",
+  founder: "Muaaz Bin Riaz",
+  tagline: "Digital products, built to grow your business.",
+  description:
+    "MBR Studio is a premium software agency building websites, AI-powered automation, and digital products for growing businesses.",
+  url: "https://mbrstudio.co",
+  ogImage: "/opengraph-image",
+  email: "mbrstudio.dev@gmail.com",
+  // Added fields for the chat route
+  consultationUrl: "https://cal.com/muaaz-riaz-itdnod/consultation",
+
+  contactEmail: "mbrstudio.dev@gmail.com",
+  links: {
+    twitter: "https://twitter.com/mbrstudio",
+    linkedin: "https://www.linkedin.com/in/muaaz-bin-riaz-92b395298/",
+    github: "https://github.com/muaazbinriaz",
+  },
+} as const;
+
+export const navLinks = [
+  { label: "Services", href: "/services", icon: Layers },
+  { label: "AI Agent", href: "/ai-agent", icon: Bot },
+  { label: "Portfolio", href: "/portfolio", icon: Briefcase },
+  { label: "About", href: "/about", icon: Users },
+  { label: "Blog", href: "/blog", icon: Newspaper },
+  { label: "Contact", href: "/contact", icon: Mail },
+] as const;
+
+export const primaryCta = {
+  label: "Book a Consultation",
+  href: siteConfig.consultationUrl,
+} as const;
+
+export const secondaryCta = {
+  label: "Start Free Trial",
+  href: "/signup",
+} as const;
+
+/**
+ * Delegates to config/contact.ts's buildWhatsAppLink() — that file is
+ * the single source of truth for the WhatsApp number (WHATSAPP_DIGITS /
+ * WHATSAPP_DISPLAY). This used to hardcode a second literal number here,
+ * which risked the contact page and the AI chatbot handoff pointing at
+ * two different numbers if only one was ever updated.
+ *
+ * Passes an empty message override so the chatbot's handoff link keeps
+ * its previous behavior (no pre-filled WhatsApp message) rather than
+ * picking up buildWhatsAppLink()'s default qualification message.
+ */
+export function getWhatsappLink(): string {
+  return buildWhatsAppLink("");
+}
+</file>
+
+<file path="package.json">
+{
+  "name": "mbr-studio",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build --turbopack",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.4",
+    "@ai-sdk/react": "^3.0.220",
+    "@hookform/resolvers": "^5.4.0",
+    "@next/third-parties": "^16.2.10",
+    "@openrouter/ai-sdk-provider": "^2.10.0",
+    "@radix-ui/react-dropdown-menu": "^2.1.20",
+    "@radix-ui/react-label": "^2.1.11",
+    "@radix-ui/react-slot": "^1.3.0",
+    "@supabase/ssr": "^0.12.0",
+    "@supabase/supabase-js": "^2.110.0",
+    "@vercel/analytics": "^2.0.1",
+    "ai": "^6.0.218",
+    "cheerio": "^1.2.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.42.2",
+    "lucide-react": "^1.22.0",
+    "next": "15.5.19",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "react-hook-form": "^7.80.0",
+    "resend": "^6.16.0",
+    "tailwind-merge": "^3.6.0",
+    "tw-animate-css": "^1.4.0",
+    "unpdf": "^1.6.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.19",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
+</file>
+
 <file path="app/(platform-client)/dashboard/knowledge-base/KnowledgeBaseClient.tsx">
 "use client";
 
@@ -29948,7 +30103,11 @@ export function KnowledgeBaseClient({
   const filtered = useMemo(() => {
     if (!search.trim()) return tabDocuments;
     const q = search.trim().toLowerCase();
-    return tabDocuments.filter((d) => d.title.toLowerCase().includes(q));
+    return tabDocuments.filter(
+      (d) =>
+        d.title.toLowerCase().includes(q) ||
+        (d.source_url ?? "").toLowerCase().includes(q),
+    );
   }, [tabDocuments, search]);
 
   const selected = documents.find((d) => d.id === selectedId) ?? null;
@@ -31149,116 +31308,90 @@ function QaAddPanel() {
 }
 </file>
 
-<file path="config/site.ts">
-import { buildWhatsAppLink } from "@/config/contact";
-import { Layers, Bot, Briefcase, Users, Newspaper, Mail } from "lucide-react";
+<file path="app/(platform-client)/layout.tsx">
+import type { Metadata } from "next";
+import { headers } from "next/headers";
+import { createClient } from "@/lib/supabase/server";
+import { PlatformShell } from "@/components/platform/PlatformShell";
+import { getUnreadInboxCount } from "@/lib/inbox/queries";
+import { getCurrentOrg } from "@/lib/auth/current-org";
 
-export const siteConfig = {
-  name: "MBR Studio",
-  title: "MBR Studio — Digital products, built to grow your business.",
-  founder: "Muaaz Bin Riaz",
-  tagline: "Digital products, built to grow your business.",
-  description:
-    "MBR Studio is a premium software agency building websites, AI-powered automation, and digital products for growing businesses.",
-  url: "https://mbrstudio.co",
-  ogImage: "/opengraph-image",
-  email: "mbrstudio.dev@gmail.com",
-  // Added fields for the chat route
-  consultationUrl: "https://cal.com/muaaz-riaz-itdnod/consultation",
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
-  contactEmail: "mbrstudio.dev@gmail.com",
-  links: {
-    twitter: "https://twitter.com/mbrstudio",
-    linkedin: "https://www.linkedin.com/in/muaaz-bin-riaz-92b395298/",
-    github: "https://github.com/muaazbinriaz",
-  },
-} as const;
+export default async function ClientDashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  // middleware.ts already ran auth.getUser() for this exact request and
+  // redirects unauthenticated visitors before they ever reach this layout —
+  // calling getUser() again here was a fully redundant Supabase round-trip
+  // that added to the blocking window before any HTML (theme-init script
+  // included) could reach the browser. Read its result from the header
+  // middleware sets instead.
+  const requestHeaders = await headers();
+  const userId = requestHeaders.get("x-user-id") ?? "";
+  const userEmail = requestHeaders.get("x-user-email");
 
-export const navLinks = [
-  { label: "Services", href: "/services", icon: Layers },
-  { label: "AI Agent", href: "/ai-agent", icon: Bot },
-  { label: "Portfolio", href: "/portfolio", icon: Briefcase },
-  { label: "About", href: "/about", icon: Users },
-  { label: "Blog", href: "/blog", icon: Newspaper },
-  { label: "Contact", href: "/contact", icon: Mail },
-] as const;
+  const supabase = await createClient();
+  const orgResult = await getCurrentOrg(supabase, userId);
+  const membership = orgResult
+    ? { organization_id: orgResult.active.organizationId }
+    : null;
 
-export const primaryCta = {
-  label: "Book a Consultation",
-  href: siteConfig.consultationUrl,
-} as const;
+  const unreadCount = membership
+    ? await getUnreadInboxCount(supabase, membership.organization_id)
+    : 0;
 
-export const secondaryCta = {
-  label: "Start Free Trial",
-  href: "/signup",
-} as const;
+  let setupComplete = true;
+  let agentName = "Your Agent";
+  let agentStatus: "live" | "trial" | "paused" = "live";
 
-/**
- * Delegates to config/contact.ts's buildWhatsAppLink() — that file is
- * the single source of truth for the WhatsApp number (WHATSAPP_DIGITS /
- * WHATSAPP_DISPLAY). This used to hardcode a second literal number here,
- * which risked the contact page and the AI chatbot handoff pointing at
- * two different numbers if only one was ever updated.
- *
- * Passes an empty message override so the chatbot's handoff link keeps
- * its previous behavior (no pre-filled WhatsApp message) rather than
- * picking up buildWhatsAppLink()'s default qualification message.
- */
-export function getWhatsappLink(): string {
-  return buildWhatsAppLink("");
-}
-</file>
+  if (membership) {
+    const { data: agent } = await supabase
+      .from("agents")
+      .select("setup_complete, name, is_active")
+      .eq("organization_id", membership.organization_id)
+      .eq("is_active", true)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    // No agent row yet (mid-provisioning) is treated as "not complete" —
+    // safer default than briefly flashing the full sidebar.
+    setupComplete = agent?.setup_complete ?? false;
 
-<file path="package.json">
-{
-  "name": "mbr-studio",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "@ai-sdk/anthropic": "^4.0.4",
-    "@ai-sdk/react": "^3.0.220",
-    "@hookform/resolvers": "^5.4.0",
-    "@next/third-parties": "^16.2.10",
-    "@openrouter/ai-sdk-provider": "^2.10.0",
-    "@radix-ui/react-dropdown-menu": "^2.1.20",
-    "@radix-ui/react-label": "^2.1.11",
-    "@radix-ui/react-slot": "^1.3.0",
-    "@supabase/ssr": "^0.12.0",
-    "@supabase/supabase-js": "^2.110.0",
-    "@vercel/analytics": "^2.0.1",
-    "ai": "^6.0.218",
-    "cheerio": "^1.2.0",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "framer-motion": "^12.42.2",
-    "lucide-react": "^1.22.0",
-    "next": "15.5.19",
-    "react": "^19.2.1",
-    "react-dom": "^19.2.1",
-    "react-hook-form": "^7.80.0",
-    "resend": "^6.16.0",
-    "tailwind-merge": "^3.6.0",
-    "tw-animate-css": "^1.4.0",
-    "unpdf": "^1.6.2",
-    "zod": "^4.4.3"
-  },
-  "devDependencies": {
-    "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "15.5.19",
-    "tailwindcss": "^4",
-    "typescript": "^5"
+    if (agent?.name) agentName = agent.name;
+
+    const { data: orgRow } = await supabase
+      .from("organizations")
+      .select("status")
+      .eq("id", membership.organization_id)
+      .maybeSingle();
+
+    agentStatus = !agent?.is_active
+      ? "paused"
+      : orgRow?.status === "trial"
+        ? "trial"
+        : "live";
   }
+
+  return (
+    <PlatformShell
+      variant="client"
+      userEmail={userEmail}
+      navBadges={{ "/dashboard/inbox": unreadCount }}
+      isReseller={!!orgResult?.active.isReseller}
+      setupComplete={setupComplete}
+      agentName={agentName}
+      agentStatus={agentStatus}
+      memberships={orgResult?.memberships ?? []}
+      activeOrgId={orgResult?.active.organizationId ?? null}
+    >
+      {children}
+    </PlatformShell>
+  );
 }
 </file>
 
@@ -31274,6 +31407,7 @@ import {
   ArrowRight,
   ArrowLeft,
   ExternalLink,
+  X,
 } from "lucide-react";
 import { WidgetPreview } from "@/components/platform/WidgetPreview";
 import type { AgentTemplate } from "@/lib/agents/templates";
@@ -31379,6 +31513,7 @@ export function OnboardingWizard({
 
   const [embedTab, setEmbedTab] = useState<(typeof EMBED_TABS)[number]>("HTML");
   const [copied, setCopied] = useState(false);
+  const [showLiveTest, setShowLiveTest] = useState(false);
 
   // Fire-and-forget: persists the step server-side so closing the tab and
   // coming back to /dashboard resumes here instead of restarting at 0.
@@ -31478,17 +31613,14 @@ export function OnboardingWizard({
     });
   };
 
-  // Opens a genuinely blank page and injects the real embed snippet, so the
-  // user sees the widget work outside the dashboard too — not a simulation.
-  const openLiveTest = () => {
-    if (!embedSnippet) return;
-    const win = window.open("", "_blank");
-    if (!win) return;
-    win.document.write(
-      `<!DOCTYPE html><html><head><title>Widget test</title></head><body style="font-family:sans-serif;padding:48px;color:#333"><h1>This is a blank page</h1><p>Your chat widget should appear in the corner below — this is exactly how it'll look on your real site.</p>${embedSnippet}</body></html>`,
-    );
-    win.document.close();
-  };
+  // Rendered inline in a modal (see the iframe near the bottom of this
+  // component) instead of a new tab — window.open() was getting caught by
+  // ordinary popup blockers, which every real customer of this product
+  // would hit with no way to know why. An iframe needs no browser
+  // permission at all and works identically in every browser.
+  const liveTestHtml = embedSnippet
+    ? `<!DOCTYPE html><html><head><title>Widget test</title></head><body style="font-family:sans-serif;padding:48px;color:#333"><h1>This is a blank page</h1><p>Your chat widget should appear in the corner below — this is exactly how it'll look on your real site.</p>${embedSnippet}</body></html>`
+    : "";
 
   // Steps 1 (Train) and 2 (Behavior) embed the full Knowledge Base /
   // Guardrails settings components, which are built for full page width.
@@ -31650,7 +31782,7 @@ export function OnboardingWizard({
                     Scan your website, upload files, or type it in directly —
                     this is the real Knowledge Base, not a simplified copy.
                   </p>
-                  <div className="h-[520px] min-h-0 overflow-hidden rounded-xl border border-border">
+                  <div className="h-[min(75vh,680px)] min-h-[560px] overflow-y-auto rounded-xl border border-border">
                     <KnowledgeBaseClient documents={documents} />
                   </div>
                 </div>
@@ -31839,10 +31971,10 @@ export function OnboardingWizard({
 
                       <button
                         type="button"
-                        onClick={openLiveTest}
+                        onClick={() => setShowLiveTest(true)}
                         className="mt-4 inline-flex items-center gap-1.5 font-body text-sm font-medium text-primary underline underline-offset-2"
                       >
-                        Test it live on a blank page
+                        Test it live
                         <ExternalLink className="h-3.5 w-3.5" />
                       </button>
 
@@ -31922,94 +32054,39 @@ export function OnboardingWizard({
           </div>
         )}
       </div>
+
+      {showLiveTest && liveTestHtml && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setShowLiveTest(false)}
+        >
+          <div
+            className="relative flex h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-card shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-none items-center justify-between border-b border-border px-4 py-3">
+              <p className="font-body text-sm font-medium text-foreground">
+                Live widget test
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowLiveTest(false)}
+                aria-label="Close"
+                className="rounded-md p-1.5 text-secondary-text hover:bg-background hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <iframe
+              title="Widget live test"
+              srcDoc={liveTestHtml}
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+              className="min-h-0 flex-1 border-0"
+            />
+          </div>
+        </div>
+      )}
     </div>
-  );
-}
-</file>
-
-<file path="app/(platform-client)/layout.tsx">
-import type { Metadata } from "next";
-import { headers } from "next/headers";
-import { createClient } from "@/lib/supabase/server";
-import { PlatformShell } from "@/components/platform/PlatformShell";
-import { getUnreadInboxCount } from "@/lib/inbox/queries";
-import { getCurrentOrg } from "@/lib/auth/current-org";
-
-export const metadata: Metadata = {
-  robots: { index: false, follow: false },
-};
-
-export default async function ClientDashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  // middleware.ts already ran auth.getUser() for this exact request and
-  // redirects unauthenticated visitors before they ever reach this layout —
-  // calling getUser() again here was a fully redundant Supabase round-trip
-  // that added to the blocking window before any HTML (theme-init script
-  // included) could reach the browser. Read its result from the header
-  // middleware sets instead.
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("x-user-id") ?? "";
-  const userEmail = requestHeaders.get("x-user-email");
-
-  const supabase = await createClient();
-  const orgResult = await getCurrentOrg(supabase, userId);
-  const membership = orgResult
-    ? { organization_id: orgResult.active.organizationId }
-    : null;
-
-  const unreadCount = membership
-    ? await getUnreadInboxCount(supabase, membership.organization_id)
-    : 0;
-
-  let setupComplete = true;
-  let agentName = "Your Agent";
-  let agentStatus: "live" | "trial" | "paused" = "live";
-
-  if (membership) {
-    const { data: agent } = await supabase
-      .from("agents")
-      .select("setup_complete, name, is_active")
-      .eq("organization_id", membership.organization_id)
-      .eq("is_active", true)
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    // No agent row yet (mid-provisioning) is treated as "not complete" —
-    // safer default than briefly flashing the full sidebar.
-    setupComplete = agent?.setup_complete ?? false;
-
-    if (agent?.name) agentName = agent.name;
-
-    const { data: orgRow } = await supabase
-      .from("organizations")
-      .select("status")
-      .eq("id", membership.organization_id)
-      .maybeSingle();
-
-    agentStatus = !agent?.is_active
-      ? "paused"
-      : orgRow?.status === "trial"
-        ? "trial"
-        : "live";
-  }
-
-  return (
-    <PlatformShell
-      variant="client"
-      userEmail={userEmail}
-      navBadges={{ "/dashboard/inbox": unreadCount }}
-      isReseller={!!orgResult?.active.isReseller}
-      setupComplete={setupComplete}
-      agentName={agentName}
-      agentStatus={agentStatus}
-      memberships={orgResult?.memberships ?? []}
-      activeOrgId={orgResult?.active.organizationId ?? null}
-    >
-      {children}
-    </PlatformShell>
   );
 }
 </file>
