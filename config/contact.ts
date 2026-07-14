@@ -1,17 +1,13 @@
 /**
  * Shared contact constants.
  *
- * PLACEHOLDERS TO REPLACE — real inbox address and WhatsApp business
- * number weren't provided, so both are marked clearly rather than
- * invented for a real business.
- *
  * WHATSAPP_DIGITS must be full international format, digits only
  * (no "+", spaces, or dashes) for the wa.me link to resolve, e.g.
  * "923001234567" for +92 300 1234567.
  */
 export const CONTACT_EMAIL = "mbrstudio.dev@gmail.com";
-export const WHATSAPP_DISPLAY = "+92-334-0819120"; // TODO: replace with real number for display
-export const WHATSAPP_DIGITS = "923340819120"; // TODO: replace with real number, digits only, no "+"
+export const WHATSAPP_DISPLAY = "+92-334-0819120";
+export const WHATSAPP_DIGITS = "923340819120";
 export const WHATSAPP_DEFAULT_MESSAGE =
   "Hi MBR Studio — I'm interested in working together on a project. Can we talk?";
 

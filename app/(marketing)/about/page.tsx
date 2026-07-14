@@ -72,7 +72,7 @@ export default function AboutPage() {
     <>
       {/* Founder intro */}
       <section className="bg-background">
-        <div className="mx-auto max-w-5xl px-6 py-24 md:px-10 md:py-32">
+        <div className="mx-auto max-w-5xl page-hero-pad">
           <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
             About
           </p>

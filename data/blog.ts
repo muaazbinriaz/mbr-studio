@@ -3,18 +3,26 @@
  * CONTENT-COMPLETENESS NOTE (for whoever edits this file next, including
  * a future AI session):
  *
- * Every post below currently has PLACEHOLDER `content` (literal developer
- * notes like "Full markdown/content here...", not real article text) and
- * is therefore marked `published: false`. The blog index and post-detail
- * pages both filter on `published`, so unpublished posts are invisible to
- * visitors and excluded from the sitemap and static params — this is
- * intentional and is what keeps placeholder text from ever being shown as
- * if it were a real article.
+ * Any post below with `published: false` still has PLACEHOLDER `content`
+ * (literal developer notes, not real article text). The blog index and
+ * post-detail pages both filter on `published`, so unpublished posts are
+ * invisible to visitors and excluded from the sitemap and static params —
+ * this is intentional and is what keeps placeholder text from ever being
+ * shown as if it were a real article.
  *
  * Set `published: true` ONLY once `content` contains real, final article
  * HTML for that post. Do not flip this to true with placeholder content
  * still in place — that would reintroduce the exact bug this mechanism
  * exists to prevent.
+ *
+ * NOTE ON coverImage / galleryImages: these fields must point to real
+ * files that actually exist under /public/images/blog/ before deploying,
+ * or the Image component will fail to resolve them. If a post has no
+ * image yet, leave coverImage unset — BlogCard and the post-detail page
+ * both fall back to BlogCoverArt automatically when coverImage is
+ * missing. galleryImages is optional and purely additive — extra photos
+ * rendered inside the article body for posts where more than one image
+ * genuinely adds value (e.g. a step-by-step or comparison post).
  */
 export interface BlogPost {
   slug: string;
@@ -24,6 +32,8 @@ export interface BlogPost {
   updatedAt?: string;
   authorName: string;
   coverImage?: string;
+  /** Optional extra photos rendered inside the article body, below the content. */
+  galleryImages?: string[];
   category: string;
   tags: string[];
   content: string;
@@ -42,8 +52,66 @@ export const blogPosts: BlogPost[] = [
     authorName: "Muaaz Bin Riaz",
     category: "Pricing & ROI",
     tags: ["website cost", "pricing", "small business"],
-    content: `Full markdown/content here... (use a simple HTML string or MDX; we'll use HTML for simplicity)`,
-    published: false,
+    coverImage: "/images/blog/website-cost-2026.jpg",
+    published: true,
+    content: `
+<p>"How much does a website cost?" doesn't have one honest answer — it depends entirely on what the site actually needs to do. Here's a realistic breakdown by tier, the same way we'd explain it to a client before quoting anything.</p>
+
+<h2>Tier 1: DIY builders (Wix, Squarespace, WordPress themes)</h2>
+<p>Cheapest option, usually a monthly subscription rather than a one-time cost. Fine for a simple one-page presence with no custom functionality. The tradeoff is you're building it yourself, customization is limited to what the theme allows, and performance/SEO is only as good as the template underneath it.</p>
+
+<h2>Tier 2: Custom-designed small business website</h2>
+<p>A site built specifically for your business — your layout, your content, your branding — rather than a template with your logo swapped in. This is where most small businesses (clinics, salons, restaurants, service providers) actually land. You get a site that looks and loads like it was built for you, with room for a contact form, gallery, or basic booking.</p>
+
+<h2>Tier 3: Full-stack web application</h2>
+<p>Anything with real functionality behind it — user accounts, a dashboard, payments, a database, an admin panel to manage content without touching code. This is a software project, not a page design project, and is priced and scoped accordingly.</p>
+
+<h2>What actually drives the price, regardless of tier</h2>
+<ul>
+<li><strong>Number of pages and content volume.</strong> A 5-page site and a 30-page site are different projects even at the same design quality.</li>
+<li><strong>Custom functionality.</strong> A contact form is simple. Booking systems, payment integration, or a custom admin panel are real engineering work.</li>
+<li><strong>Design from scratch vs. template.</strong> Fully custom design takes longer than adapting an existing layout — and it shows in the final result.</li>
+<li><strong>Content readiness.</strong> A client with final copy and images ready moves faster than one where content also needs to be written or sourced during the build.</li>
+</ul>
+
+<h2>The real question isn't "how much" — it's "what does this need to do"</h2>
+<p>The mistake we see most often is business owners comparing a Tier 1 price against a Tier 2 or 3 quote without realizing they're not the same product. A template site and a custom-built site with real functionality solve different problems — the right question is what your business actually needs your website to do, then pricing follows from that.</p>
+
+<h2>Our honest recommendation</h2>
+<p>If you just need a professional presence — hours, services, contact info, credibility — Tier 2 is usually the right call and doesn't need to be expensive. If your business needs the site to actually do something (take bookings, process payments, manage customers), that's worth scoping properly rather than forcing a template to do a job it wasn't built for.</p>
+`,
+  },
+  {
+    slug: "website-vs-facebook-page",
+    title: "Website vs Facebook page: what's better for your business?",
+    summary:
+      "Why a dedicated website still matters more than a social media page for credibility and conversions.",
+    publishedAt: "2026-06-25T08:00:00Z",
+    authorName: "Muaaz Bin Riaz",
+    category: "Digital Presence",
+    tags: ["website", "facebook", "online presence"],
+    coverImage: "/images/blog/website-vs-facebook.jpg",
+    published: true,
+    content: `
+<p>A lot of small businesses start with just a Facebook or Instagram page and never get further — and for a while, that's genuinely fine. But there's a point where relying on a social page alone starts costing you customers, and it's worth knowing where that line is.</p>
+
+<h2>Where a Facebook/Instagram page is genuinely enough</h2>
+<p>If you're just starting out, testing an idea, or your entire customer base already lives on that platform, a page is a reasonable, zero-cost way to have a presence. It's fast to set up and customers can message you directly.</p>
+
+<h2>Where it starts working against you</h2>
+<ul>
+<li><strong>You don't own it.</strong> Your page, your followers, your reach — all of it lives on infrastructure you don't control. A policy change, an algorithm shift, or a suspended account can take your entire online presence with it, overnight.</li>
+<li><strong>Credibility.</strong> A growing share of customers — especially for anything involving trust, like healthcare, real estate, or higher-priced services — expect a real website before they take a business seriously. A page-only presence can quietly cost you the more cautious, higher-value customers.</li>
+<li><strong>Discoverability.</strong> A website can be found on Google by someone who has never heard of your business. A Facebook page mostly reaches people already following you, or through paid ads.</li>
+<li><strong>Functionality.</strong> Booking systems, structured menus, portfolios, payment collection — a page can approximate some of this, but a website can actually be built around it properly.</li>
+</ul>
+
+<h2>The honest answer: it's not either/or</h2>
+<p>The businesses that get the most out of their online presence usually run both — a website as the credible, owned home base, and social pages as the discovery and engagement channel that drives people there. Treating your Facebook page as the entire online presence is where the risk creeps in, not having one at all.</p>
+
+<h2>A simple way to decide if you're ready for a website</h2>
+<p>If you're regularly telling customers "just message us on Facebook," and you've noticed some of them hesitate or ask if you have "a real website" — that's usually the signal it's time.</p>
+`,
   },
   {
     slug: "do-i-need-a-chatbot-for-my-business",
@@ -58,18 +126,6 @@ export const blogPosts: BlogPost[] = [
     published: false,
   },
   {
-    slug: "website-vs-facebook-page",
-    title: "Website vs Facebook page: what's better for your business?",
-    summary:
-      "Why a dedicated website still matters more than a social media page for credibility and conversions.",
-    publishedAt: "2026-06-25T08:00:00Z",
-    authorName: "Muaaz Bin Riaz",
-    category: "Digital Presence",
-    tags: ["website", "facebook", "online presence"],
-    content: `...`,
-    published: false,
-  },
-  {
     slug: "ai-chatbot-cost-2026",
     title: "How much does an AI chatbot actually cost in 2026?",
     summary:
@@ -78,6 +134,8 @@ export const blogPosts: BlogPost[] = [
     authorName: "Muaaz Bin Riaz",
     category: "Pricing & ROI",
     tags: ["ai chatbot", "pricing", "small business"],
+    coverImage: "/images/blog/ai-chatbot-cost.jpg",
+    galleryImages: ["/images/blog/ai-chatbot-cost-2.jpg"],
     published: true,
     content: `
 <p>"How much does a chatbot cost?" is a bit like asking "how much does a website cost?" — the honest answer is that the range is enormous, and the number changes almost entirely based on what the bot is actually supposed to do. Here's a realistic breakdown by tier.</p>
@@ -100,7 +158,7 @@ export const blogPosts: BlogPost[] = [
 </ul>
 
 <h2>The real question isn't "how much" — it's "what's the payback"</h2>
-<p>A chatbot that saves your team [PLACEHOLDER: insert real average hours/week saved from a completed client project, once available] hours a week of repetitive replies pays for itself regardless of which tier you're in, as long as the tier actually matches what your customers ask for. The mistake we see most often isn't overspending — it's businesses buying Tier 1 for a Tier 3 problem (needing real actions taken, not just answers given) and then concluding "chatbots don't work" when the tool was never capable of the job in the first place.</p>
+<p>A chatbot that saves your team even a few hours a week of repetitive replies pays for itself regardless of which tier you're in, as long as the tier actually matches what your customers ask for. The mistake we see most often isn't overspending — it's businesses buying Tier 1 for a Tier 3 problem (needing real actions taken, not just answers given) and then concluding "chatbots don't work" when the tool was never capable of the job in the first place.</p>
 
 <h2>Our honest recommendation</h2>
 <p>Start by writing down your actual last 20 customer questions. If they're mostly repeatable FAQ, Tier 1 or 2 is genuinely enough — don't overspend. If several of them require looking something up or taking an action on your systems, that's the signal you need Tier 3, and it's worth scoping properly rather than forcing a subscription tool to do something it wasn't built for.</p>
@@ -115,6 +173,8 @@ export const blogPosts: BlogPost[] = [
     authorName: "Muaaz Bin Riaz",
     category: "Automation",
     tags: ["whatsapp", "automation", "pakistan", "small business"],
+    coverImage: "/images/blog/whatsapp-automation.jpg",
+    galleryImages: ["/images/blog/whatsapp-automation-2.jpg"],
     published: true,
     content: `
 <p>For most small and mid-sized businesses in Pakistan — restaurants, clinics, salons, boutiques, real estate agents — WhatsApp isn't a "nice to have" channel, it's the primary one. Customers expect to book, ask, and complain there, often before they'll ever fill out a form on a website. That makes it one of the highest-leverage places to automate, if you do it right.</p>
@@ -131,7 +191,7 @@ export const blogPosts: BlogPost[] = [
 <p>Complaints, anything involving money disputes, and genuinely unusual requests should hand off to a real person quickly and cleanly — with the full conversation context carried over, not starting the customer over from zero. A bot that traps an upset customer in a loop of "I don't understand, please rephrase" does more brand damage than having no bot at all.</p>
 
 <h2>The technical reality: WhatsApp Business API vs. a regular number</h2>
-<p>True automation (auto-replies, structured flows, integration with your systems) requires the WhatsApp Business Platform (API), not the regular WhatsApp Business app most shops start with. The app is fine for a person manually replying; it's not built for automated, always-on responses at scale. Getting set up on the API involves business verification and typically routes through a Meta Business Solution Provider — this part takes real paperwork and a bit of patience, budget [PLACEHOLDER: insert current typical setup timeline once confirmed for a live project] for it upfront rather than assuming it's instant.</p>
+<p>True automation (auto-replies, structured flows, integration with your systems) requires the WhatsApp Business Platform (API), not the regular WhatsApp Business app most shops start with. The app is fine for a person manually replying; it's not built for automated, always-on responses at scale. Getting set up on the API involves business verification and typically routes through a Meta Business Solution Provider — this part takes real paperwork and a bit of patience, so budget extra time for it upfront rather than assuming it's instant.</p>
 
 <h2>Local considerations that actually matter</h2>
 <ul>
@@ -153,6 +213,8 @@ export const blogPosts: BlogPost[] = [
     authorName: "Muaaz Bin Riaz",
     category: "AI Agents",
     tags: ["ai agent", "chatbot", "automation"],
+    coverImage: "/images/blog/ai-agent-vs-chatbot.jpg",
+    galleryImages: ["/images/blog/ai-agent-vs-chatbot-2.jpg"],
     published: true,
     content: `
 <p>"Chatbot" and "AI agent" get used interchangeably in most marketing copy, including sometimes our own — but the distinction actually matters for what you should buy. A chatbot, at its core, answers questions using information it was given. An agent goes further: it can take real actions on your systems — check availability, create a booking, update a record, escalate a ticket — inside a conversation, without a human doing the actual clicking. Here's how to tell which one you actually need.</p>
@@ -186,6 +248,8 @@ export const blogPosts: BlogPost[] = [
     authorName: "Muaaz Bin Riaz",
     category: "AI Agents",
     tags: ["ai agent", "website", "expectations"],
+    coverImage: "/images/blog/website-ai-agent.jpg",
+    galleryImages: ["/images/blog/website-ai-agent-2.jpg"],
     published: true,
     content: `
 <p>Most of what gets written about AI agents online is either sales copy pretending they can do anything, or skepticism pretending they can't do much at all. Neither is accurate. Here's what we've actually found building these for real small businesses, without the hype in either direction.</p>
@@ -222,6 +286,8 @@ export const blogPosts: BlogPost[] = [
     authorName: "Muaaz Bin Riaz",
     category: "Buying Guide",
     tags: ["buying guide", "ai automation", "agency"],
+    coverImage: "/images/blog/choosing-agency.jpg",
+    galleryImages: ["/images/blog/choosing-agency-2.jpg"],
     published: true,
     content: `
 <p>AI automation is a genuinely crowded space right now, and it's not always easy to tell a serious builder from someone reselling a template with your logo on it. Here are the questions worth asking before you commit budget to anyone — us included.</p>
@@ -242,7 +308,7 @@ export const blogPosts: BlogPost[] = [
 <p>Get the ongoing cost — hosting, AI usage, support, any per-message or per-conversation fees — in writing, not just the setup price. A cheap build with an unclear ongoing cost structure can end up more expensive than a transparent, slightly higher upfront quote.</p>
 
 <h2>6. "Can I talk to a past client?"</h2>
-<p>A reasonable agency should be able to connect you with at least one real business they've built for, or at minimum show a genuine before/after of a specific problem they solved. [PLACEHOLDER: insert real client reference/case study link once available for prospective clients to review.]</p>
+<p>A reasonable agency should be able to connect you with at least one real business they've built for, or at minimum show a genuine before/after of a specific problem they solved.</p>
 
 <h2>7. "What happens if I want changes after launch?"</h2>
 <p>Ask specifically how change requests work — is there a support window included, is it billed hourly, is there a formal process? Vague answers here tend to turn into friction later.</p>

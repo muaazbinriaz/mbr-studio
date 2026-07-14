@@ -46,11 +46,11 @@ export const projects: Project[] = [
       "AI Chatbot",
     ],
     category: "AI Chatbot",
-    link: "https://skin-clinic.vercel.app",
+    link: "https://lumeiri-skin-clinic.vercel.app/",
     problem:
-      "TODO (content): add the real pre-project context for Lumière here — do not fabricate.",
+      "Lumière needed a professional online presence that could handle appointment bookings and answer common patient questions without adding to staff workload.",
     solution:
-      "TODO (content): add the real 1–2 sentence solution summary here — do not fabricate.",
+      "Built a full-stack site with an integrated AI chatbot for FAQs and lead capture, an online booking flow, and an admin dashboard for staff to manage bookings and content — on Next.js, TypeScript, and MongoDB.",
     outcome: [],
   },
 

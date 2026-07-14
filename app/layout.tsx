@@ -99,7 +99,10 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geist.variable} ${inter.variable} antialiased`}>
+      <body
+        className={`${geist.variable} ${inter.variable} antialiased`}
+        suppressHydrationWarning
+      >
         <Script id="theme-init" strategy="beforeInteractive">
           {THEME_INIT_SCRIPT}
         </Script>

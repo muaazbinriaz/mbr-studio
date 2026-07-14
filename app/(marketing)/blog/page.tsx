@@ -39,18 +39,22 @@ export default async function BlogPage({
     filtered = filtered.filter((p) => p.tags.includes(tag));
   }
 
+  // Featured editorial row only makes sense on the unfiltered default view —
+  // once someone filters by category/tag, everything just goes in the
+  // regular grid so filtered results don't feel arbitrarily reordered.
+  const isDefaultView = !category && !tag;
+  const featuredPosts = isDefaultView ? filtered.slice(0, 2) : [];
+  const restPosts = isDefaultView ? filtered.slice(2) : filtered;
+
   return (
     <>
       <section className="bg-background">
-        <div className="mx-auto max-w-6xl px-6 py-24 md:px-10 md:py-32">
+        <div className="mx-auto max-w-6xl page-hero-pad">
           <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
             Blog
           </p>
-          <h1
-            className="font-heading text-h1-primary font-bold leading-tight tracking-tight text-text
-"
-          >
-            Articles & Insights
+          <h1 className="font-heading text-h1-primary font-bold leading-tight tracking-tight text-text">
+            Articles &amp; Insights
           </h1>
           <p className="mt-4 max-w-2xl font-body text-base text-secondary-text">
             Practical advice on websites, automation, and growing your business
@@ -78,7 +82,7 @@ export default async function BlogPage({
                   <div className="flex flex-wrap gap-2">
                     <Link
                       href="/blog"
-                      className={`rounded-full px-3 py-1 text-xs font-medium ${
+                      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                         !category
                           ? "bg-primary text-primary-foreground"
                           : "border border-border text-secondary-text hover:text-text"
@@ -90,7 +94,7 @@ export default async function BlogPage({
                       <Link
                         key={cat}
                         href={`/blog?category=${encodeURIComponent(cat)}`}
-                        className={`rounded-full px-3 py-1 text-xs font-medium ${
+                        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                           category === cat
                             ? "bg-primary text-primary-foreground"
                             : "border border-border text-secondary-text hover:text-text"
@@ -108,7 +112,7 @@ export default async function BlogPage({
                       <Link
                         key={t}
                         href={`/blog?tag=${encodeURIComponent(t)}`}
-                        className={`rounded-full px-3 py-1 text-xs font-medium ${
+                        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                           tag === t
                             ? "bg-accent text-accent-foreground"
                             : "border border-border text-secondary-text hover:text-text"
@@ -121,17 +125,38 @@ export default async function BlogPage({
                 </div>
               </div>
 
-              {/* Blog grid */}
-              <div className="mt-12 grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-                {filtered.map((post) => (
-                  <BlogCard key={post.slug} post={post} />
-                ))}
-                {filtered.length === 0 && (
-                  <p className="col-span-full py-16 text-center text-secondary-text">
-                    No posts found for this filter.
-                  </p>
-                )}
-              </div>
+              {/* Featured — the two most important posts get a bigger,
+                  editorial-style treatment instead of blending into the grid. */}
+              {featuredPosts.length > 0 && (
+                <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-2">
+                  {featuredPosts.map((post, i) => (
+                    <BlogCard key={post.slug} post={post} index={i} featured />
+                  ))}
+                </div>
+              )}
+
+              {/* Rest of the grid */}
+              {restPosts.length > 0 && (
+                <div
+                  className={`grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3 ${
+                    featuredPosts.length > 0 ? "mt-8" : "mt-12"
+                  }`}
+                >
+                  {restPosts.map((post, i) => (
+                    <BlogCard
+                      key={post.slug}
+                      post={post}
+                      index={i + featuredPosts.length}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {filtered.length === 0 && (
+                <p className="col-span-full py-16 text-center text-secondary-text">
+                  No posts found for this filter.
+                </p>
+              )}
             </>
           )}
         </div>

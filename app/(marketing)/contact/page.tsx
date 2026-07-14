@@ -35,7 +35,7 @@ export default function ContactPage() {
       />
 
       <section className="bg-background">
-        <div className="mx-auto max-w-6xl px-6 py-24 md:px-10 md:py-32">
+        <div className="mx-auto max-w-6xl page-hero-pad">
           <div className="mb-14 max-w-2xl">
             <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
               Contact

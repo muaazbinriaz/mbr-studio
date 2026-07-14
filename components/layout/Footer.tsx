@@ -8,7 +8,7 @@ const sitemapLinks = [
   { label: "Home", href: "/" },
   { label: "About", href: "/about" },
   { label: "Services", href: "/services" },
-  { label: "AI Agent", href: "/ai-agent" },
+  // { label: "AI Agent", href: "/ai-agent" },
   { label: "Portfolio", href: "/portfolio" },
   { label: "Case Studies", href: "/case-studies" },
   { label: "Blog", href: "/blog" },
@@ -26,8 +26,7 @@ const legalLinks = [
   { label: "Terms", href: "/terms" },
 ] as const;
 
-const footerLinkClass =
-  "text-sm text-secondary-text transition-colors hover:text-foreground";
+const footerLinkClass = "footer-link text-sm text-secondary-text";
 
 export function Footer() {
   return (
@@ -50,6 +49,7 @@ export function Footer() {
                   target="_blank"
                   rel="noopener noreferrer"
                   className={footerLinkClass}
+                  data-text={social.label}
                 >
                   {social.label}
                 </a>
@@ -71,6 +71,7 @@ export function Footer() {
                   key={link.href}
                   href={link.href}
                   className={footerLinkClass}
+                  data-text={link.label}
                 >
                   {link.label}
                 </Link>
@@ -92,6 +93,7 @@ export function Footer() {
                   key={service.slug}
                   href={`/services#${service.slug}`}
                   className={footerLinkClass}
+                  data-text={service.title}
                 >
                   {service.title}
                 </Link>
@@ -108,14 +110,17 @@ export function Footer() {
               <a
                 href={`mailto:${siteConfig.email}`}
                 className={footerLinkClass}
+                data-text={siteConfig.email}
               >
                 {siteConfig.email}
               </a>
+
               <a
                 href={siteConfig.consultationUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className={footerLinkClass}
+                data-text="Book a Consultation"
               >
                 Book a Consultation
               </a>
@@ -135,7 +140,8 @@ export function Footer() {
               <Link
                 key={link.href}
                 href={link.href}
-                className="transition-colors hover:text-foreground"
+                className="footer-link"
+                data-text={link.label}
               >
                 {link.label}
               </Link>

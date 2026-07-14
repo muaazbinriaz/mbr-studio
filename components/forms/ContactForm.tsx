@@ -78,8 +78,8 @@ export function ContactForm() {
           Message sent
         </h3>
         <p className="max-w-sm font-body text-sm leading-relaxed text-secondary-text">
-          Thanks for reaching out. We&apos;ve sent a confirmation to your inbox
-          — we typically reply the same day.
+          Thanks for reaching out — we&apos;ve received your message and
+          typically reply the same day.
         </p>
         <button
           type="button"

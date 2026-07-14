@@ -87,7 +87,10 @@ export function Process() {
     <section className="bg-background">
       <div className="mx-auto max-w-6xl px-6 py-24 md:px-10 md:py-32">
         <div className="mb-16 max-w-2xl">
-          <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+          {/* <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+            How we work
+          </p> */}
+          <p className="text-gradient-animated mb-3 font-body text-sm font-medium tracking-wide">
             How we work
           </p>
           <FadeIn>

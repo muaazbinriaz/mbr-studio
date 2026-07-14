@@ -297,6 +297,7 @@ components/
     HeroEyebrow.tsx
     HeroSubAndCta.tsx
     HeroVisual.tsx
+    MarqueeStrip.tsx
     PortfolioGrid.tsx
     ProblemStatement.tsx
     Process.tsx
@@ -401,6 +402,20 @@ lib/
   utils.ts
 public/
   images/
+    blog/
+      ai-agent-vs-chatbot-2.jpg
+      ai-agent-vs-chatbot.jpg
+      ai-chatbot-cost-2.jpg
+      ai-chatbot-cost.jpg
+      choosing-agency-2.jpg
+      choosing-agency.jpg
+      Free-Multiple-Screens-Website-Design-Template-Mockup-PSD-4-1.webp
+      website-ai-agent-2.jpg
+      website-ai-agent.jpg
+      website-cost-2026.jpg
+      website-vs-facebook.jpg
+      whatsapp-automation-2.jpg
+      whatsapp-automation.jpg
     projects/
       jobmatch/
         hero.png
@@ -461,6 +476,104 @@ vercel.json
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="components/sections/MarqueeStrip.tsx">
+// components/sections/MarqueeStrip.tsx
+"use client";
+
+import { useReducedMotion } from "framer-motion";
+
+/**
+ * Full-bleed scrolling ticker placed between Hero and ProblemStatement.
+ *
+ * v3 fix: emoji used to sit *inside* the `.text-gradient-animated` span,
+ * which uses `background-clip: text` + `color: transparent` — that
+ * strips emoji of their native multi-color glyph in several browsers,
+ * making every emoji render as one flat tint instead of its real colors.
+ * Fixed by pulling the emoji into its own plain (non-gradient) span per
+ * item, so each one keeps its own native color, while only the
+ * surrounding words get the animated gradient treatment.
+ *
+ * Copy refreshed to be distinct from the Hero pill's phrases (no more
+ * repeating "AI agent in action" in both places).
+ */
+
+const MARQUEE_ITEMS: { emoji: string; text: string }[] = [
+  { emoji: "🚀", text: "From idea to launch in weeks, not months" },
+  { emoji: "🤖", text: "AI chat agents that qualify leads while you sleep" },
+  { emoji: "📱", text: "WhatsApp automation for bookings & support" },
+  { emoji: "🔐", text: "Client-owned code & accounts, always" },
+  { emoji: "⚡", text: "Built by one senior engineer — no bloated agency" },
+];
+
+const SEPARATOR = "✦";
+
+function MarqueeLine({ keyPrefix }: { keyPrefix: string }) {
+  return (
+    <span className="mx-3 flex items-center whitespace-nowrap">
+      {MARQUEE_ITEMS.map((item, i) => (
+        <span
+          key={`${keyPrefix}-${i}`}
+          className="mx-3 flex items-center gap-2 whitespace-nowrap"
+        >
+          {/* Emoji stays outside the gradient span so it keeps its own
+              native color instead of being flattened by background-clip. */}
+          <span className="text-base sm:text-lg" aria-hidden="true">
+            {item.emoji}
+          </span>
+          <span className="text-gradient-animated text-sm font-bold tracking-wide sm:text-base">
+            {item.text}
+          </span>
+          <span className="mx-1 text-xs text-accent/60 sm:text-sm">
+            {SEPARATOR}
+          </span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+export function MarqueeStrip() {
+  const shouldReduceMotion = useReducedMotion();
+
+  if (shouldReduceMotion) {
+    return (
+      <div className="relative border-y border-primary/25 bg-card/60 py-3 text-center">
+        <span className="inline-flex items-center gap-2">
+          <span className="text-base" aria-hidden="true">
+            {MARQUEE_ITEMS[0].emoji}
+          </span>
+          <span className="text-gradient-animated text-sm font-bold sm:text-base">
+            {MARQUEE_ITEMS[0].text}
+          </span>
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="relative w-full overflow-hidden bg-card/60 py-3.5 backdrop-blur-sm"
+      role="presentation"
+      aria-hidden="true"
+    >
+      {/* Static gradient top/bottom borders — frame never moves */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/70 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-accent/70 to-transparent" />
+
+      {/* Fade edges so text doesn't hard-cut at the viewport edge */}
+      <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-background to-transparent sm:w-32" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-background to-transparent sm:w-32" />
+
+      {/* Only this element moves */}
+      <div className="marquee-track flex w-max whitespace-nowrap">
+        <MarqueeLine keyPrefix="a" />
+        <MarqueeLine keyPrefix="b" />
+      </div>
+    </div>
+  );
+}
+</file>
 
 <file path="app/(marketing)/about/opengraph-image.tsx">
 import {
@@ -3718,24 +3831,78 @@ export function BlogCoverArt({
 // components/sections/HeroVisual.tsx
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { useEffect, useState } from "react";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Bot, Sparkles } from "lucide-react";
 
 /**
  * Step 1 redesign: new hero visual, hidden below `lg`.
  *
- * The eyebrow copy already says "try it live below" — this gives visitors
- * a preview of what that AI agent actually looks like before they scroll,
- * instead of the hero being text-only. Pure CSS/SVG, no image assets, so
- * it costs nothing extra to load. Uses the new `.glass-card` /
- * `.animated-border` utilities added to globals.css — see that diff.
+ * v2 FIX: previously the card's height grew every time the reply bubble
+ * / "Typing…" indicator mounted (they weren't in the layout until
+ * `typingDone`), which pushed the whole bordered card taller mid-cycle —
+ * that's the "poora box agay peechay ho raha" bug. Fixed by giving the
+ * message area a fixed `min-h` that already reserves room for all three
+ * lines (assistant bubble + reply + typing indicator), so the outer
+ * `animated-border` card frame never resizes — only the content inside
+ * it changes.
  *
- * This is a static, non-interactive preview (aria-hidden) — it is NOT a
- * duplicate chat widget. The real widget (ChatWindow.tsx) still owns all
- * actual chat functionality.
+ * v2 ALSO ADDS: a full looping conversation cycle instead of a one-shot
+ * animation — word-by-word typing → reply bubble → "Typing…" → hold →
+ * fade out → retype, forever. Respects prefers-reduced-motion by
+ * freezing on the finished state with no loop.
  */
+
+const BUBBLE_TEXT = "Hey! Want to see what we can automate for your business?";
+const CHAR_INTERVAL = 28; // ms per character — smooth letter-by-letter typewriter feel
+const HOLD_AFTER_REPLY = 2200; // ms the finished conversation stays visible
+const PAUSE_BEFORE_RETYPE = 700; // ms blank pause before the loop restarts
+
+type Phase = "typing" | "reply" | "hold" | "reset";
+
 export function HeroVisual() {
   const shouldReduceMotion = useReducedMotion();
+  const [charCount, setCharCount] = useState(
+    shouldReduceMotion ? BUBBLE_TEXT.length : 0,
+  );
+  const [phase, setPhase] = useState<Phase>(
+    shouldReduceMotion ? "hold" : "typing",
+  );
+
+  // Letter-by-letter reveal
+  useEffect(() => {
+    if (shouldReduceMotion || phase !== "typing") return;
+    if (charCount >= BUBBLE_TEXT.length) {
+      setPhase("reply");
+      return;
+    }
+    const t = setTimeout(() => setCharCount((c) => c + 1), CHAR_INTERVAL);
+    return () => clearTimeout(t);
+  }, [charCount, phase, shouldReduceMotion]);
+
+  // Conversation loop: reply -> hold -> reset -> typing again
+  useEffect(() => {
+    if (shouldReduceMotion) return;
+    if (phase === "reply") {
+      const t = setTimeout(() => setPhase("hold"), 500);
+      return () => clearTimeout(t);
+    }
+    if (phase === "hold") {
+      const t = setTimeout(() => setPhase("reset"), HOLD_AFTER_REPLY);
+      return () => clearTimeout(t);
+    }
+    if (phase === "reset") {
+      const t = setTimeout(() => {
+        setCharCount(0);
+        setPhase("typing");
+      }, PAUSE_BEFORE_RETYPE);
+      return () => clearTimeout(t);
+    }
+  }, [phase, shouldReduceMotion]);
+
+  const showAssistantBubble = phase !== "reset";
+  const showReply = phase === "reply" || phase === "hold";
+  const showTypingIndicator = phase === "hold";
 
   return (
     <motion.div
@@ -3755,19 +3922,118 @@ export function HeroVisual() {
         </div>
       </div>
 
-      <div className="rounded-lg bg-secondary-background px-3 py-2 text-xs text-secondary-text">
-        Hey! Want to see what we can automate for your business?
-      </div>
-      <div className="ml-auto max-w-[80%] rounded-lg bg-primary px-3 py-2 text-xs text-primary-foreground">
-        Yes — show me a demo
-      </div>
-      <div className="flex items-center gap-1.5 rounded-lg bg-secondary-background px-3 py-2 text-xs text-secondary-text">
-        <Sparkles className="h-3 w-3 text-accent" />
-        Typing…
+      {/* Fixed-height reserved zone — room for all 3 rows at once so the
+          card frame above never resizes as the conversation plays out. */}
+      <div className="flex min-h-[144px] flex-col justify-start gap-3">
+        <AnimatePresence>
+          {showAssistantBubble && (
+            <motion.div
+              key="assistant-bubble"
+              initial={shouldReduceMotion ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={shouldReduceMotion ? undefined : { opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              className="rounded-lg bg-secondary-background px-3 py-2 text-xs text-secondary-text"
+            >
+              {BUBBLE_TEXT.slice(0, charCount)}
+              {phase === "typing" && (
+                <span className="ml-0.5 inline-block h-3 w-[2px] animate-pulse bg-secondary-text align-middle" />
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {showReply && (
+            <motion.div
+              key="reply-bubble"
+              initial={shouldReduceMotion ? false : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={shouldReduceMotion ? undefined : { opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="ml-auto max-w-[80%] rounded-lg bg-primary px-3 py-2 text-xs text-primary-foreground"
+            >
+              Yes — show me a demo
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {showTypingIndicator && (
+            <motion.div
+              key="typing-indicator"
+              initial={shouldReduceMotion ? false : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={shouldReduceMotion ? undefined : { opacity: 0 }}
+              transition={{
+                duration: 0.3,
+                delay: shouldReduceMotion ? 0 : 0.3,
+              }}
+              className="flex items-center gap-1.5 rounded-lg bg-secondary-background px-3 py-2 text-xs text-secondary-text"
+            >
+              <Sparkles className="h-3 w-3 text-accent" />
+              Typing…
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </motion.div>
   );
 }
+
+// // components/sections/HeroVisual.tsx
+// "use client";
+
+// import { motion, useReducedMotion } from "framer-motion";
+// import { Bot, Sparkles } from "lucide-react";
+
+// /**
+//  * Step 1 redesign: new hero visual, hidden below `lg`.
+//  *
+//  * The eyebrow copy already says "try it live below" — this gives visitors
+//  * a preview of what that AI agent actually looks like before they scroll,
+//  * instead of the hero being text-only. Pure CSS/SVG, no image assets, so
+//  * it costs nothing extra to load. Uses the new `.glass-card` /
+//  * `.animated-border` utilities added to globals.css — see that diff.
+//  *
+//  * This is a static, non-interactive preview (aria-hidden) — it is NOT a
+//  * duplicate chat widget. The real widget (ChatWindow.tsx) still owns all
+//  * actual chat functionality.
+//  */
+// export function HeroVisual() {
+//   const shouldReduceMotion = useReducedMotion();
+
+//   return (
+//     <motion.div
+//       initial={shouldReduceMotion ? false : { opacity: 0, y: 16, scale: 0.98 }}
+//       animate={{ opacity: 1, y: 0, scale: 1 }}
+//       transition={{ duration: 0.6, delay: 0.3 }}
+//       aria-hidden="true"
+//       className="animated-border glass-card hidden w-[320px] shrink-0 flex-col gap-3 rounded-xl p-5 shadow-lg lg:flex"
+//     >
+//       <div className="flex items-center gap-2">
+//         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-accent text-primary-foreground">
+//           <Bot className="h-4 w-4" />
+//         </div>
+//         <div>
+//           <p className="text-sm font-semibold text-foreground">MBR Assistant</p>
+//           <p className="text-xs text-secondary-text">Online now</p>
+//         </div>
+//       </div>
+
+//       <div className="rounded-lg bg-secondary-background px-3 py-2 text-xs text-secondary-text">
+//         Hey! Want to see what we can automate for your business?
+//       </div>
+//       <div className="ml-auto max-w-[80%] rounded-lg bg-primary px-3 py-2 text-xs text-primary-foreground">
+//         Yes — show me a demo
+//       </div>
+//       <div className="flex items-center gap-1.5 rounded-lg bg-secondary-background px-3 py-2 text-xs text-secondary-text">
+//         <Sparkles className="h-3 w-3 text-accent" />
+//         Typing…
+//       </div>
+//     </motion.div>
+//   );
+// }
 </file>
 
 <file path="components/sections/StatsBar.tsx">
@@ -3941,17 +4207,13 @@ export { Label };
 /**
  * Shared contact constants.
  *
- * PLACEHOLDERS TO REPLACE — real inbox address and WhatsApp business
- * number weren't provided, so both are marked clearly rather than
- * invented for a real business.
- *
  * WHATSAPP_DIGITS must be full international format, digits only
  * (no "+", spaces, or dashes) for the wa.me link to resolve, e.g.
  * "923001234567" for +92 300 1234567.
  */
 export const CONTACT_EMAIL = "mbrstudio.dev@gmail.com";
-export const WHATSAPP_DISPLAY = "+92-334-0819120"; // TODO: replace with real number for display
-export const WHATSAPP_DIGITS = "923340819120"; // TODO: replace with real number, digits only, no "+"
+export const WHATSAPP_DISPLAY = "+92-334-0819120";
+export const WHATSAPP_DIGITS = "923340819120";
 export const WHATSAPP_DEFAULT_MESSAGE =
   "Hi MBR Studio — I'm interested in working together on a project. Can we talk?";
 
@@ -7919,7 +8181,7 @@ export default function TermsPage() {
           <div className="mt-12 flex flex-col gap-10">
             <TermsSection title="1. Acceptance of terms">
               <p>
-                By accessing mbrstudio.dev, you agree to these terms. If you do
+                By accessing mbrstudio.co, you agree to these terms. If you do
                 not agree, please do not use this website.
               </p>
             </TermsSection>
@@ -12196,7 +12458,10 @@ export function Process() {
     <section className="bg-background">
       <div className="mx-auto max-w-6xl px-6 py-24 md:px-10 md:py-32">
         <div className="mb-16 max-w-2xl">
-          <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+          {/* <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+            How we work
+          </p> */}
+          <p className="text-gradient-animated mb-3 font-body text-sm font-medium tracking-wide">
             How we work
           </p>
           <FadeIn>
@@ -12275,213 +12540,585 @@ function ProcessStep({
 // components/sections/ServiceVisual.tsx
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Bot, Check, MessageCircle, Sparkles } from "lucide-react";
 
 /**
  * Per-service product mockup for the /services page.
  *
- * Same technique as HeroVisual.tsx (glass-card / animated-border /
- * gradient-ring utilities, brand tokens only, no image assets) — extended
- * to six distinct variants so each service section shows something that
- * actually resembles the thing being sold, instead of empty card space
- * next to a bullet list. Purely decorative (aria-hidden); the real
- * "What's included" list next to it still carries the actual information.
+ * v2 fixes + additions:
+ *
+ * 1) EMPTY BOXES BUG: entrance animation used to be `whileInView`
+ *    (scroll-triggered). Any tool/browser that renders the full page
+ *    height at once without an actual scroll event (full-page
+ *    screenshot capture, some prerenderers, etc.) never fires that
+ *    IntersectionObserver, so every section after the first one stayed
+ *    at its `initial={opacity:0}` state — i.e. invisible. Switched to a
+ *    plain mount `animate` so every visual is guaranteed visible
+ *    regardless of scroll/capture behavior.
+ *
+ * 2) LOOPING TYPED CONVERSATIONS: the two chat-style mockups
+ *    (ai-business-automation, whatsapp-automation) now use the same
+ *    word-by-word-typing + hold + reset loop as HeroVisual.tsx, via the
+ *    local `useConversationLoop` hook below. A fixed-height message zone
+ *    (same technique as HeroVisual) keeps the card frame from resizing
+ *    as bubbles appear.
+ *
+ * 3) The other four (non-chat) mockups get a lighter continuous "alive"
+ *    animation appropriate to what they represent, instead of a static
+ *    render — subtle, on a slow loop, and skipped under
+ *    prefers-reduced-motion.
+ *
+ * Purely decorative (aria-hidden); the real "What's included" list next
+ * to each one still carries the actual information.
  */
-export function ServiceVisual({ slug }: { slug: string }) {
-  const shouldReduceMotion = useReducedMotion();
-  const fadeIn = shouldReduceMotion
+
+// ---------------------------------------------------------------------
+// Shared: letter-by-letter typed conversation loop (chat-style mockups)
+//
+// v3 fixes:
+// - Types character-by-character instead of word-by-word for a smoother,
+//   more natural typing feel (was jumping in whole-word chunks before).
+// - Returns `currentFull` (the complete text of the message currently
+//   being typed) so the bubble can reserve its final width/height up
+//   front — see the "ghost sizing" comment where this is consumed.
+//   Without this, an `ml-auto` bubble whose width grows as text is
+//   typed keeps its *right* edge fixed and its *left* edge moving,
+//   which reads as the text growing right-to-left instead of typing
+//   left-to-right.
+// ---------------------------------------------------------------------
+function useConversationLoop(messages: string[], shouldReduceMotion: boolean) {
+  const lastMessageLength = messages[messages.length - 1]?.length ?? 0;
+  const [index, setIndex] = useState(
+    shouldReduceMotion ? messages.length - 1 : 0,
+  );
+  const [charCount, setCharCount] = useState(
+    shouldReduceMotion ? lastMessageLength : 0,
+  );
+  const [showBadge, setShowBadge] = useState(shouldReduceMotion);
+
+  useEffect(() => {
+    if (shouldReduceMotion) return;
+
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    function typeMessage(i: number, count: number) {
+      if (cancelled) return;
+      const text = messages[i];
+
+      if (count >= text.length) {
+        timeoutId = setTimeout(() => {
+          if (cancelled) return;
+          if (i + 1 < messages.length) {
+            setIndex(i + 1);
+            setCharCount(0);
+            typeMessage(i + 1, 0);
+          } else {
+            setShowBadge(true);
+            timeoutId = setTimeout(() => {
+              if (cancelled) return;
+              setShowBadge(false);
+              setIndex(0);
+              setCharCount(0);
+              typeMessage(0, 0);
+            }, 2200);
+          }
+        }, 500);
+        return;
+      }
+
+      timeoutId = setTimeout(() => {
+        if (cancelled) return;
+        setCharCount(count + 1);
+        typeMessage(i, count + 1);
+      }, 28); // per-character interval — smooth typewriter feel
+    }
+
+    typeMessage(0, 0);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldReduceMotion]);
+
+  const revealed = messages.slice(0, index);
+  const currentFull = messages[index] ?? "";
+  const currentPartial = currentFull.slice(0, charCount);
+  const isTypingCurrent = !shouldReduceMotion && charCount < currentFull.length;
+
+  return {
+    revealed,
+    currentFull,
+    currentPartial,
+    currentIndex: index,
+    isTypingCurrent,
+    showBadge,
+  };
+}
+
+const mountFadeIn = (shouldReduceMotion: boolean | null) =>
+  shouldReduceMotion
     ? {}
     : {
         initial: { opacity: 0, y: 12 },
-        whileInView: { opacity: 1, y: 0 },
-        viewport: { once: true, margin: "-60px" },
+        animate: { opacity: 1, y: 0 },
         transition: { duration: 0.5 },
       };
 
-  switch (slug) {
-    case "digital-product-development":
-      return (
-        <motion.div
-          {...fadeIn}
-          aria-hidden="true"
-          className="glass-card gradient-ring w-full max-w-sm overflow-hidden rounded-xl shadow-lg"
-        >
-          <div className="flex items-center gap-1.5 border-b border-border px-4 py-3">
-            <span className="h-2.5 w-2.5 rounded-full bg-destructive/60" />
-            <span className="h-2.5 w-2.5 rounded-full bg-warning/60" />
-            <span className="h-2.5 w-2.5 rounded-full bg-success/60" />
-            <span className="ml-3 flex-1 truncate rounded-md bg-secondary-background px-2.5 py-1 text-[11px] text-secondary-text">
-              yourbusiness.com
-            </span>
-          </div>
-          <div className="space-y-3 p-5">
-            <div className="h-3 w-2/3 rounded bg-gradient-to-r from-primary to-accent opacity-80" />
-            <div className="h-2 w-full rounded bg-secondary-background" />
-            <div className="h-2 w-5/6 rounded bg-secondary-background" />
-            <div className="mt-4 grid grid-cols-3 gap-2">
-              <div className="h-14 rounded-lg bg-secondary-background" />
-              <div className="h-14 rounded-lg bg-secondary-background" />
-              <div className="h-14 rounded-lg bg-secondary-background" />
-            </div>
-            <div className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-medium text-success">
-              <Sparkles className="h-3 w-3" /> Core Web Vitals: 98
-            </div>
-          </div>
-        </motion.div>
-      );
+// ---------------------------------------------------------------------
+// digital-product-development
+// ---------------------------------------------------------------------
+function DigitalProductVisual() {
+  const shouldReduceMotion = useReducedMotion();
 
-    case "ai-business-automation":
-      return (
+  return (
+    <motion.div
+      {...mountFadeIn(shouldReduceMotion)}
+      aria-hidden="true"
+      className="mockup-card gradient-ring w-full max-w-sm overflow-hidden rounded-xl shadow-lg"
+    >
+      <div className="flex items-center gap-1.5 border-b border-border px-4 py-3">
+        <span className="h-2.5 w-2.5 rounded-full bg-destructive/60" />
+        <span className="h-2.5 w-2.5 rounded-full bg-warning/60" />
+        <span className="h-2.5 w-2.5 rounded-full bg-success/60" />
+        <span className="ml-3 flex-1 truncate rounded-md mockup-fill px-2.5 py-1 text-[11px] text-secondary-text">
+          yourbusiness.com
+        </span>
+      </div>
+      <div className="space-y-3 p-5">
         <motion.div
-          {...fadeIn}
-          aria-hidden="true"
-          className="glass-card gradient-ring flex w-full max-w-sm flex-col gap-3 rounded-xl p-5 shadow-lg"
+          className="h-3 w-2/3 rounded bg-gradient-to-r from-primary to-accent opacity-80"
+          animate={shouldReduceMotion ? undefined : { opacity: [0.6, 1, 0.6] }}
+          transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <div className="h-2 w-full rounded mockup-fill" />
+        <div className="h-2 w-5/6 rounded mockup-fill" />
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          {[0, 1, 2].map((i) => (
+            <motion.div
+              key={i}
+              className="h-14 rounded-lg mockup-fill"
+              animate={
+                shouldReduceMotion ? undefined : { opacity: [0.5, 1, 0.5] }
+              }
+              transition={{
+                duration: 2.2,
+                repeat: Infinity,
+                ease: "easeInOut",
+                delay: i * 0.3,
+              }}
+            />
+          ))}
+        </div>
+        <motion.div
+          className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-medium text-success"
+          animate={shouldReduceMotion ? undefined : { scale: [1, 1.04, 1] }}
+          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
         >
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-accent text-primary-foreground">
-              <Bot className="h-4 w-4" />
+          <Sparkles className="h-3 w-3" /> Core Web Vitals: 98
+        </motion.div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// ai-business-automation (looping typed conversation)
+// ---------------------------------------------------------------------
+const AI_MESSAGES = [
+  "Do you offer refunds after 30 days?",
+  "Our policy covers returns within 30 days — I can start that for you now.",
+];
+
+function AiAutomationVisual() {
+  const shouldReduceMotion = useReducedMotion();
+  const {
+    revealed,
+    currentFull,
+    currentPartial,
+    currentIndex,
+    isTypingCurrent,
+    showBadge,
+  } = useConversationLoop(AI_MESSAGES, !!shouldReduceMotion);
+
+  return (
+    <motion.div
+      {...mountFadeIn(shouldReduceMotion)}
+      aria-hidden="true"
+      className="mockup-card gradient-ring flex w-full max-w-sm flex-col gap-3 rounded-xl p-5 shadow-lg"
+    >
+      <div className="flex items-center gap-2">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-accent text-primary-foreground">
+          <Bot className="h-4 w-4" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-foreground">Support Agent</p>
+          <p className="text-xs text-secondary-text">Trained on your docs</p>
+        </div>
+      </div>
+
+      {/* Reserved zone — height is set by the invisible "ghost" copy of the
+          full conversation below, so it is exactly tall enough for every
+          phase of the loop (mid-type, all messages, or the badge) and
+          never resizes the card frame around it. */}
+      <div className="relative min-h-[104px]">
+        {/* Ghost: the complete, final conversation + badge, rendered
+            invisibly. It is never removed, so this zone's height is
+            constant for the entire lifetime of the component. */}
+        <div aria-hidden="true" className="invisible flex flex-col gap-2">
+          {AI_MESSAGES.map((text, i) => (
+            <div
+              key={i}
+              className={
+                i % 2 === 0
+                  ? "w-fit rounded-lg px-3 py-2 text-xs"
+                  : "ml-auto w-fit max-w-[85%] rounded-lg px-3 py-2 text-xs"
+              }
+            >
+              {text}
             </div>
-            <div>
-              <p className="text-sm font-semibold text-foreground">
-                Support Agent
-              </p>
-              <p className="text-xs text-secondary-text">
-                Trained on your docs
-              </p>
-            </div>
-          </div>
-          <div className="rounded-lg bg-secondary-background px-3 py-2 text-xs text-secondary-text">
-            Do you offer refunds after 30 days?
-          </div>
-          <div className="ml-auto max-w-[85%] rounded-lg bg-primary px-3 py-2 text-xs text-primary-foreground">
-            Our policy covers returns within 30 days — I can start that for you
-            now.
-          </div>
-          <div className="flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-medium text-success">
+          ))}
+          <div className="inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium">
             <Check className="h-3 w-3" /> Resolved without a human
           </div>
-        </motion.div>
-      );
+        </div>
 
-    case "whatsapp-automation":
-      // Brand-token colors throughout — intentionally not WhatsApp's
-      // official green, to stay on-brand rather than borrowing another
-      // product's identity.
-      return (
-        <motion.div
-          {...fadeIn}
-          aria-hidden="true"
-          className="glass-card gradient-ring w-full max-w-sm rounded-xl p-5 shadow-lg"
-        >
-          <div className="mb-4 flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-primary to-accent text-primary-foreground">
-              <MessageCircle className="h-4 w-4" />
+        {/* Real animated content, stacked exactly over the ghost above. */}
+        <div className="absolute inset-0 flex flex-col justify-start gap-2">
+          {revealed.map((text, i) => (
+            <div
+              key={i}
+              className={
+                i % 2 === 0
+                  ? "w-fit rounded-lg mockup-fill px-3 py-2 text-xs text-secondary-text"
+                  : "ml-auto w-fit max-w-[85%] rounded-lg bg-primary px-3 py-2 text-xs text-primary-foreground"
+              }
+            >
+              {text}
             </div>
-            <div>
-              <p className="text-sm font-semibold text-foreground">
-                Booking Assistant
-              </p>
-              <p className="text-xs text-secondary-text">via WhatsApp</p>
+          ))}
+
+          {currentIndex < AI_MESSAGES.length && (
+            <div
+              className={
+                currentIndex % 2 === 0
+                  ? "relative w-fit rounded-lg mockup-fill px-3 py-2 text-xs text-secondary-text"
+                  : "relative ml-auto w-fit max-w-[85%] rounded-lg bg-primary px-3 py-2 text-xs text-primary-foreground"
+              }
+            >
+              {/* Invisible full text reserves this bubble's final size
+                  immediately, so it never grows leftward as characters
+                  are typed in — this is what fixes the right-to-left
+                  look on the ml-auto (reply) bubble. */}
+              <span className="invisible whitespace-pre-wrap">
+                {shouldReduceMotion ? AI_MESSAGES[currentIndex] : currentFull}
+              </span>
+              <span className="absolute inset-0 px-3 py-2">
+                {shouldReduceMotion
+                  ? AI_MESSAGES[currentIndex]
+                  : currentPartial}
+                {isTypingCurrent && (
+                  <span className="ml-0.5 inline-block h-3 w-[2px] animate-pulse bg-current align-middle" />
+                )}
+              </span>
             </div>
-          </div>
-          <div className="space-y-2">
-            <div className="max-w-[85%] rounded-lg rounded-tl-none bg-secondary-background px-3 py-2 text-xs text-secondary-text">
-              Hi! I&apos;d like to book a table for 4 on Friday
+          )}
+
+          {showBadge && (
+            <motion.div
+              initial={shouldReduceMotion ? false : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+              className="inline-flex w-fit items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-medium text-success"
+            >
+              <Check className="h-3 w-3" /> Resolved without a human
+            </motion.div>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// whatsapp-automation (looping typed conversation)
+// ---------------------------------------------------------------------
+const WHATSAPP_MESSAGES = [
+  "Hi! I'd like to book a table for 4 on Friday",
+  "Got it — Friday, 4 guests. 7:00 PM or 8:30 PM?",
+  "7:00 works",
+];
+
+function WhatsAppVisual() {
+  const shouldReduceMotion = useReducedMotion();
+  const {
+    revealed,
+    currentFull,
+    currentPartial,
+    currentIndex,
+    isTypingCurrent,
+    showBadge,
+  } = useConversationLoop(WHATSAPP_MESSAGES, !!shouldReduceMotion);
+
+  return (
+    <motion.div
+      {...mountFadeIn(shouldReduceMotion)}
+      aria-hidden="true"
+      className="mockup-card gradient-ring w-full max-w-sm rounded-xl p-5 shadow-lg"
+    >
+      <div className="mb-4 flex items-center gap-2">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-primary to-accent text-primary-foreground">
+          <MessageCircle className="h-4 w-4" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-foreground">
+            Booking Assistant
+          </p>
+          <p className="text-xs text-secondary-text">via WhatsApp</p>
+        </div>
+      </div>
+
+      {/* Reserved zone — height is set by the invisible "ghost" copy of the
+          full conversation below, so it is exactly tall enough for every
+          phase of the loop and never resizes the card frame around it. */}
+      <div className="relative min-h-[132px]">
+        {/* Ghost: the complete, final conversation + badge, rendered
+            invisibly. It is never removed, so this zone's height is
+            constant for the entire lifetime of the component. */}
+        <div aria-hidden="true" className="invisible flex flex-col gap-2">
+          {WHATSAPP_MESSAGES.map((text, i) => (
+            <div
+              key={i}
+              className={
+                i % 2 === 0
+                  ? "w-fit max-w-[85%] rounded-lg rounded-tl-none px-3 py-2 text-xs"
+                  : "ml-auto w-fit max-w-[85%] rounded-lg rounded-tr-none px-3 py-2 text-xs"
+              }
+            >
+              {text}
             </div>
-            <div className="ml-auto max-w-[85%] rounded-lg rounded-tr-none bg-primary px-3 py-2 text-xs text-primary-foreground">
-              Got it — Friday, 4 guests. 7:00 PM or 8:30 PM?
-            </div>
-            <div className="max-w-[85%] rounded-lg rounded-tl-none bg-secondary-background px-3 py-2 text-xs text-secondary-text">
-              7:00 works
-            </div>
-          </div>
-          <div className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-medium text-success">
+          ))}
+          <div className="inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium">
             <Check className="h-3 w-3" /> Booking confirmed · 0 staff time
           </div>
-        </motion.div>
-      );
+        </div>
 
+        {/* Real animated content, stacked exactly over the ghost above. */}
+        <div className="absolute inset-0 flex flex-col justify-start gap-2">
+          {revealed.map((text, i) => (
+            <div
+              key={i}
+              className={
+                i % 2 === 0
+                  ? "w-fit max-w-[85%] rounded-lg rounded-tl-none mockup-fill px-3 py-2 text-xs text-secondary-text"
+                  : "ml-auto w-fit max-w-[85%] rounded-lg rounded-tr-none bg-primary px-3 py-2 text-xs text-primary-foreground"
+              }
+            >
+              {text}
+            </div>
+          ))}
+
+          {currentIndex < WHATSAPP_MESSAGES.length && (
+            <div
+              className={
+                currentIndex % 2 === 0
+                  ? "relative w-fit max-w-[85%] rounded-lg rounded-tl-none mockup-fill px-3 py-2 text-xs text-secondary-text"
+                  : "relative ml-auto w-fit max-w-[85%] rounded-lg rounded-tr-none bg-primary px-3 py-2 text-xs text-primary-foreground"
+              }
+            >
+              {/* Invisible full text reserves this bubble's final size
+                  immediately, so it never grows leftward as characters
+                  are typed in — this is what fixes the right-to-left
+                  look on the ml-auto (reply) bubbles. */}
+              <span className="invisible whitespace-pre-wrap">
+                {shouldReduceMotion
+                  ? WHATSAPP_MESSAGES[currentIndex]
+                  : currentFull}
+              </span>
+              <span className="absolute inset-0 px-3 py-2">
+                {shouldReduceMotion
+                  ? WHATSAPP_MESSAGES[currentIndex]
+                  : currentPartial}
+                {isTypingCurrent && (
+                  <span className="ml-0.5 inline-block h-3 w-[2px] animate-pulse bg-current align-middle" />
+                )}
+              </span>
+            </div>
+          )}
+
+          {showBadge && (
+            <motion.div
+              initial={shouldReduceMotion ? false : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+              className="inline-flex w-fit items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-medium text-success"
+            >
+              <Check className="h-3 w-3" /> Booking confirmed · 0 staff time
+            </motion.div>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// landing-pages
+// ---------------------------------------------------------------------
+function LandingPagesVisual() {
+  const shouldReduceMotion = useReducedMotion();
+
+  return (
+    <motion.div
+      {...mountFadeIn(shouldReduceMotion)}
+      aria-hidden="true"
+      className="mockup-card gradient-ring w-full max-w-sm rounded-xl p-5 shadow-lg"
+    >
+      <div className="mx-auto flex w-40 flex-col items-center gap-2 rounded-2xl border border-border mockup-fill p-3">
+        <div className="h-2 w-16 rounded bg-gradient-to-r from-primary to-accent" />
+        <div className="h-1.5 w-24 rounded bg-border" />
+        <div className="h-1.5 w-20 rounded bg-border" />
+        <motion.div
+          className="mt-2 h-6 w-24 rounded-md bg-primary"
+          animate={shouldReduceMotion ? undefined : { scale: [1, 1.05, 1] }}
+          transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+        />
+      </div>
+      <div className="mt-4 flex items-center justify-between rounded-lg mockup-fill px-3 py-2">
+        <span className="text-[11px] text-secondary-text">Conversion rate</span>
+        <motion.span
+          className="flex items-center gap-1 text-xs font-semibold text-success"
+          animate={shouldReduceMotion ? undefined : { opacity: [0.6, 1, 0.6] }}
+          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+        >
+          <Sparkles className="h-3 w-3" /> +38%
+        </motion.span>
+      </div>
+    </motion.div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// saas-development
+// ---------------------------------------------------------------------
+const BAR_HEIGHTS_A = [40, 65, 45, 80, 60, 95, 70];
+const BAR_HEIGHTS_B = [55, 50, 70, 60, 85, 75, 90];
+
+function SaasDevelopmentVisual() {
+  const shouldReduceMotion = useReducedMotion();
+
+  return (
+    <motion.div
+      {...mountFadeIn(shouldReduceMotion)}
+      aria-hidden="true"
+      className="mockup-card gradient-ring w-full max-w-sm rounded-xl p-5 shadow-lg"
+    >
+      <div className="mb-3 grid grid-cols-3 gap-2">
+        <div className="rounded-lg mockup-fill p-2">
+          <p className="text-[10px] text-secondary-text">MRR</p>
+          <p className="text-sm font-semibold text-foreground">$12.4k</p>
+        </div>
+        <div className="rounded-lg mockup-fill p-2">
+          <p className="text-[10px] text-secondary-text">Users</p>
+          <p className="text-sm font-semibold text-foreground">2,180</p>
+        </div>
+        <div className="rounded-lg mockup-fill p-2">
+          <p className="text-[10px] text-secondary-text">Uptime</p>
+          <p className="text-sm font-semibold text-foreground">99.9%</p>
+        </div>
+      </div>
+      <div className="flex h-16 items-end gap-1.5 rounded-lg mockup-fill p-2">
+        {BAR_HEIGHTS_A.map((h, i) => (
+          <motion.div
+            key={i}
+            className="flex-1 rounded-sm bg-gradient-to-t from-primary to-accent opacity-80"
+            initial={{ height: `${h}%` }}
+            animate={
+              shouldReduceMotion
+                ? undefined
+                : { height: [`${h}%`, `${BAR_HEIGHTS_B[i]}%`, `${h}%`] }
+            }
+            transition={{
+              duration: 3,
+              repeat: Infinity,
+              ease: "easeInOut",
+              delay: i * 0.1,
+            }}
+          />
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// ui-ux-design
+// ---------------------------------------------------------------------
+function UiUxDesignVisual() {
+  const shouldReduceMotion = useReducedMotion();
+  const swatches = ["bg-primary", "bg-accent", "bg-success", ""];
+
+  return (
+    <motion.div
+      {...mountFadeIn(shouldReduceMotion)}
+      aria-hidden="true"
+      className="mockup-card gradient-ring w-full max-w-sm rounded-xl p-5 shadow-lg"
+    >
+      <div className="mb-4 flex items-center gap-2">
+        {swatches.map((cls, i) => (
+          <motion.span
+            key={i}
+            className={`h-6 w-6 rounded-full ${
+              cls || "border border-border mockup-fill"
+            }`}
+            animate={shouldReduceMotion ? undefined : { scale: [1, 1.15, 1] }}
+            transition={{
+              duration: 1.6,
+              repeat: Infinity,
+              ease: "easeInOut",
+              delay: i * 0.25,
+            }}
+          />
+        ))}
+      </div>
+      <div className="space-y-2">
+        <div className="h-8 w-full rounded-md border border-border mockup-fill px-3" />
+        <div className="flex gap-2">
+          <motion.div
+            className="h-7 w-16 rounded-md bg-primary"
+            animate={
+              shouldReduceMotion ? undefined : { opacity: [0.7, 1, 0.7] }
+            }
+            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+          />
+          <div className="h-7 w-16 rounded-md border border-border bg-transparent" />
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Dispatcher
+// ---------------------------------------------------------------------
+export function ServiceVisual({ slug }: { slug: string }) {
+  switch (slug) {
+    case "digital-product-development":
+      return <DigitalProductVisual />;
+    case "ai-business-automation":
+      return <AiAutomationVisual />;
+    case "whatsapp-automation":
+      return <WhatsAppVisual />;
     case "landing-pages":
-      return (
-        <motion.div
-          {...fadeIn}
-          aria-hidden="true"
-          className="glass-card gradient-ring w-full max-w-sm rounded-xl p-5 shadow-lg"
-        >
-          <div className="mx-auto flex w-40 flex-col items-center gap-2 rounded-2xl border border-border bg-secondary-background p-3">
-            <div className="h-2 w-16 rounded bg-gradient-to-r from-primary to-accent" />
-            <div className="h-1.5 w-24 rounded bg-border" />
-            <div className="h-1.5 w-20 rounded bg-border" />
-            <div className="mt-2 h-6 w-24 rounded-md bg-primary" />
-          </div>
-          <div className="mt-4 flex items-center justify-between rounded-lg bg-secondary-background px-3 py-2">
-            <span className="text-[11px] text-secondary-text">
-              Conversion rate
-            </span>
-            <span className="flex items-center gap-1 text-xs font-semibold text-success">
-              <Sparkles className="h-3 w-3" /> +38%
-            </span>
-          </div>
-        </motion.div>
-      );
-
+      return <LandingPagesVisual />;
     case "saas-development":
-      return (
-        <motion.div
-          {...fadeIn}
-          aria-hidden="true"
-          className="glass-card gradient-ring w-full max-w-sm rounded-xl p-5 shadow-lg"
-        >
-          <div className="mb-3 grid grid-cols-3 gap-2">
-            <div className="rounded-lg bg-secondary-background p-2">
-              <p className="text-[10px] text-secondary-text">MRR</p>
-              <p className="text-sm font-semibold text-foreground">$12.4k</p>
-            </div>
-            <div className="rounded-lg bg-secondary-background p-2">
-              <p className="text-[10px] text-secondary-text">Users</p>
-              <p className="text-sm font-semibold text-foreground">2,180</p>
-            </div>
-            <div className="rounded-lg bg-secondary-background p-2">
-              <p className="text-[10px] text-secondary-text">Uptime</p>
-              <p className="text-sm font-semibold text-foreground">99.9%</p>
-            </div>
-          </div>
-          <div className="flex h-16 items-end gap-1.5 rounded-lg bg-secondary-background p-2">
-            {[40, 65, 45, 80, 60, 95, 70].map((h, i) => (
-              <div
-                key={i}
-                style={{ height: `${h}%` }}
-                className="flex-1 rounded-sm bg-gradient-to-t from-primary to-accent opacity-80"
-              />
-            ))}
-          </div>
-        </motion.div>
-      );
-
+      return <SaasDevelopmentVisual />;
     case "ui-ux-design":
-      return (
-        <motion.div
-          {...fadeIn}
-          aria-hidden="true"
-          className="glass-card gradient-ring w-full max-w-sm rounded-xl p-5 shadow-lg"
-        >
-          <div className="mb-4 flex items-center gap-2">
-            <span className="h-6 w-6 rounded-full bg-primary" />
-            <span className="h-6 w-6 rounded-full bg-accent" />
-            <span className="h-6 w-6 rounded-full bg-success" />
-            <span className="h-6 w-6 rounded-full border border-border bg-secondary-background" />
-          </div>
-          <div className="space-y-2">
-            <div className="h-8 w-full rounded-md border border-border bg-secondary-background px-3" />
-            <div className="flex gap-2">
-              <div className="h-7 w-16 rounded-md bg-primary" />
-              <div className="h-7 w-16 rounded-md border border-border bg-transparent" />
-            </div>
-          </div>
-        </motion.div>
-      );
-
+      return <UiUxDesignVisual />;
     default:
       return null;
   }
@@ -14678,10 +15315,64 @@ export default function Loading() {
 </file>
 
 <file path="app/(marketing)/page.tsx">
+// import type { Metadata } from "next";
+// import { FAQ } from "@/components/sections/Faq";
+// import { FeaturedProjects } from "@/components/sections/FeaturedProjects";
+// import { Hero } from "@/components/sections/Hero";
+// import { ProblemStatement } from "@/components/sections/ProblemStatement";
+// import { Process } from "@/components/sections/Process";
+// import { Services } from "@/components/sections/Services";
+// import { Technologies } from "@/components/sections/Technologies";
+// import { Testimonials } from "@/components/sections/Testimonials";
+// import { StatsBar } from "@/components/sections/StatsBar";
+// import { WhyChooseUs } from "@/components/sections/WhyChooseUs";
+// import { testimonials } from "@/data/testimonials";
+
+// /**
+//  * Home Page — SEO pass (Prompt 20).
+//  *
+//  * No `title` field here on purpose: root layout's `metadata.title.default`
+//  * already holds the full brand title ("MBR Studio — Digital products, built
+//  * to grow your business."). Next.js only applies `title.template` to a title
+//  * a page explicitly *sets* — it does not apply to `default`. If this page
+//  * set its own title (even "Home"), the template would append the site
+//  * suffix on top of it, producing the same duplication bug that was fixed on
+//  * services/about. Description + canonical are still page-specific per
+//  * Blueprint Part 2 Section 13, since those aren't inherited from `default`
+//  * the same way title is.
+//  *
+//  * No Organization JSON-LD here either — it's rendered once, sitewide, in
+//  * root layout.tsx, not repeated per-page.
+//  */
+// export const metadata: Metadata = {
+//   description:
+//     "MBR Studio is a premium software agency building websites, AI-powered automation, and digital products for growing businesses.",
+//   alternates: {
+//     canonical: "/",
+//   },
+// };
+
+// export default function Home() {
+//   return (
+//     <>
+//       <Hero />
+//       <ProblemStatement />
+//       <Services />
+//       <FeaturedProjects />
+//       <Process />
+//       <WhyChooseUs />
+//       <Technologies />
+//       {testimonials.length > 0 ? <Testimonials /> : <StatsBar />}
+//       <FAQ />
+//     </>
+//   );
+// }
+
 import type { Metadata } from "next";
 import { FAQ } from "@/components/sections/Faq";
 import { FeaturedProjects } from "@/components/sections/FeaturedProjects";
 import { Hero } from "@/components/sections/Hero";
+import { MarqueeStrip } from "@/components/sections/MarqueeStrip";
 import { ProblemStatement } from "@/components/sections/ProblemStatement";
 import { Process } from "@/components/sections/Process";
 import { Services } from "@/components/sections/Services";
@@ -14706,6 +15397,10 @@ import { testimonials } from "@/data/testimonials";
  *
  * No Organization JSON-LD here either — it's rendered once, sitewide, in
  * root layout.tsx, not repeated per-page.
+ *
+ * MarqueeStrip sits directly under Hero (own full-bleed section, not
+ * nested inside HeroEyebrow) — see MarqueeStrip.tsx for why it was moved
+ * out of the hero itself.
  */
 export const metadata: Metadata = {
   description:
@@ -14719,6 +15414,7 @@ export default function Home() {
   return (
     <>
       <Hero />
+      <MarqueeStrip />
       <ProblemStatement />
       <Services />
       <FeaturedProjects />
@@ -17066,7 +17762,7 @@ export function Hero() {
       <HeroAmbient />
 
       <div className="relative z-10 mx-auto flex min-h-[88vh] max-w-6xl flex-col justify-center gap-12 px-6 py-32 md:px-10 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex max-w-4xl flex-col">
+        <div className="flex max-w-4xl flex-col lg:flex-1">
           <HeroEyebrow />
 
           <h1 className="max-w-4xl font-heading text-2xl font-bold leading-[1.05] tracking-tight text-text sm:text-3xl md:text-4xl lg:text-5xl">
@@ -17087,34 +17783,135 @@ export function Hero() {
 </file>
 
 <file path="components/sections/HeroEyebrow.tsx">
-// components/sections/HeroEyebrow.tsx
+// // components/sections/HeroEyebrow.tsx
+// "use client";
+
+// import { motion, useReducedMotion } from "framer-motion";
+// import { Sparkles } from "lucide-react";
+
+// /**
+//  * Step 1 redesign: was a plain line of text. Now a glass pill badge with
+//  * a live-pulse dot + sparkle icon — the "glassmorphism / premium badge"
+//  * treatment from the redesign brief, applied to the single most-seen
+//  * element on the site.
+//  */
+// export function HeroEyebrow() {
+//   const shouldReduceMotion = useReducedMotion();
+
+//   return (
+//     <motion.div
+//       initial={shouldReduceMotion ? false : { opacity: 0, y: 8 }}
+//       animate={{ opacity: 1, y: 0 }}
+//       transition={{ duration: 0.4 }}
+//       className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-border/80 bg-card/60 px-4 py-1.5 text-sm font-medium text-secondary-text shadow-sm backdrop-blur-md"
+//     >
+//       <span className="relative flex h-2 w-2" aria-hidden="true">
+//         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75 motion-reduce:animate-none" />
+//         <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+//       </span>
+//       <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+//       Web Development Agency + the AI Chat Agent behind it — try it live below
+//     </motion.div>
+//   );
+// }
+
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { useEffect, useState } from "react";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Sparkles } from "lucide-react";
 
 /**
- * Step 1 redesign: was a plain line of text. Now a glass pill badge with
- * a live-pulse dot + sparkle icon — the "glassmorphism / premium badge"
- * treatment from the redesign brief, applied to the single most-seen
- * element on the site.
+ * Glass pill badge above the H1. Rotates through a short set of phrases
+ * with a smooth opacity+slide crossfade, one line at all times. Text uses
+ * the shared `.text-gradient-animated` utility (globals.css).
+ *
+ * v3: refreshed copy so it doesn't repeat the marquee strip's wording —
+ * pill = the 3 headline positioning statements, marquee (MarqueeStrip.tsx)
+ * = the punchy feature/benefit ticker below it. Kept to 3 phrases so the
+ * rotation stays quick to read.
+ *
+ * Respects prefers-reduced-motion: shows the first phrase only, statically,
+ * no interval/shimmer runs.
  */
+
+const PHRASES = [
+  "🚀 Web Development Agency + the AI Agent behind it — try it live below",
+  "💬 Websites, AI Chatbots & WhatsApp Automation — built by one senior engineer",
+  "✨ See the AI agent in action — right there in the corner →",
+];
+
+// Widest phrase — reserves a fixed width via an invisible sizer below so
+// the pill never resizes as phrases rotate, which is what was shifting
+// the HeroVisual card left/right.
+const LONGEST_PHRASE = PHRASES.reduce((a, b) => (b.length > a.length ? b : a));
+
+const PHRASE_DURATION = 4200; // ms each phrase stays visible
+
 export function HeroEyebrow() {
   const shouldReduceMotion = useReducedMotion();
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    if (shouldReduceMotion) return;
+    const interval = setInterval(() => {
+      setIndex((i) => (i + 1) % PHRASES.length);
+    }, PHRASE_DURATION);
+    return () => clearInterval(interval);
+  }, [shouldReduceMotion]);
 
   return (
     <motion.div
       initial={shouldReduceMotion ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-border/80 bg-card/60 px-4 py-1.5 text-sm font-medium text-secondary-text shadow-sm backdrop-blur-md"
+      className="relative mb-6 inline-flex w-fit max-w-full items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-full border border-primary/30 bg-card/60 px-5 py-2 text-base font-semibold shadow-sm backdrop-blur-md sm:text-lg"
     >
-      <span className="relative flex h-2 w-2" aria-hidden="true">
+      {/* Slow diagonal shimmer sweep — purely decorative, sits behind the text */}
+      {!shouldReduceMotion && (
+        <motion.span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 left-0 w-1/3 -skew-x-12 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+          animate={{ x: ["-120%", "320%"] }}
+          transition={{
+            duration: 5,
+            repeat: Infinity,
+            ease: "linear",
+            repeatDelay: 2,
+          }}
+        />
+      )}
+
+      <span className="relative flex h-2.5 w-2.5 flex-none" aria-hidden="true">
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75 motion-reduce:animate-none" />
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-accent" />
       </span>
-      <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-      Web Development Agency + the AI Chat Agent behind it — try it live below
+      <Sparkles className="h-4 w-4 flex-none text-primary" aria-hidden="true" />
+
+      <span className="relative inline-grid">
+        {/* Invisible sizer holding the longest phrase — locks the pill's
+            width permanently so it can never grow/shrink on rotation. */}
+        <span
+          className="invisible col-start-1 row-start-1 whitespace-nowrap"
+          aria-hidden="true"
+        >
+          {LONGEST_PHRASE}
+        </span>
+        <AnimatePresence mode="wait">
+          <motion.span
+            key={shouldReduceMotion ? "static" : index}
+            initial={shouldReduceMotion ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={shouldReduceMotion ? undefined : { opacity: 0, y: -6 }}
+            transition={{ duration: 0.5, ease: "easeInOut" }}
+            className={`col-start-1 row-start-1 whitespace-nowrap ${
+              shouldReduceMotion ? "text-primary" : "text-gradient-animated"
+            }`}
+          >
+            {shouldReduceMotion ? PHRASES[0] : PHRASES[index]}
+          </motion.span>
+        </AnimatePresence>
+      </span>
     </motion.div>
   );
 }
@@ -19771,7 +20568,7 @@ export async function POST(request: Request) {
 
     // Notification to the MBR Studio inbox.
     const { error: notifyError } = await resend.emails.send({
-      from: `MBR Studio Website <notifications@mbrstudio.dev>`,
+      from: `MBR Studio Website <onboarding@resend.dev>`,
       to: CONTACT_EMAIL,
       replyTo: email,
       subject: `New inquiry: ${serviceLabel} — ${name}`,
@@ -19813,7 +20610,7 @@ export async function POST(request: Request) {
 
     // Auto-reply to the visitor.
     const { error: replyError } = await resend.emails.send({
-      from: `MBR Studio <notifications@mbrstudio.dev>`,
+      from: `MBR Studio <onboarding@resend.dev>`,
       to: email,
       replyTo: CONTACT_EMAIL,
       subject: "We've received your message — MBR Studio",
@@ -20986,22 +21783,38 @@ export function StatCard({
 <file path="components/sections/BlogCard.tsx">
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useReducedMotion } from "framer-motion";
+import { ArrowUpRight } from "lucide-react";
 import { formatDate } from "@/lib/formatters";
 import type { BlogPost } from "@/data/blog";
 import { Badge } from "@/components/ui/badge";
 import { FadeIn } from "@/components/animations/FadeIn";
 import { BlogCoverArt } from "@/components/sections/BlogCoverArt";
 
+// Rough reading time estimate from the HTML content string — good enough
+// for a "X min read" label without adding a markdown/word-count dependency.
+function estimateReadingTime(html: string) {
+  const words = html
+    .replace(/<[^>]+>/g, " ")
+    .trim()
+    .split(/\s+/).length;
+  return Math.max(1, Math.round(words / 200));
+}
+
 export function BlogCard({
   post,
   index = 0,
+  featured = false,
 }: {
   post: BlogPost;
   index?: number;
+  /** Larger, editorial-style treatment — used for the top posts on the blog index. */
+  featured?: boolean;
 }) {
   const shouldReduceMotion = useReducedMotion();
+  const readingTime = estimateReadingTime(post.content);
 
   return (
     <FadeIn
@@ -21012,31 +21825,75 @@ export function BlogCard({
           ? undefined
           : { y: -4, transition: { duration: 0.2, ease: "easeOut" } }
       }
-      className="group relative overflow-hidden rounded-2xl border border-border bg-card transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/10"
+      className={`group relative overflow-hidden rounded-2xl border border-border bg-card transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/10 ${
+        featured ? "md:col-span-1" : ""
+      }`}
     >
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 hover-glow-primary transition-opacity duration-300 group-hover:opacity-100"
+        className="pointer-events-none absolute inset-0 z-10 rounded-2xl opacity-0 hover-glow-primary transition-opacity duration-300 group-hover:opacity-100"
       />
       <Link href={`/blog/${post.slug}`} className="relative block">
-        <div className="p-3 pb-0">
-          <BlogCoverArt category={post.category} compact />
-        </div>
-        <div className="p-6 pt-4">
-          <div className="mb-3 flex items-center gap-2 text-xs text-secondary-text">
-            <Badge variant="outline" className="text-xs">
+        <div
+          className={`relative w-full overflow-hidden ${
+            featured ? "aspect-[16/10]" : "aspect-[16/10]"
+          }`}
+        >
+          {post.coverImage ? (
+            <Image
+              src={post.coverImage}
+              alt={post.title}
+              fill
+              sizes={
+                featured
+                  ? "(max-width: 768px) 100vw, 50vw"
+                  : "(max-width: 768px) 100vw, 400px"
+              }
+              className="object-cover transition-transform duration-500 group-hover:scale-105"
+              priority={featured}
+            />
+          ) : (
+            <div className="absolute inset-0 p-3">
+              <BlogCoverArt category={post.category} compact />
+            </div>
+          )}
+          {/* Gradient scrim so the category badge is always legible over any photo */}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/0 to-black/0" />
+          <div className="absolute left-3 top-3">
+            <Badge className="border-none bg-black/50 text-xs font-medium text-white backdrop-blur-sm">
               {post.category}
             </Badge>
-            <span>·</span>
+          </div>
+        </div>
+
+        <div className={featured ? "p-7" : "p-6"}>
+          <div className="mb-3 flex items-center gap-2 text-xs text-secondary-text">
             <time dateTime={post.publishedAt}>
               {formatDate(post.publishedAt)}
             </time>
+            <span>·</span>
+            <span>{readingTime} min read</span>
           </div>
-          <h2 className="mb-2 font-heading text-lg font-semibold text-text transition-colors group-hover:text-primary">
+          <h2
+            className={`mb-2 font-heading font-semibold text-text transition-colors group-hover:text-primary ${
+              featured ? "text-xl md:text-2xl" : "text-lg"
+            }`}
+          >
             {post.title}
           </h2>
-          <p className="text-sm text-secondary-text">{post.summary}</p>
-          <div className="mt-4 text-primary">Read more</div>
+          <p
+            className={`text-secondary-text ${
+              featured
+                ? "text-sm md:text-base line-clamp-2"
+                : "text-sm line-clamp-2"
+            }`}
+          >
+            {post.summary}
+          </p>
+          <div className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-primary">
+            Read more
+            <ArrowUpRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+          </div>
         </div>
       </Link>
     </FadeIn>
@@ -21109,7 +21966,10 @@ export function FAQ() {
     <section className="bg-background">
       <div className="mx-auto max-w-3xl px-6 py-24 md:px-10 md:py-32">
         <div className="mb-12 text-center">
-          <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+          {/* <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+            FAQ
+          </p> */}
+          <p className="text-gradient-animated mb-3 font-body text-sm font-medium tracking-wide">
             FAQ
           </p>
           <h2 className="font-heading text-h2-feature font-bold leading-tight tracking-tight text-text">
@@ -21629,7 +22489,10 @@ export function WhyChooseUs() {
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,340px)_1fr] lg:gap-20">
           {/* Left: static heading */}
           <div className="lg:sticky lg:top-32 lg:self-start">
-            <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+            {/* <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+              Why MBR Studio
+            </p> */}
+            <p className="text-gradient-animated mb-3 font-body text-sm font-medium tracking-wide">
               Why MBR Studio
             </p>
             <h2
@@ -22190,6 +23053,7 @@ export async function scrapePage(
 <file path="app/(marketing)/blog/[slug]/page.tsx">
 // app/(marketing)/blog/[slug]/page.tsx
 import type { Metadata } from "next";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import { blogPosts } from "@/data/blog";
 import { formatDate } from "@/lib/formatters";
@@ -22202,6 +23066,14 @@ import { BlogCoverArt } from "@/components/sections/BlogCoverArt";
 
 interface BlogPostPageProps {
   params: Promise<{ slug: string }>; // ✅ params is async, per Next.js 15
+}
+
+function estimateReadingTime(html: string) {
+  const words = html
+    .replace(/<[^>]+>/g, " ")
+    .trim()
+    .split(/\s+/).length;
+  return Math.max(1, Math.round(words / 200));
 }
 
 export function generateStaticParams() {
@@ -22233,6 +23105,8 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
   // (placeholder content) — neither should ever render.
   if (!post) notFound();
 
+  const readingTime = estimateReadingTime(post.content);
+
   return (
     <>
       <JsonLd
@@ -22255,19 +23129,40 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
             <ArrowLeft className="h-4 w-4" />
             Back to blog
           </Link>
-          <div className="mb-6">
-            <BlogCoverArt category={post.category} />
+
+          <div className="relative mb-6 h-64 w-full overflow-hidden rounded-2xl border border-border md:h-80">
+            {post.coverImage ? (
+              <>
+                <Image
+                  src={post.coverImage}
+                  alt={post.title}
+                  fill
+                  sizes="(max-width: 768px) 100vw, 768px"
+                  priority
+                  className="object-cover"
+                />
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 via-black/0 to-black/0" />
+                <div className="absolute bottom-4 left-4">
+                  <Badge className="border-none bg-black/50 text-xs font-medium text-white backdrop-blur-sm">
+                    {post.category}
+                  </Badge>
+                </div>
+              </>
+            ) : (
+              <BlogCoverArt category={post.category} />
+            )}
           </div>
-          <Badge variant="outline" className="mb-3">
-            {post.category}
-          </Badge>
-          <h1
-            className="font-heading text-h1-secondary font-bold leading-tight tracking-tight text-text
-"
-          >
+
+          {!post.coverImage && (
+            <Badge variant="outline" className="mb-3">
+              {post.category}
+            </Badge>
+          )}
+
+          <h1 className="font-heading text-h1-secondary font-bold leading-tight tracking-tight text-text">
             {post.title}
           </h1>
-          <div className="mt-4 flex items-center gap-2 text-sm text-secondary-text">
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-secondary-text">
             <span>{post.authorName}</span>
             <span>·</span>
             <time dateTime={post.publishedAt}>
@@ -22281,6 +23176,8 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
                 </time>
               </>
             )}
+            <span>·</span>
+            <span>{readingTime} min read</span>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             {post.tags.map((tag) => (
@@ -22290,10 +23187,36 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
             ))}
           </div>
         </div>
+
         <div
-          className="prose prose-invert max-w-none"
+          className="article-body max-w-none"
           dangerouslySetInnerHTML={{ __html: post.content }}
         />
+
+        {/* Extra in-article photos — only renders when a post actually
+            has more than one relevant image to show. */}
+        {post.galleryImages && post.galleryImages.length > 0 && (
+          <div
+            className={`mt-12 grid grid-cols-1 gap-4 ${
+              post.galleryImages.length > 1 ? "sm:grid-cols-2" : ""
+            }`}
+          >
+            {post.galleryImages.map((img) => (
+              <div
+                key={img}
+                className="relative aspect-[4/3] overflow-hidden rounded-xl border border-border"
+              >
+                <Image
+                  src={img}
+                  alt={post.title}
+                  fill
+                  sizes="(max-width: 768px) 100vw, 384px"
+                  className="object-cover"
+                />
+              </div>
+            ))}
+          </div>
+        )}
       </article>
     </>
   );
@@ -24739,18 +25662,26 @@ export function MobileNav({
  * CONTENT-COMPLETENESS NOTE (for whoever edits this file next, including
  * a future AI session):
  *
- * Every post below currently has PLACEHOLDER `content` (literal developer
- * notes like "Full markdown/content here...", not real article text) and
- * is therefore marked `published: false`. The blog index and post-detail
- * pages both filter on `published`, so unpublished posts are invisible to
- * visitors and excluded from the sitemap and static params — this is
- * intentional and is what keeps placeholder text from ever being shown as
- * if it were a real article.
+ * Any post below with `published: false` still has PLACEHOLDER `content`
+ * (literal developer notes, not real article text). The blog index and
+ * post-detail pages both filter on `published`, so unpublished posts are
+ * invisible to visitors and excluded from the sitemap and static params —
+ * this is intentional and is what keeps placeholder text from ever being
+ * shown as if it were a real article.
  *
  * Set `published: true` ONLY once `content` contains real, final article
  * HTML for that post. Do not flip this to true with placeholder content
  * still in place — that would reintroduce the exact bug this mechanism
  * exists to prevent.
+ *
+ * NOTE ON coverImage / galleryImages: these fields must point to real
+ * files that actually exist under /public/images/blog/ before deploying,
+ * or the Image component will fail to resolve them. If a post has no
+ * image yet, leave coverImage unset — BlogCard and the post-detail page
+ * both fall back to BlogCoverArt automatically when coverImage is
+ * missing. galleryImages is optional and purely additive — extra photos
+ * rendered inside the article body for posts where more than one image
+ * genuinely adds value (e.g. a step-by-step or comparison post).
  */
 export interface BlogPost {
   slug: string;
@@ -24760,6 +25691,8 @@ export interface BlogPost {
   updatedAt?: string;
   authorName: string;
   coverImage?: string;
+  /** Optional extra photos rendered inside the article body, below the content. */
+  galleryImages?: string[];
   category: string;
   tags: string[];
   content: string;
@@ -24778,8 +25711,66 @@ export const blogPosts: BlogPost[] = [
     authorName: "Muaaz Bin Riaz",
     category: "Pricing & ROI",
     tags: ["website cost", "pricing", "small business"],
-    content: `Full markdown/content here... (use a simple HTML string or MDX; we'll use HTML for simplicity)`,
-    published: false,
+    coverImage: "/images/blog/website-cost-2026.jpg",
+    published: true,
+    content: `
+<p>"How much does a website cost?" doesn't have one honest answer — it depends entirely on what the site actually needs to do. Here's a realistic breakdown by tier, the same way we'd explain it to a client before quoting anything.</p>
+
+<h2>Tier 1: DIY builders (Wix, Squarespace, WordPress themes)</h2>
+<p>Cheapest option, usually a monthly subscription rather than a one-time cost. Fine for a simple one-page presence with no custom functionality. The tradeoff is you're building it yourself, customization is limited to what the theme allows, and performance/SEO is only as good as the template underneath it.</p>
+
+<h2>Tier 2: Custom-designed small business website</h2>
+<p>A site built specifically for your business — your layout, your content, your branding — rather than a template with your logo swapped in. This is where most small businesses (clinics, salons, restaurants, service providers) actually land. You get a site that looks and loads like it was built for you, with room for a contact form, gallery, or basic booking.</p>
+
+<h2>Tier 3: Full-stack web application</h2>
+<p>Anything with real functionality behind it — user accounts, a dashboard, payments, a database, an admin panel to manage content without touching code. This is a software project, not a page design project, and is priced and scoped accordingly.</p>
+
+<h2>What actually drives the price, regardless of tier</h2>
+<ul>
+<li><strong>Number of pages and content volume.</strong> A 5-page site and a 30-page site are different projects even at the same design quality.</li>
+<li><strong>Custom functionality.</strong> A contact form is simple. Booking systems, payment integration, or a custom admin panel are real engineering work.</li>
+<li><strong>Design from scratch vs. template.</strong> Fully custom design takes longer than adapting an existing layout — and it shows in the final result.</li>
+<li><strong>Content readiness.</strong> A client with final copy and images ready moves faster than one where content also needs to be written or sourced during the build.</li>
+</ul>
+
+<h2>The real question isn't "how much" — it's "what does this need to do"</h2>
+<p>The mistake we see most often is business owners comparing a Tier 1 price against a Tier 2 or 3 quote without realizing they're not the same product. A template site and a custom-built site with real functionality solve different problems — the right question is what your business actually needs your website to do, then pricing follows from that.</p>
+
+<h2>Our honest recommendation</h2>
+<p>If you just need a professional presence — hours, services, contact info, credibility — Tier 2 is usually the right call and doesn't need to be expensive. If your business needs the site to actually do something (take bookings, process payments, manage customers), that's worth scoping properly rather than forcing a template to do a job it wasn't built for.</p>
+`,
+  },
+  {
+    slug: "website-vs-facebook-page",
+    title: "Website vs Facebook page: what's better for your business?",
+    summary:
+      "Why a dedicated website still matters more than a social media page for credibility and conversions.",
+    publishedAt: "2026-06-25T08:00:00Z",
+    authorName: "Muaaz Bin Riaz",
+    category: "Digital Presence",
+    tags: ["website", "facebook", "online presence"],
+    coverImage: "/images/blog/website-vs-facebook.jpg",
+    published: true,
+    content: `
+<p>A lot of small businesses start with just a Facebook or Instagram page and never get further — and for a while, that's genuinely fine. But there's a point where relying on a social page alone starts costing you customers, and it's worth knowing where that line is.</p>
+
+<h2>Where a Facebook/Instagram page is genuinely enough</h2>
+<p>If you're just starting out, testing an idea, or your entire customer base already lives on that platform, a page is a reasonable, zero-cost way to have a presence. It's fast to set up and customers can message you directly.</p>
+
+<h2>Where it starts working against you</h2>
+<ul>
+<li><strong>You don't own it.</strong> Your page, your followers, your reach — all of it lives on infrastructure you don't control. A policy change, an algorithm shift, or a suspended account can take your entire online presence with it, overnight.</li>
+<li><strong>Credibility.</strong> A growing share of customers — especially for anything involving trust, like healthcare, real estate, or higher-priced services — expect a real website before they take a business seriously. A page-only presence can quietly cost you the more cautious, higher-value customers.</li>
+<li><strong>Discoverability.</strong> A website can be found on Google by someone who has never heard of your business. A Facebook page mostly reaches people already following you, or through paid ads.</li>
+<li><strong>Functionality.</strong> Booking systems, structured menus, portfolios, payment collection — a page can approximate some of this, but a website can actually be built around it properly.</li>
+</ul>
+
+<h2>The honest answer: it's not either/or</h2>
+<p>The businesses that get the most out of their online presence usually run both — a website as the credible, owned home base, and social pages as the discovery and engagement channel that drives people there. Treating your Facebook page as the entire online presence is where the risk creeps in, not having one at all.</p>
+
+<h2>A simple way to decide if you're ready for a website</h2>
+<p>If you're regularly telling customers "just message us on Facebook," and you've noticed some of them hesitate or ask if you have "a real website" — that's usually the signal it's time.</p>
+`,
   },
   {
     slug: "do-i-need-a-chatbot-for-my-business",
@@ -24794,18 +25785,6 @@ export const blogPosts: BlogPost[] = [
     published: false,
   },
   {
-    slug: "website-vs-facebook-page",
-    title: "Website vs Facebook page: what's better for your business?",
-    summary:
-      "Why a dedicated website still matters more than a social media page for credibility and conversions.",
-    publishedAt: "2026-06-25T08:00:00Z",
-    authorName: "Muaaz Bin Riaz",
-    category: "Digital Presence",
-    tags: ["website", "facebook", "online presence"],
-    content: `...`,
-    published: false,
-  },
-  {
     slug: "ai-chatbot-cost-2026",
     title: "How much does an AI chatbot actually cost in 2026?",
     summary:
@@ -24814,6 +25793,8 @@ export const blogPosts: BlogPost[] = [
     authorName: "Muaaz Bin Riaz",
     category: "Pricing & ROI",
     tags: ["ai chatbot", "pricing", "small business"],
+    coverImage: "/images/blog/ai-chatbot-cost.jpg",
+    galleryImages: ["/images/blog/ai-chatbot-cost-2.jpg"],
     published: true,
     content: `
 <p>"How much does a chatbot cost?" is a bit like asking "how much does a website cost?" — the honest answer is that the range is enormous, and the number changes almost entirely based on what the bot is actually supposed to do. Here's a realistic breakdown by tier.</p>
@@ -24836,7 +25817,7 @@ export const blogPosts: BlogPost[] = [
 </ul>
 
 <h2>The real question isn't "how much" — it's "what's the payback"</h2>
-<p>A chatbot that saves your team [PLACEHOLDER: insert real average hours/week saved from a completed client project, once available] hours a week of repetitive replies pays for itself regardless of which tier you're in, as long as the tier actually matches what your customers ask for. The mistake we see most often isn't overspending — it's businesses buying Tier 1 for a Tier 3 problem (needing real actions taken, not just answers given) and then concluding "chatbots don't work" when the tool was never capable of the job in the first place.</p>
+<p>A chatbot that saves your team even a few hours a week of repetitive replies pays for itself regardless of which tier you're in, as long as the tier actually matches what your customers ask for. The mistake we see most often isn't overspending — it's businesses buying Tier 1 for a Tier 3 problem (needing real actions taken, not just answers given) and then concluding "chatbots don't work" when the tool was never capable of the job in the first place.</p>
 
 <h2>Our honest recommendation</h2>
 <p>Start by writing down your actual last 20 customer questions. If they're mostly repeatable FAQ, Tier 1 or 2 is genuinely enough — don't overspend. If several of them require looking something up or taking an action on your systems, that's the signal you need Tier 3, and it's worth scoping properly rather than forcing a subscription tool to do something it wasn't built for.</p>
@@ -24851,6 +25832,8 @@ export const blogPosts: BlogPost[] = [
     authorName: "Muaaz Bin Riaz",
     category: "Automation",
     tags: ["whatsapp", "automation", "pakistan", "small business"],
+    coverImage: "/images/blog/whatsapp-automation.jpg",
+    galleryImages: ["/images/blog/whatsapp-automation-2.jpg"],
     published: true,
     content: `
 <p>For most small and mid-sized businesses in Pakistan — restaurants, clinics, salons, boutiques, real estate agents — WhatsApp isn't a "nice to have" channel, it's the primary one. Customers expect to book, ask, and complain there, often before they'll ever fill out a form on a website. That makes it one of the highest-leverage places to automate, if you do it right.</p>
@@ -24867,7 +25850,7 @@ export const blogPosts: BlogPost[] = [
 <p>Complaints, anything involving money disputes, and genuinely unusual requests should hand off to a real person quickly and cleanly — with the full conversation context carried over, not starting the customer over from zero. A bot that traps an upset customer in a loop of "I don't understand, please rephrase" does more brand damage than having no bot at all.</p>
 
 <h2>The technical reality: WhatsApp Business API vs. a regular number</h2>
-<p>True automation (auto-replies, structured flows, integration with your systems) requires the WhatsApp Business Platform (API), not the regular WhatsApp Business app most shops start with. The app is fine for a person manually replying; it's not built for automated, always-on responses at scale. Getting set up on the API involves business verification and typically routes through a Meta Business Solution Provider — this part takes real paperwork and a bit of patience, budget [PLACEHOLDER: insert current typical setup timeline once confirmed for a live project] for it upfront rather than assuming it's instant.</p>
+<p>True automation (auto-replies, structured flows, integration with your systems) requires the WhatsApp Business Platform (API), not the regular WhatsApp Business app most shops start with. The app is fine for a person manually replying; it's not built for automated, always-on responses at scale. Getting set up on the API involves business verification and typically routes through a Meta Business Solution Provider — this part takes real paperwork and a bit of patience, so budget extra time for it upfront rather than assuming it's instant.</p>
 
 <h2>Local considerations that actually matter</h2>
 <ul>
@@ -24889,6 +25872,8 @@ export const blogPosts: BlogPost[] = [
     authorName: "Muaaz Bin Riaz",
     category: "AI Agents",
     tags: ["ai agent", "chatbot", "automation"],
+    coverImage: "/images/blog/ai-agent-vs-chatbot.jpg",
+    galleryImages: ["/images/blog/ai-agent-vs-chatbot-2.jpg"],
     published: true,
     content: `
 <p>"Chatbot" and "AI agent" get used interchangeably in most marketing copy, including sometimes our own — but the distinction actually matters for what you should buy. A chatbot, at its core, answers questions using information it was given. An agent goes further: it can take real actions on your systems — check availability, create a booking, update a record, escalate a ticket — inside a conversation, without a human doing the actual clicking. Here's how to tell which one you actually need.</p>
@@ -24922,6 +25907,8 @@ export const blogPosts: BlogPost[] = [
     authorName: "Muaaz Bin Riaz",
     category: "AI Agents",
     tags: ["ai agent", "website", "expectations"],
+    coverImage: "/images/blog/website-ai-agent.jpg",
+    galleryImages: ["/images/blog/website-ai-agent-2.jpg"],
     published: true,
     content: `
 <p>Most of what gets written about AI agents online is either sales copy pretending they can do anything, or skepticism pretending they can't do much at all. Neither is accurate. Here's what we've actually found building these for real small businesses, without the hype in either direction.</p>
@@ -24958,6 +25945,8 @@ export const blogPosts: BlogPost[] = [
     authorName: "Muaaz Bin Riaz",
     category: "Buying Guide",
     tags: ["buying guide", "ai automation", "agency"],
+    coverImage: "/images/blog/choosing-agency.jpg",
+    galleryImages: ["/images/blog/choosing-agency-2.jpg"],
     published: true,
     content: `
 <p>AI automation is a genuinely crowded space right now, and it's not always easy to tell a serious builder from someone reselling a template with your logo on it. Here are the questions worth asking before you commit budget to anyone — us included.</p>
@@ -24978,7 +25967,7 @@ export const blogPosts: BlogPost[] = [
 <p>Get the ongoing cost — hosting, AI usage, support, any per-message or per-conversation fees — in writing, not just the setup price. A cheap build with an unclear ongoing cost structure can end up more expensive than a transparent, slightly higher upfront quote.</p>
 
 <h2>6. "Can I talk to a past client?"</h2>
-<p>A reasonable agency should be able to connect you with at least one real business they've built for, or at minimum show a genuine before/after of a specific problem they solved. [PLACEHOLDER: insert real client reference/case study link once available for prospective clients to review.]</p>
+<p>A reasonable agency should be able to connect you with at least one real business they've built for, or at minimum show a genuine before/after of a specific problem they solved.</p>
 
 <h2>7. "What happens if I want changes after launch?"</h2>
 <p>Ask specifically how change requests work — is there a support window included, is it billed hourly, is there a formal process? Vague answers here tend to turn into friction later.</p>
@@ -25042,11 +26031,11 @@ export const projects: Project[] = [
       "AI Chatbot",
     ],
     category: "AI Chatbot",
-    link: "https://skin-clinic.vercel.app",
+    link: "https://lumeiri-skin-clinic.vercel.app/",
     problem:
-      "TODO (content): add the real pre-project context for Lumière here — do not fabricate.",
+      "Lumière needed a professional online presence that could handle appointment bookings and answer common patient questions without adding to staff workload.",
     solution:
-      "TODO (content): add the real 1–2 sentence solution summary here — do not fabricate.",
+      "Built a full-stack site with an integrated AI chatbot for FAQs and lead capture, an online booking flow, and an admin dashboard for staff to manage bookings and content — on Next.js, TypeScript, and MongoDB.",
     outcome: [],
   },
 
@@ -25434,6 +26423,13 @@ export default async function BlogPage({
     filtered = filtered.filter((p) => p.tags.includes(tag));
   }
 
+  // Featured editorial row only makes sense on the unfiltered default view —
+  // once someone filters by category/tag, everything just goes in the
+  // regular grid so filtered results don't feel arbitrarily reordered.
+  const isDefaultView = !category && !tag;
+  const featuredPosts = isDefaultView ? filtered.slice(0, 2) : [];
+  const restPosts = isDefaultView ? filtered.slice(2) : filtered;
+
   return (
     <>
       <section className="bg-background">
@@ -25441,11 +26437,8 @@ export default async function BlogPage({
           <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
             Blog
           </p>
-          <h1
-            className="font-heading text-h1-primary font-bold leading-tight tracking-tight text-text
-"
-          >
-            Articles & Insights
+          <h1 className="font-heading text-h1-primary font-bold leading-tight tracking-tight text-text">
+            Articles &amp; Insights
           </h1>
           <p className="mt-4 max-w-2xl font-body text-base text-secondary-text">
             Practical advice on websites, automation, and growing your business
@@ -25473,7 +26466,7 @@ export default async function BlogPage({
                   <div className="flex flex-wrap gap-2">
                     <Link
                       href="/blog"
-                      className={`rounded-full px-3 py-1 text-xs font-medium ${
+                      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                         !category
                           ? "bg-primary text-primary-foreground"
                           : "border border-border text-secondary-text hover:text-text"
@@ -25485,7 +26478,7 @@ export default async function BlogPage({
                       <Link
                         key={cat}
                         href={`/blog?category=${encodeURIComponent(cat)}`}
-                        className={`rounded-full px-3 py-1 text-xs font-medium ${
+                        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                           category === cat
                             ? "bg-primary text-primary-foreground"
                             : "border border-border text-secondary-text hover:text-text"
@@ -25503,7 +26496,7 @@ export default async function BlogPage({
                       <Link
                         key={t}
                         href={`/blog?tag=${encodeURIComponent(t)}`}
-                        className={`rounded-full px-3 py-1 text-xs font-medium ${
+                        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                           tag === t
                             ? "bg-accent text-accent-foreground"
                             : "border border-border text-secondary-text hover:text-text"
@@ -25516,17 +26509,38 @@ export default async function BlogPage({
                 </div>
               </div>
 
-              {/* Blog grid */}
-              <div className="mt-12 grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-                {filtered.map((post) => (
-                  <BlogCard key={post.slug} post={post} />
-                ))}
-                {filtered.length === 0 && (
-                  <p className="col-span-full py-16 text-center text-secondary-text">
-                    No posts found for this filter.
-                  </p>
-                )}
-              </div>
+              {/* Featured — the two most important posts get a bigger,
+                  editorial-style treatment instead of blending into the grid. */}
+              {featuredPosts.length > 0 && (
+                <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-2">
+                  {featuredPosts.map((post, i) => (
+                    <BlogCard key={post.slug} post={post} index={i} featured />
+                  ))}
+                </div>
+              )}
+
+              {/* Rest of the grid */}
+              {restPosts.length > 0 && (
+                <div
+                  className={`grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3 ${
+                    featuredPosts.length > 0 ? "mt-8" : "mt-12"
+                  }`}
+                >
+                  {restPosts.map((post, i) => (
+                    <BlogCard
+                      key={post.slug}
+                      post={post}
+                      index={i + featuredPosts.length}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {filtered.length === 0 && (
+                <p className="col-span-full py-16 text-center text-secondary-text">
+                  No posts found for this filter.
+                </p>
+              )}
             </>
           )}
         </div>
@@ -26143,6 +27157,7 @@ async function bumpDailyAnalytics(
   --card: #fbfcff;
   --primary: #6366f1;
   --accent: #06b6d4;
+  --gradient-text: #4f46e5; /* solid color for top/bottom strips — light theme */
   --success: #10b981;
   --warning: #f59e0b;
   --error: #ef4444;
@@ -26196,6 +27211,7 @@ async function bumpDailyAnalytics(
   --card: #171f33;
   --primary: #6366f1;
   --accent: #06b6d4;
+  --gradient-text: #22d3ee; /* solid color for top/bottom strips — dark theme */
   --success: #10b981;
   --warning: #f59e0b;
   --error: #ef4444;
@@ -26250,6 +27266,7 @@ async function bumpDailyAnalytics(
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-gradient-text: var(--gradient-text);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-destructive: var(--destructive);
@@ -26387,6 +27404,78 @@ nav a {
 
     h6 {
       font-size: var(--text-base); /* 16px desktop */
+    }
+  }
+
+  /* ---------------------------------------------------------------
+     Blog article body — scoped typography.
+     @tailwindcss/typography isn't installed, so the "prose" classes
+     on the article body were no-ops, leaving it to inherit the
+     site-wide h2 (48px desktop) meant for major section headings.
+     This scopes down heading/paragraph sizes specifically for long-
+     form article content, without touching headings anywhere else.
+  --------------------------------------------------------------------- */
+  .article-body {
+    color: var(--color-secondary-text);
+    font-size: 1rem;
+    line-height: 1.8;
+  }
+
+  .article-body > * + * {
+    margin-top: 1.25rem;
+  }
+
+  .article-body h2 {
+    font-size: 1.375rem;
+    line-height: 1.3;
+    margin-top: 2.5rem;
+    margin-bottom: 0.25rem;
+    color: var(--color-text);
+  }
+
+  .article-body h2:first-child {
+    margin-top: 0;
+  }
+
+  .article-body h3 {
+    font-size: 1.125rem;
+    line-height: 1.35;
+    margin-top: 2rem;
+    color: var(--color-text);
+  }
+
+  .article-body p {
+    color: var(--color-secondary-text);
+  }
+
+  .article-body ul {
+    padding-left: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  .article-body li {
+    color: var(--color-secondary-text);
+  }
+
+  .article-body li strong,
+  .article-body p strong {
+    color: var(--color-text);
+    font-weight: 600;
+  }
+
+  @media (min-width: 768px) {
+    .article-body h2 {
+      font-size: 1.75rem;
+    }
+
+    .article-body h3 {
+      font-size: 1.375rem;
+    }
+
+    .article-body {
+      font-size: 1.0625rem;
     }
   }
 
@@ -26722,6 +27811,83 @@ nav a {
     }
   }
 }
+
+/* =========================================================================
+   MARQUEE + GRADIENT TEXT ADDITIONS (v2 — replaces the previous version
+   of this snippet if you already pasted it. Append to app/globals.css.)
+   ========================================================================= */
+@layer utilities {
+  /* Shared animated gradient text — used by HeroEyebrow's pill, every
+     section's eyebrow label, AND the marquee strip, so the colorful look
+     is consistent everywhere. v2: added a violet mid-stop + a soft glow
+     (drop-shadow) so it reads clearly against dark backgrounds instead of
+     blending into them. */
+  .text-gradient-animated {
+    color: var(--color-gradient-text);
+    filter: drop-shadow(
+      0 0 8px color-mix(in srgb, var(--color-gradient-text) 25%, transparent)
+    );
+  }
+
+  /* Full-bleed marquee ticker track. Only this inner track translates —
+     the strip's background/borders (in MarqueeStrip.tsx) never move. */
+  .marquee-track {
+    animation: mbr-marquee-scroll 24s linear infinite;
+  }
+
+  @keyframes mbr-marquee-scroll {
+    0% {
+      transform: translateX(0%);
+    }
+    100% {
+      transform: translateX(-50%);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .marquee-track {
+      animation: none;
+    }
+  }
+}
+
+/* =========================================================================
+   SERVICES PAGE MOCKUP FIX — append to app/globals.css.
+   Fixes ServiceVisual.tsx (the browser/chat mockups on /services) being
+   nearly invisible in dark mode and looking flat/washed-out in light mode.
+
+   Root cause: those mockups used `.glass-card` (translucent, blended with
+   whatever section sits behind it) as the outer frame, with inner
+   "placeholder" elements filled using bg-secondary-background. But the
+   services page alternates each section between bg-background and
+   bg-secondary-background, AND --card / --background-secondary are very
+   close in value to each other in dark mode (#171f33 vs #141b2e). So the
+   translucent card blended into the section behind it, and the inner
+   fills nearly matched that blended color — near-zero contrast, which is
+   why everything except the gradient bar and the green badge disappeared
+   in the dark screenshot.
+
+   Fix: an opaque card frame (.mockup-card) so it never blends into
+   whichever section it's placed on, and a fill (.mockup-fill) whose
+   contrast is defined *relative to the card* (via the foreground color at
+   low opacity) instead of as a fixed hex that happens to be close to the
+   card color. That guarantees visible placeholder content in both themes,
+   regardless of which alternating section background surrounds it.
+   ========================================================================= */
+@layer utilities {
+  .mockup-card {
+    background: var(--color-card);
+    border: 1px solid var(--color-border);
+  }
+
+  .mockup-fill {
+    background-color: color-mix(
+      in srgb,
+      var(--color-foreground) 7%,
+      transparent
+    );
+  }
+}
 </file>
 
 <file path="components/sections/ProjectCard.tsx">
@@ -26841,7 +28007,8 @@ export function Services() {
     <section id="services" className="bg-background">
       <div className="mx-auto max-w-6xl px-6 py-24 md:px-10 md:py-32">
         <div className="mb-14 max-w-2xl">
-          <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+          {/* <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent"> */}
+          <p className="text-gradient-animated mb-3 font-body text-sm font-medium tracking-wide">
             What we do
           </p>
           <h2
@@ -29460,7 +30627,7 @@ export function ChatWindow() {
 "use client";
 
 import Link from "next/link";
-import { Sun, Moon, Menu, X } from "lucide-react";
+import { Sun, Moon, Menu, X, SunMoon } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useTheme } from "@/components/theme/ThemeProvider";
 
@@ -29515,6 +30682,16 @@ export function Navbar() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const pathname = usePathname();
+
+  // Hydration-safe theme icon: SSR always assumes "dark" (no `window` to
+  // check server-side), but the client's first hydration pass reads the
+  // real theme the blocking script already applied to <html> — those can
+  // differ, which used to throw a hydration mismatch on this exact
+  // button. Rendering a neutral placeholder until mount means the first
+  // client render matches the server render exactly; the real icon swaps
+  // in right after via a normal (non-hydration) client update.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // Safe check: ensure blogPosts is an array before calling .some()
   const hasPublishedPosts =
@@ -29605,13 +30782,17 @@ export function Navbar() {
               type="button"
               onClick={toggleTheme}
               aria-label={
-                theme === "dark"
-                  ? "Switch to light theme"
-                  : "Switch to dark theme"
+                mounted
+                  ? theme === "dark"
+                    ? "Switch to light theme"
+                    : "Switch to dark theme"
+                  : "Toggle theme"
               }
               className="rounded-lg p-2 text-secondary-text transition-colors hover:bg-card hover:text-foreground"
             >
-              {theme === "dark" ? (
+              {!mounted ? (
+                <SunMoon className="h-4 w-4" aria-hidden="true" />
+              ) : theme === "dark" ? (
                 <Sun className="h-4 w-4" />
               ) : (
                 <Moon className="h-4 w-4" />
@@ -33072,6 +34253,286 @@ function UserMenu({ userEmail }: { userEmail?: string | null }) {
 }
 </file>
 
+<file path="app/(platform-client)/dashboard/page.tsx">
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import {
+  BookOpen,
+  CheckCircle,
+  MessageCircle,
+  MessagesSquare,
+  Users,
+} from "lucide-react";
+
+import {
+  getOrgAnalyticsSummary,
+  getPreviousPeriodSummary,
+} from "@/lib/analytics/queries";
+import { StatCard } from "@/components/platform/StatCard";
+import { AnalyticsChart } from "@/components/platform/AnalyticsChart";
+import { PlanLimitBanner } from "@/components/platform/PlanLimitBanner";
+import {
+  GettingStartedChecklist,
+  type ChecklistItem,
+} from "@/components/platform/GettingStartedChecklist";
+import { ResumeOnboardingBanner } from "@/components/platform/ResumeOnboardingBanner";
+import { getCurrentOrg } from "@/lib/auth/current-org";
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ justLaunched?: string }>;
+}) {
+  const justLaunched = (await searchParams).justLaunched === "1";
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const orgResult = await getCurrentOrg(supabase, user.id);
+
+  if (!orgResult) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border bg-card/50 px-8 py-20 text-center">
+        <p className="font-body text-sm text-secondary-text">
+          You’re not a member of any organization yet. Please contact support.
+        </p>
+      </div>
+    );
+  }
+
+  const orgId = orgResult.active.organizationId;
+
+  const { data: orgRow } = await supabase
+    .from("organizations")
+    .select("id, name, status, monthly_message_limit, plan, is_reseller")
+    .eq("id", orgId)
+    .maybeSingle();
+
+  const org = orgRow as {
+    id: string;
+    name: string;
+    status: string;
+    monthly_message_limit: number;
+    plan: string;
+    is_reseller: boolean;
+  };
+
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("id, setup_complete, onboarding_step, embed_added_self_reported")
+    .eq("organization_id", orgId)
+    .eq("is_active", true)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  const [current, previous, kbDocCount, guardrailsRow] = await Promise.all([
+    getOrgAnalyticsSummary(supabase, orgId, 30),
+    getPreviousPeriodSummary(supabase, orgId, 30),
+    agent
+      ? supabase
+          .from("knowledge_base_documents")
+          .select("id", { count: "exact", head: true })
+          .eq("agent_id", agent.id)
+          .not("title", "ilike", "%(example — replace with real info)%")
+          .then((r) => r.count ?? 0)
+      : Promise.resolve(0),
+    agent
+      ? supabase
+          .from("agent_guardrails")
+          .select("agent_id")
+          .eq("agent_id", agent.id)
+          .maybeSingle()
+          .then((r) => !!r.data)
+      : Promise.resolve(false),
+  ]);
+
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const { count: messagesThisMonth } = await supabase
+    .from("messages")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", orgId)
+    .gte("created_at", monthStart.toISOString());
+
+  const messages = messagesThisMonth ?? 0;
+
+  const trend = (currentVal: number, prevVal: number): number | null => {
+    if (prevVal === 0) return null;
+    return Math.round(((currentVal - prevVal) / prevVal) * 100);
+  };
+
+  const checklistItems: ChecklistItem[] = [
+    {
+      key: "finish_setup",
+      label: "Finish the setup wizard",
+      href: "/dashboard/onboarding",
+      done: agent?.setup_complete ?? false,
+      emoji: "🚀",
+      hint: "Unlocks your full dashboard — Inbox, Leads, and agent settings",
+    },
+    {
+      key: "add_knowledge",
+      label: "Add your first knowledge base document",
+      // Pre-setup: keep the user inside the guided wizard (Train step)
+      // instead of dropping them onto the standalone Knowledge Base
+      // page they have no context for yet — same reasoning as
+      // set_guardrails below. Once setup is done, the standalone page
+      // (also reachable from the sidebar by then) is the right place
+      // for ongoing edits.
+      href: agent?.setup_complete
+        ? "/dashboard/knowledge-base"
+        : "/dashboard/onboarding?step=1",
+      done: kbDocCount > 0,
+      emoji: "📚",
+      hint: "Teach your agent about your business — website, PDF, or text",
+    },
+    {
+      key: "embed_widget",
+      label: "Embed the chat widget on your site",
+      href: "/dashboard/onboarding",
+      done: agent?.embed_added_self_reported ?? false,
+      selfReported: true,
+      emoji: "🔗",
+      hint: "Copy one snippet into your site's HTML — takes 2 minutes",
+    },
+    {
+      key: "set_guardrails",
+      label: "Set up guardrails and tone",
+      // Pre-setup: keep the user inside the guided wizard (progress bar,
+      // Back/Next, "Get set up" framing) instead of dropping them onto
+      // an isolated settings page they have no context for. Once setup
+      // is done, the standalone page (also reachable from the sidebar
+      // by then) is the right place — that's where ongoing tweaks live.
+      href: agent?.setup_complete
+        ? "/dashboard/agent/guardrails"
+        : "/dashboard/onboarding?step=2",
+      done: guardrailsRow,
+      emoji: "🛡️",
+      hint: "Decide what your agent should and shouldn't say",
+    },
+  ];
+
+  return (
+    <div>
+      {agent && !agent.setup_complete && (
+        <ResumeOnboardingBanner step={agent.onboarding_step ?? 0} />
+      )}
+
+      <PlanLimitBanner
+        status={org.status}
+        monthlyMessageLimit={org.monthly_message_limit}
+        messagesThisMonth={messages}
+      />
+
+      {justLaunched && (
+        <div className="mb-6 flex flex-col gap-1 rounded-2xl border border-success/30 bg-success/[0.06] p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-heading text-base font-semibold text-foreground">
+              🎉 Your AI agent is live!
+            </p>
+            <p className="mt-1 font-body text-sm text-secondary-text">
+              This dashboard is now your agent&apos;s control center — use the
+              sidebar on the left to manage conversations, retrain it, or change
+              how it looks and behaves.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center gap-3">
+        <span className="text-3xl">👋</span>
+        <h1 className="font-heading text-2xl font-bold text-foreground">
+          Welcome back, {org.name}
+        </h1>
+      </div>
+      <p className="mt-2 font-body text-sm text-secondary-text">
+        Your AI agent is{" "}
+        <span
+          className={
+            org.status === "active"
+              ? "font-semibold text-success"
+              : "font-semibold text-warning"
+          }
+        >
+          {org.status === "active" ? "live" : "in trial mode"}
+        </span>
+        . Here&apos;s how it&apos;s performing.
+      </p>
+
+      <div className="mt-6">
+        <GettingStartedChecklist items={checklistItems} />
+      </div>
+
+      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          icon={MessagesSquare}
+          label="Conversations"
+          value={current.totalConversations}
+          trend={trend(current.totalConversations, previous.totalConversations)}
+          emptyHint="No conversations yet — share your widget link"
+        />
+        <StatCard
+          icon={MessageCircle}
+          label="Messages"
+          value={current.totalMessages}
+          trend={trend(current.totalMessages, previous.totalMessages)}
+          emptyHint="Your agent hasn't replied to anyone yet"
+        />
+        <StatCard
+          icon={Users}
+          label="Unique visitors"
+          value={current.uniqueVisitors}
+          trend={trend(current.uniqueVisitors, previous.uniqueVisitors)}
+          emptyHint="Once live, visitors will show up here"
+        />
+        <StatCard
+          icon={CheckCircle}
+          label="Resolution rate"
+          value={`${Math.round(current.resolutionRate * 100)}%`}
+          trend={null}
+          emptyHint="Calculated once you have conversations"
+        />
+      </div>
+
+      <div className="mt-8">
+        <AnalyticsChart data={current.daily} />
+      </div>
+
+      <div className="mt-8 flex flex-wrap gap-3">
+        <Link
+          href="/dashboard/knowledge-base"
+          className="inline-flex items-center rounded-lg bg-primary px-4 py-2 font-body text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+        >
+          <BookOpen className="mr-2 h-4 w-4" />
+          Manage Knowledge Base
+        </Link>
+        <Link
+          href="/dashboard/inbox"
+          className="inline-flex items-center rounded-lg border border-border px-4 py-2 font-body text-sm font-medium text-foreground hover:bg-card"
+        >
+          <MessagesSquare className="mr-2 h-4 w-4" />
+          Go to Inbox
+        </Link>
+        {org.is_reseller && (
+          <Link
+            href="/dashboard/clients"
+            className="inline-flex items-center rounded-lg border border-border px-4 py-2 font-body text-sm font-medium text-foreground hover:bg-card"
+          >
+            <Users className="mr-2 h-4 w-4" />
+            Manage Clients
+          </Link>
+        )}
+      </div>
+    </div>
+  );
+}
+</file>
+
 <file path="app/(platform-client)/dashboard/onboarding/OnboardingWizard.tsx">
 "use client";
 
@@ -33517,8 +34978,8 @@ export function OnboardingWizard({
                     Set how it behaves
                   </h2>
                   <p className="mb-4 font-body text-sm text-secondary-text">
-                    Tone, guardrails, and lead capture — hit Next when you're
-                    happy with how it behaves.
+                    Tone, guardrails, and lead capture — hit Next when
+                    you&apos;re happy with how it behaves.
                   </p>
                   <GuardrailsClient
                     ref={guardrailsRef}
@@ -33833,286 +35294,6 @@ export function OnboardingWizard({
           </div>
         </div>
       )}
-    </div>
-  );
-}
-</file>
-
-<file path="app/(platform-client)/dashboard/page.tsx">
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
-import Link from "next/link";
-import {
-  BookOpen,
-  CheckCircle,
-  MessageCircle,
-  MessagesSquare,
-  Users,
-} from "lucide-react";
-
-import {
-  getOrgAnalyticsSummary,
-  getPreviousPeriodSummary,
-} from "@/lib/analytics/queries";
-import { StatCard } from "@/components/platform/StatCard";
-import { AnalyticsChart } from "@/components/platform/AnalyticsChart";
-import { PlanLimitBanner } from "@/components/platform/PlanLimitBanner";
-import {
-  GettingStartedChecklist,
-  type ChecklistItem,
-} from "@/components/platform/GettingStartedChecklist";
-import { ResumeOnboardingBanner } from "@/components/platform/ResumeOnboardingBanner";
-import { getCurrentOrg } from "@/lib/auth/current-org";
-
-export default async function DashboardPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ justLaunched?: string }>;
-}) {
-  const justLaunched = (await searchParams).justLaunched === "1";
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const orgResult = await getCurrentOrg(supabase, user.id);
-
-  if (!orgResult) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border bg-card/50 px-8 py-20 text-center">
-        <p className="font-body text-sm text-secondary-text">
-          You’re not a member of any organization yet. Please contact support.
-        </p>
-      </div>
-    );
-  }
-
-  const orgId = orgResult.active.organizationId;
-
-  const { data: orgRow } = await supabase
-    .from("organizations")
-    .select("id, name, status, monthly_message_limit, plan, is_reseller")
-    .eq("id", orgId)
-    .maybeSingle();
-
-  const org = orgRow as {
-    id: string;
-    name: string;
-    status: string;
-    monthly_message_limit: number;
-    plan: string;
-    is_reseller: boolean;
-  };
-
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("id, setup_complete, onboarding_step, embed_added_self_reported")
-    .eq("organization_id", orgId)
-    .eq("is_active", true)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  const [current, previous, kbDocCount, guardrailsRow] = await Promise.all([
-    getOrgAnalyticsSummary(supabase, orgId, 30),
-    getPreviousPeriodSummary(supabase, orgId, 30),
-    agent
-      ? supabase
-          .from("knowledge_base_documents")
-          .select("id", { count: "exact", head: true })
-          .eq("agent_id", agent.id)
-          .not("title", "ilike", "%(example — replace with real info)%")
-          .then((r) => r.count ?? 0)
-      : Promise.resolve(0),
-    agent
-      ? supabase
-          .from("agent_guardrails")
-          .select("agent_id")
-          .eq("agent_id", agent.id)
-          .maybeSingle()
-          .then((r) => !!r.data)
-      : Promise.resolve(false),
-  ]);
-
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
-  const { count: messagesThisMonth } = await supabase
-    .from("messages")
-    .select("id", { count: "exact", head: true })
-    .eq("organization_id", orgId)
-    .gte("created_at", monthStart.toISOString());
-
-  const messages = messagesThisMonth ?? 0;
-
-  const trend = (currentVal: number, prevVal: number): number | null => {
-    if (prevVal === 0) return null;
-    return Math.round(((currentVal - prevVal) / prevVal) * 100);
-  };
-
-  const checklistItems: ChecklistItem[] = [
-    {
-      key: "finish_setup",
-      label: "Finish the setup wizard",
-      href: "/dashboard/onboarding",
-      done: agent?.setup_complete ?? false,
-      emoji: "🚀",
-      hint: "Unlocks your full dashboard — Inbox, Leads, and agent settings",
-    },
-    {
-      key: "add_knowledge",
-      label: "Add your first knowledge base document",
-      // Pre-setup: keep the user inside the guided wizard (Train step)
-      // instead of dropping them onto the standalone Knowledge Base
-      // page they have no context for yet — same reasoning as
-      // set_guardrails below. Once setup is done, the standalone page
-      // (also reachable from the sidebar by then) is the right place
-      // for ongoing edits.
-      href: agent?.setup_complete
-        ? "/dashboard/knowledge-base"
-        : "/dashboard/onboarding?step=1",
-      done: kbDocCount > 0,
-      emoji: "📚",
-      hint: "Teach your agent about your business — website, PDF, or text",
-    },
-    {
-      key: "embed_widget",
-      label: "Embed the chat widget on your site",
-      href: "/dashboard/onboarding",
-      done: agent?.embed_added_self_reported ?? false,
-      selfReported: true,
-      emoji: "🔗",
-      hint: "Copy one snippet into your site's HTML — takes 2 minutes",
-    },
-    {
-      key: "set_guardrails",
-      label: "Set up guardrails and tone",
-      // Pre-setup: keep the user inside the guided wizard (progress bar,
-      // Back/Next, "Get set up" framing) instead of dropping them onto
-      // an isolated settings page they have no context for. Once setup
-      // is done, the standalone page (also reachable from the sidebar
-      // by then) is the right place — that's where ongoing tweaks live.
-      href: agent?.setup_complete
-        ? "/dashboard/agent/guardrails"
-        : "/dashboard/onboarding?step=2",
-      done: guardrailsRow,
-      emoji: "🛡️",
-      hint: "Decide what your agent should and shouldn't say",
-    },
-  ];
-
-  return (
-    <div>
-      {agent && !agent.setup_complete && (
-        <ResumeOnboardingBanner step={agent.onboarding_step ?? 0} />
-      )}
-
-      <PlanLimitBanner
-        status={org.status}
-        monthlyMessageLimit={org.monthly_message_limit}
-        messagesThisMonth={messages}
-      />
-
-      {justLaunched && (
-        <div className="mb-6 flex flex-col gap-1 rounded-2xl border border-success/30 bg-success/[0.06] p-5 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="font-heading text-base font-semibold text-foreground">
-              🎉 Your AI agent is live!
-            </p>
-            <p className="mt-1 font-body text-sm text-secondary-text">
-              This dashboard is now your agent&apos;s control center — use the
-              sidebar on the left to manage conversations, retrain it, or change
-              how it looks and behaves.
-            </p>
-          </div>
-        </div>
-      )}
-
-      <div className="flex items-center gap-3">
-        <span className="text-3xl">👋</span>
-        <h1 className="font-heading text-2xl font-bold text-foreground">
-          Welcome back, {org.name}
-        </h1>
-      </div>
-      <p className="mt-2 font-body text-sm text-secondary-text">
-        Your AI agent is{" "}
-        <span
-          className={
-            org.status === "active"
-              ? "font-semibold text-success"
-              : "font-semibold text-warning"
-          }
-        >
-          {org.status === "active" ? "live" : "in trial mode"}
-        </span>
-        . Here&apos;s how it&apos;s performing.
-      </p>
-
-      <div className="mt-6">
-        <GettingStartedChecklist items={checklistItems} />
-      </div>
-
-      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          icon={MessagesSquare}
-          label="Conversations"
-          value={current.totalConversations}
-          trend={trend(current.totalConversations, previous.totalConversations)}
-          emptyHint="No conversations yet — share your widget link"
-        />
-        <StatCard
-          icon={MessageCircle}
-          label="Messages"
-          value={current.totalMessages}
-          trend={trend(current.totalMessages, previous.totalMessages)}
-          emptyHint="Your agent hasn't replied to anyone yet"
-        />
-        <StatCard
-          icon={Users}
-          label="Unique visitors"
-          value={current.uniqueVisitors}
-          trend={trend(current.uniqueVisitors, previous.uniqueVisitors)}
-          emptyHint="Once live, visitors will show up here"
-        />
-        <StatCard
-          icon={CheckCircle}
-          label="Resolution rate"
-          value={`${Math.round(current.resolutionRate * 100)}%`}
-          trend={null}
-          emptyHint="Calculated once you have conversations"
-        />
-      </div>
-
-      <div className="mt-8">
-        <AnalyticsChart data={current.daily} />
-      </div>
-
-      <div className="mt-8 flex flex-wrap gap-3">
-        <Link
-          href="/dashboard/knowledge-base"
-          className="inline-flex items-center rounded-lg bg-primary px-4 py-2 font-body text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
-        >
-          <BookOpen className="mr-2 h-4 w-4" />
-          Manage Knowledge Base
-        </Link>
-        <Link
-          href="/dashboard/inbox"
-          className="inline-flex items-center rounded-lg border border-border px-4 py-2 font-body text-sm font-medium text-foreground hover:bg-card"
-        >
-          <MessagesSquare className="mr-2 h-4 w-4" />
-          Go to Inbox
-        </Link>
-        {org.is_reseller && (
-          <Link
-            href="/dashboard/clients"
-            className="inline-flex items-center rounded-lg border border-border px-4 py-2 font-body text-sm font-medium text-foreground hover:bg-card"
-          >
-            <Users className="mr-2 h-4 w-4" />
-            Manage Clients
-          </Link>
-        )}
-      </div>
     </div>
   );
 }

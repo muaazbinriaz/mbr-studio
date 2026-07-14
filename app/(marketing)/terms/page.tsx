@@ -49,7 +49,7 @@ export default function TermsPage() {
           <div className="mt-12 flex flex-col gap-10">
             <TermsSection title="1. Acceptance of terms">
               <p>
-                By accessing mbrstudio.dev, you agree to these terms. If you do
+                By accessing mbrstudio.co, you agree to these terms. If you do
                 not agree, please do not use this website.
               </p>
             </TermsSection>

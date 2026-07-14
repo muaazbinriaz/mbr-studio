@@ -62,7 +62,10 @@ export function FAQ() {
     <section className="bg-background">
       <div className="mx-auto max-w-3xl px-6 py-24 md:px-10 md:py-32">
         <div className="mb-12 text-center">
-          <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+          {/* <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+            FAQ
+          </p> */}
+          <p className="text-gradient-animated mb-3 font-body text-sm font-medium tracking-wide">
             FAQ
           </p>
           <h2 className="font-heading text-h2-feature font-bold leading-tight tracking-tight text-text">

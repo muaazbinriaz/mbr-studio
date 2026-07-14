@@ -26,7 +26,8 @@ export function Services() {
     <section id="services" className="bg-background">
       <div className="mx-auto max-w-6xl px-6 py-24 md:px-10 md:py-32">
         <div className="mb-14 max-w-2xl">
-          <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+          {/* <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent"> */}
+          <p className="text-gradient-animated mb-3 font-body text-sm font-medium tracking-wide">
             What we do
           </p>
           <h2

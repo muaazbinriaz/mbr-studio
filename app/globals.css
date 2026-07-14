@@ -16,6 +16,7 @@
   --card: #fbfcff;
   --primary: #6366f1;
   --accent: #06b6d4;
+  --gradient-text: #4f46e5; /* solid color for top/bottom strips — light theme */
   --success: #10b981;
   --warning: #f59e0b;
   --error: #ef4444;
@@ -69,6 +70,7 @@
   --card: #171f33;
   --primary: #6366f1;
   --accent: #06b6d4;
+  --gradient-text: #22d3ee; /* solid color for top/bottom strips — dark theme */
   --success: #10b981;
   --warning: #f59e0b;
   --error: #ef4444;
@@ -123,6 +125,7 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-gradient-text: var(--gradient-text);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-destructive: var(--destructive);
@@ -260,6 +263,78 @@ nav a {
 
     h6 {
       font-size: var(--text-base); /* 16px desktop */
+    }
+  }
+
+  /* ---------------------------------------------------------------
+     Blog article body — scoped typography.
+     @tailwindcss/typography isn't installed, so the "prose" classes
+     on the article body were no-ops, leaving it to inherit the
+     site-wide h2 (48px desktop) meant for major section headings.
+     This scopes down heading/paragraph sizes specifically for long-
+     form article content, without touching headings anywhere else.
+  --------------------------------------------------------------------- */
+  .article-body {
+    color: var(--color-secondary-text);
+    font-size: 1rem;
+    line-height: 1.8;
+  }
+
+  .article-body > * + * {
+    margin-top: 1.25rem;
+  }
+
+  .article-body h2 {
+    font-size: 1.375rem;
+    line-height: 1.3;
+    margin-top: 2.5rem;
+    margin-bottom: 0.25rem;
+    color: var(--color-text);
+  }
+
+  .article-body h2:first-child {
+    margin-top: 0;
+  }
+
+  .article-body h3 {
+    font-size: 1.125rem;
+    line-height: 1.35;
+    margin-top: 2rem;
+    color: var(--color-text);
+  }
+
+  .article-body p {
+    color: var(--color-secondary-text);
+  }
+
+  .article-body ul {
+    padding-left: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  .article-body li {
+    color: var(--color-secondary-text);
+  }
+
+  .article-body li strong,
+  .article-body p strong {
+    color: var(--color-text);
+    font-weight: 600;
+  }
+
+  @media (min-width: 768px) {
+    .article-body h2 {
+      font-size: 1.75rem;
+    }
+
+    .article-body h3 {
+      font-size: 1.375rem;
+    }
+
+    .article-body {
+      font-size: 1.0625rem;
     }
   }
 
@@ -593,5 +668,170 @@ nav a {
     .text-h2-feature {
       font-size: 3rem; /* 48px */
     }
+  }
+}
+
+/* =========================================================================
+   MARQUEE + GRADIENT TEXT ADDITIONS (v2 — replaces the previous version
+   of this snippet if you already pasted it. Append to app/globals.css.)
+   ========================================================================= */
+@layer utilities {
+  /* Shared animated gradient text — used by HeroEyebrow's pill, every
+     section's eyebrow label, AND the marquee strip, so the colorful look
+     is consistent everywhere. v2: added a violet mid-stop + a soft glow
+     (drop-shadow) so it reads clearly against dark backgrounds instead of
+     blending into them. */
+  .text-gradient-animated {
+    color: var(--color-gradient-text);
+    filter: drop-shadow(
+      0 0 8px color-mix(in srgb, var(--color-gradient-text) 25%, transparent)
+    );
+  }
+
+  /* Full-bleed marquee ticker track. Only this inner track translates —
+     the strip's background/borders (in MarqueeStrip.tsx) never move. */
+  .marquee-track {
+    animation: mbr-marquee-scroll 24s linear infinite;
+  }
+
+  @keyframes mbr-marquee-scroll {
+    0% {
+      transform: translateX(0%);
+    }
+    100% {
+      transform: translateX(-50%);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .marquee-track {
+      animation: none;
+    }
+  }
+}
+
+/* =========================================================================
+   SERVICES PAGE MOCKUP FIX — append to app/globals.css.
+   Fixes ServiceVisual.tsx (the browser/chat mockups on /services) being
+   nearly invisible in dark mode and looking flat/washed-out in light mode.
+
+   Root cause: those mockups used `.glass-card` (translucent, blended with
+   whatever section sits behind it) as the outer frame, with inner
+   "placeholder" elements filled using bg-secondary-background. But the
+   services page alternates each section between bg-background and
+   bg-secondary-background, AND --card / --background-secondary are very
+   close in value to each other in dark mode (#171f33 vs #141b2e). So the
+   translucent card blended into the section behind it, and the inner
+   fills nearly matched that blended color — near-zero contrast, which is
+   why everything except the gradient bar and the green badge disappeared
+   in the dark screenshot.
+
+   Fix: an opaque card frame (.mockup-card) so it never blends into
+   whichever section it's placed on, and a fill (.mockup-fill) whose
+   contrast is defined *relative to the card* (via the foreground color at
+   low opacity) instead of as a fixed hex that happens to be close to the
+   card color. That guarantees visible placeholder content in both themes,
+   regardless of which alternating section background surrounds it.
+   ========================================================================= */
+@layer utilities {
+  .mockup-card {
+    background: var(--color-card);
+    border: 1px solid var(--color-border);
+  }
+
+  .mockup-fill {
+    background-color: color-mix(
+      in srgb,
+      var(--color-foreground) 7%,
+      transparent
+    );
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Footer link hover — gradient text reveal wipe + lift + glow
+   The real label stays normal color; a cloned copy (via data-text)
+   is gradient-filled and revealed left→right using clip-path.
+   Works for both light & dark themes via CSS vars.
+--------------------------------------------------------------------- */
+.footer-link {
+  position: relative;
+  display: inline-block;
+  color: var(--muted-foreground);
+  transition:
+    transform 0.4s cubic-bezier(0.65, 0, 0.35, 1),
+    letter-spacing 0.4s ease,
+    filter 0.4s ease;
+  will-change: transform;
+}
+
+.footer-link::before {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  white-space: nowrap;
+  pointer-events: none;
+  background-image: linear-gradient(
+    100deg,
+    var(--primary) 0%,
+    var(--gradient-text) 50%,
+    var(--primary) 100%
+  );
+  background-size: 220% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  clip-path: inset(0 100% 0 0);
+  transition:
+    clip-path 0.5s cubic-bezier(0.65, 0, 0.35, 1),
+    background-position 0.9s ease;
+}
+
+.footer-link:hover,
+.footer-link:focus-visible {
+  transform: translateY(-2px);
+  letter-spacing: 0.015em;
+  filter: drop-shadow(
+    0 2px 8px color-mix(in srgb, var(--gradient-text) 35%, transparent)
+  );
+}
+
+.footer-link:hover::before,
+.footer-link:focus-visible::before {
+  clip-path: inset(0 0 0 0);
+  background-position: 0 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .footer-link,
+  .footer-link::before {
+    transition: color 0.2s ease;
+  }
+  .footer-link:hover {
+    transform: none;
+    filter: none;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Page hero top spacing — shared across Contact, Portfolio, About,
+   Blog, Services page headers. Change ONCE here to adjust the gap
+   below the navbar on all 5 pages at once.
+--------------------------------------------------------------------- */
+.page-hero-pad {
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+  padding-top: 3rem;
+  padding-bottom: 6rem;
+}
+
+@media (min-width: 768px) {
+  .page-hero-pad {
+    padding-left: 2.5rem;
+    padding-right: 2.5rem;
+    padding-top: 4rem;
+    padding-bottom: 8rem;
   }
 }

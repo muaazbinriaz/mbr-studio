@@ -12,7 +12,7 @@ export const siteConfig = {
   ogImage: "/opengraph-image",
   email: "mbrstudio.dev@gmail.com",
   // Added fields for the chat route
-  consultationUrl: "https://cal.com/muaaz-riaz-itdnod/consultation",
+  consultationUrl: "https://cal.com/mbrstudio/consultation",
 
   contactEmail: "mbrstudio.dev@gmail.com",
   links: {

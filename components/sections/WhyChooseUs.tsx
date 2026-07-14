@@ -54,7 +54,10 @@ export function WhyChooseUs() {
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,340px)_1fr] lg:gap-20">
           {/* Left: static heading */}
           <div className="lg:sticky lg:top-32 lg:self-start">
-            <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+            {/* <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+              Why MBR Studio
+            </p> */}
+            <p className="text-gradient-animated mb-3 font-body text-sm font-medium tracking-wide">
               Why MBR Studio
             </p>
             <h2

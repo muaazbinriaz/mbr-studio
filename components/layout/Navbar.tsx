@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Sun, Moon, Menu, X } from "lucide-react";
+import { Sun, Moon, Menu, X, SunMoon } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useTheme } from "@/components/theme/ThemeProvider";
 
@@ -56,6 +56,16 @@ export function Navbar() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const pathname = usePathname();
+
+  // Hydration-safe theme icon: SSR always assumes "dark" (no `window` to
+  // check server-side), but the client's first hydration pass reads the
+  // real theme the blocking script already applied to <html> — those can
+  // differ, which used to throw a hydration mismatch on this exact
+  // button. Rendering a neutral placeholder until mount means the first
+  // client render matches the server render exactly; the real icon swaps
+  // in right after via a normal (non-hydration) client update.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // Safe check: ensure blogPosts is an array before calling .some()
   const hasPublishedPosts =
@@ -146,13 +156,17 @@ export function Navbar() {
               type="button"
               onClick={toggleTheme}
               aria-label={
-                theme === "dark"
-                  ? "Switch to light theme"
-                  : "Switch to dark theme"
+                mounted
+                  ? theme === "dark"
+                    ? "Switch to light theme"
+                    : "Switch to dark theme"
+                  : "Toggle theme"
               }
               className="rounded-lg p-2 text-secondary-text transition-colors hover:bg-card hover:text-foreground"
             >
-              {theme === "dark" ? (
+              {!mounted ? (
+                <SunMoon className="h-4 w-4" aria-hidden="true" />
+              ) : theme === "dark" ? (
                 <Sun className="h-4 w-4" />
               ) : (
                 <Moon className="h-4 w-4" />

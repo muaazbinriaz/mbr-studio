@@ -109,7 +109,7 @@ export async function POST(request: Request) {
 
     // Notification to the MBR Studio inbox.
     const { error: notifyError } = await resend.emails.send({
-      from: `MBR Studio Website <notifications@mbrstudio.dev>`,
+      from: `MBR Studio Website <onboarding@resend.dev>`,
       to: CONTACT_EMAIL,
       replyTo: email,
       subject: `New inquiry: ${serviceLabel} — ${name}`,
@@ -149,41 +149,19 @@ export async function POST(request: Request) {
       );
     }
 
-    // Auto-reply to the visitor.
-    const { error: replyError } = await resend.emails.send({
-      from: `MBR Studio <notifications@mbrstudio.dev>`,
-      to: email,
-      replyTo: CONTACT_EMAIL,
-      subject: "We've received your message — MBR Studio",
-      html: `
-        <div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto;">
-          <p>Hi ${safeName.split(" ")[0]},</p>
-          <p>
-            Thanks for reaching out to MBR Studio. We've received your message
-            about <strong>${serviceLabel}</strong> — we typically reply the
-            same day.
-          </p>
-          <p>If it's urgent, you can also reach us on WhatsApp at ${WHATSAPP_DISPLAY}.</p>
-          <p>— MBR Studio</p>
-        </div>
-      `,
-    });
-
-    if (replyError) {
-      // The internal notification above already succeeded, so the lead
-      // itself is safe — this is just the visitor's confirmation email
-      // failing, which is lower stakes but still worth surfacing so
-      // they don't wonder if the form actually worked.
-      console.error("Resend auto-reply email failed:", replyError);
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "We received your message, but couldn't send a confirmation email. We'll still follow up.",
-        },
-        { status: 502 },
-      );
-    }
+    // Auto-reply to the visitor is disabled for now — Resend's sandbox
+    // mode (no verified sending domain yet) can only deliver to
+    // muaazbinriaz2000@gmail.com, so it would fail for every real
+    // client. Re-enable this block once a domain is verified on
+    // resend.com/domains (see notes in CONTACT_EMAIL above).
+    //
+    // const { error: replyError } = await resend.emails.send({
+    //   from: `MBR Studio <onboarding@resend.dev>`,
+    //   to: email,
+    //   replyTo: CONTACT_EMAIL,
+    //   subject: "We've received your message — MBR Studio",
+    //   html: `...`,
+    // });
 
     return NextResponse.json({ success: true });
   } catch (error) {

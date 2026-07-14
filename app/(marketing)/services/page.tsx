@@ -119,7 +119,7 @@ export default function ServicesPage() {
 
       {/* Page header */}
       <section className="bg-background">
-        <div className="mx-auto max-w-4xl px-6 py-24 text-center md:px-10 md:py-32">
+        <div className="mx-auto max-w-4xl page-hero-pad text-center">
           <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
             Services
           </p>

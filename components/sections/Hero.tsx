@@ -24,7 +24,7 @@ export function Hero() {
       <HeroAmbient />
 
       <div className="relative z-10 mx-auto flex min-h-[88vh] max-w-6xl flex-col justify-center gap-12 px-6 py-32 md:px-10 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex max-w-4xl flex-col">
+        <div className="flex max-w-4xl flex-col lg:flex-1">
           <HeroEyebrow />
 
           <h1 className="max-w-4xl font-heading text-2xl font-bold leading-[1.05] tracking-tight text-text sm:text-3xl md:text-4xl lg:text-5xl">
