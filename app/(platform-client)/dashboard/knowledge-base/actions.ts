@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ingestDocument } from "@/lib/knowledge-base/ingest";
 import { discoverPages, scrapePage } from "@/lib/knowledge-base/scrape";
+import { structureScrapedContent } from "@/lib/knowledge-base/structure";
 import { extractPdfText } from "@/lib/knowledge-base/pdf";
 import { getActiveAgentForCurrentUser } from "@/lib/auth/actions";
 import { embedText } from "@/lib/knowledge-base/embed";
@@ -140,6 +141,104 @@ export async function scrapeAndIngestUrl(url: string) {
     revalidatePath("/dashboard/knowledge-base");
     revalidatePath("/dashboard/onboarding");
     return { error: `Saved ${url}, but processing failed.` };
+  }
+
+  revalidatePath("/dashboard/knowledge-base");
+  revalidatePath("/dashboard/onboarding");
+  return { error: null };
+}
+
+// ============================================================
+// Scan → AI-structure → review before saving (Phase 1 upgrade).
+// Splits the old scrape-and-save-immediately flow into two steps:
+// preview (this function, no DB write) and confirm (below, the only
+// one that writes). The AI structuring pass is best-effort — if it
+// fails, we fall back to the raw scrape rather than blocking the
+// user from adding the page at all.
+// ============================================================
+
+export async function scrapeForPreview(url: string) {
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent) {
+    return {
+      error: "No active agent found for your organization.",
+      data: null,
+    };
+  }
+
+  let scraped: Awaited<ReturnType<typeof scrapePage>>;
+  try {
+    scraped = await scrapePage(url);
+  } catch (err) {
+    return {
+      error: err instanceof Error ? err.message : `Could not scrape ${url}.`,
+      data: null,
+    };
+  }
+
+  try {
+    const structured = await structureScrapedContent({
+      source: url,
+      title: scraped.title,
+      rawText: scraped.text,
+    });
+    return {
+      error: null,
+      data: { url, title: structured.title, content: structured.content },
+    };
+  } catch {
+    // AI structuring failed (model outage, page too thin, etc.) — fall
+    // back to the raw scrape so one flaky page doesn't block the whole
+    // batch. The user still reviews and can edit it before saving.
+    return {
+      error: null,
+      data: { url, title: scraped.title, content: scraped.text.slice(0, 8000) },
+    };
+  }
+}
+
+export async function confirmAddScrapedPage(input: {
+  url: string;
+  title: string;
+  content: string;
+}) {
+  const title = input.title.trim();
+  const content = input.content.trim();
+  if (!title) return { error: "This page needs a title." };
+  if (!content || content.length < 20) {
+    return { error: "This page's content looks too short to save." };
+  }
+
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent) return { error: "No active agent found for your organization." };
+
+  const supabase = await createClient();
+  const { data: doc, error: insertError } = await supabase
+    .from("knowledge_base_documents")
+    .insert({
+      agent_id: agent.id,
+      organization_id: agent.organization_id,
+      source_type: "url",
+      source_url: input.url,
+      title,
+      raw_content: content,
+      status: "processing",
+      last_refreshed_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !doc) {
+    return { error: insertError?.message ?? `Failed to save ${input.url}.` };
+  }
+
+  try {
+    await ingestDocument(doc.id);
+  } catch (err) {
+    console.error("[knowledge-base] url ingestion failed:", err);
+    revalidatePath("/dashboard/knowledge-base");
+    revalidatePath("/dashboard/onboarding");
+    return { error: `Saved ${input.url}, but processing failed.` };
   }
 
   revalidatePath("/dashboard/knowledge-base");
@@ -323,6 +422,195 @@ export async function ingestUploadedPdf(storagePath: string, fileName: string) {
   revalidatePath("/dashboard/knowledge-base");
   revalidatePath("/dashboard/onboarding");
   return { error: null };
+}
+
+// ============================================================
+// PDF upload → extract → AI-structure → review before saving.
+// Mirrors the website scan flow: extractPdfForPreview() does the
+// extraction + structuring with no DB write, confirmAddPdfDocument()
+// is the only function that saves. ingestUploadedPdf() above is left
+// in place but unused by the client now — same low-risk pattern as
+// scrapeAndIngestUrl().
+// ============================================================
+
+export async function extractPdfForPreview(
+  storagePath: string,
+  fileName: string,
+) {
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent) {
+    return {
+      error: "No active agent found for your organization.",
+      data: null,
+    };
+  }
+
+  if (!storagePath.startsWith(`${agent.organization_id}/`)) {
+    return {
+      error: "This file does not belong to your organization.",
+      data: null,
+    };
+  }
+
+  const admin = createAdminClient();
+  const { data: file, error: downloadError } = await admin.storage
+    .from("knowledge-base-pdfs")
+    .download(storagePath);
+
+  if (downloadError || !file) {
+    return {
+      error:
+        downloadError?.message ??
+        "We couldn't read that file — try uploading it again.",
+      data: null,
+    };
+  }
+
+  const buffer = await file.arrayBuffer();
+
+  let extraction: Awaited<ReturnType<typeof extractPdfText>>;
+  try {
+    extraction = await extractPdfText(buffer);
+  } catch {
+    return {
+      error:
+        "Could not read this PDF — it may be corrupted or in an unsupported format.",
+      data: null,
+    };
+  }
+
+  if (extraction.looksScanned) {
+    return {
+      error:
+        "This PDF appears to be a scanned image with no selectable text — try re-exporting it as a text-based PDF, or paste the content manually.",
+      data: null,
+    };
+  }
+
+  try {
+    const structured = await structureScrapedContent({
+      source: fileName,
+      title: fileName,
+      rawText: extraction.text,
+    });
+    return {
+      error: null,
+      data: {
+        storagePath,
+        title: structured.title,
+        content: structured.content,
+      },
+    };
+  } catch {
+    return {
+      error: null,
+      data: {
+        storagePath,
+        title: fileName,
+        content: extraction.text.slice(0, 8000),
+      },
+    };
+  }
+}
+
+export async function confirmAddPdfDocument(input: {
+  storagePath: string;
+  title: string;
+  content: string;
+}) {
+  const title = input.title.trim();
+  const content = input.content.trim();
+  if (!title) return { error: "This document needs a title." };
+  if (!content || content.length < 20) {
+    return { error: "This document's content looks too short to save." };
+  }
+
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent) return { error: "No active agent found for your organization." };
+
+  if (!input.storagePath.startsWith(`${agent.organization_id}/`)) {
+    return { error: "This file does not belong to your organization." };
+  }
+
+  const supabase = await createClient();
+  const { data: doc, error: insertError } = await supabase
+    .from("knowledge_base_documents")
+    .insert({
+      agent_id: agent.id,
+      organization_id: agent.organization_id,
+      source_type: "pdf",
+      title,
+      raw_content: content,
+      status: "processing",
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !doc) {
+    return {
+      error:
+        insertError?.message ??
+        "We couldn't save that — try again in a moment.",
+    };
+  }
+
+  try {
+    await ingestDocument(doc.id);
+  } catch (err) {
+    console.error("[knowledge-base] pdf ingestion failed:", err);
+    revalidatePath("/dashboard/knowledge-base");
+    revalidatePath("/dashboard/onboarding");
+    return { error: "Saved, but processing failed." };
+  }
+
+  revalidatePath("/dashboard/knowledge-base");
+  revalidatePath("/dashboard/onboarding");
+  return { error: null };
+}
+
+// ============================================================
+// Manual "Text" tab — optional AI cleanup before saving. Unlike the
+// website/PDF flows, saving here is still a separate explicit action
+// (addKnowledgeBaseDocument, unchanged) — this just lets the user
+// polish their own writing first if they want to.
+// ============================================================
+
+export async function cleanUpTextWithAi(input: {
+  title: string;
+  rawContent: string;
+}) {
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent)
+    return {
+      error: "No active agent found for your organization.",
+      data: null,
+    };
+
+  const title = input.title.trim() || "Untitled";
+  const rawContent = input.rawContent.trim();
+  if (!rawContent || rawContent.length < 20) {
+    return {
+      error: "Write a bit more content first — at least a couple of sentences.",
+      data: null,
+    };
+  }
+
+  try {
+    const structured = await structureScrapedContent({
+      source: title,
+      title,
+      rawText: rawContent,
+    });
+    return { error: null, data: { content: structured.content } };
+  } catch (err) {
+    return {
+      error:
+        err instanceof Error
+          ? err.message
+          : "Couldn't clean this up — try again.",
+      data: null,
+    };
+  }
 }
 
 export async function deleteKnowledgeBaseDocument(documentId: string) {

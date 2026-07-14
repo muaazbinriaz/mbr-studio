@@ -12,7 +12,28 @@ import { NextResponse, type NextRequest } from "next/server";
  * for the paths listed, so (marketing) routes never pay the cost of
  * a Supabase round-trip.
  */
+// AI Agent product (marketing page + the whole SaaS app behind it) is
+// paused while it's still being finished. Remove this array + the block
+// below, and the matching matcher entries, once it's ready for clients.
+const AI_AGENT_PRODUCT_PATHS = [
+  "/ai-agent",
+  "/signup",
+  "/login",
+  "/dashboard",
+  "/admin",
+];
+
 export async function middleware(request: NextRequest) {
+  const path = request.nextUrl.pathname;
+
+  if (
+    AI_AGENT_PRODUCT_PATHS.some((p) => path === p || path.startsWith(`${p}/`))
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/";
+    return NextResponse.redirect(url);
+  }
+
   let response = NextResponse.next({
     request: { headers: request.headers },
   });
@@ -46,7 +67,7 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const path = request.nextUrl.pathname;
+  // ⬇️ Reuse the `path` variable declared at the top – no duplicate declaration
   const isAdminRoute = path.startsWith("/admin");
   const isClientRoute = path.startsWith("/dashboard");
   const isAuthRoute = path.startsWith("/login") || path.startsWith("/signup");
@@ -61,9 +82,7 @@ export async function middleware(request: NextRequest) {
 
   // Hand the already-verified user to the route so client/dashboard
   // layout.tsx doesn't have to pay for a second getUser() round-trip
-  // on every request — this is what was stretching the blocking
-  // window before /dashboard's HTML (and its theme-init script)
-  // could reach the browser.
+  // on every request.
   if (user) {
     response.headers.set("x-user-id", user.id);
     if (user.email) response.headers.set("x-user-email", user.email);
@@ -95,5 +114,11 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/dashboard/:path*", "/login", "/signup"],
+  matcher: [
+    "/admin/:path*",
+    "/dashboard/:path*",
+    "/login",
+    "/signup",
+    "/ai-agent/:path*",
+  ],
 };

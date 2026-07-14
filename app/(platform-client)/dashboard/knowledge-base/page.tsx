@@ -73,7 +73,7 @@ export default async function KnowledgeBasePage() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-7.5rem)] flex-col md:h-[calc(100dvh-5rem)]">
+    <div className="mx-auto flex h-[calc(100dvh-7.5rem)] w-full max-w-6xl flex-col md:h-[calc(100dvh-5rem)]">
       <div className="mb-4 flex-none">
         <h1 className="font-heading text-2xl font-bold text-foreground">
           Knowledge Base

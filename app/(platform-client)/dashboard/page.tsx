@@ -81,6 +81,7 @@ export default async function DashboardPage({
           .from("knowledge_base_documents")
           .select("id", { count: "exact", head: true })
           .eq("agent_id", agent.id)
+          .not("title", "ilike", "%(example — replace with real info)%")
           .then((r) => r.count ?? 0)
       : Promise.resolve(0),
     agent
@@ -121,7 +122,15 @@ export default async function DashboardPage({
     {
       key: "add_knowledge",
       label: "Add your first knowledge base document",
-      href: "/dashboard/knowledge-base",
+      // Pre-setup: keep the user inside the guided wizard (Train step)
+      // instead of dropping them onto the standalone Knowledge Base
+      // page they have no context for yet — same reasoning as
+      // set_guardrails below. Once setup is done, the standalone page
+      // (also reachable from the sidebar by then) is the right place
+      // for ongoing edits.
+      href: agent?.setup_complete
+        ? "/dashboard/knowledge-base"
+        : "/dashboard/onboarding?step=1",
       done: kbDocCount > 0,
       emoji: "📚",
       hint: "Teach your agent about your business — website, PDF, or text",
@@ -138,7 +147,14 @@ export default async function DashboardPage({
     {
       key: "set_guardrails",
       label: "Set up guardrails and tone",
-      href: "/dashboard/agent/guardrails",
+      // Pre-setup: keep the user inside the guided wizard (progress bar,
+      // Back/Next, "Get set up" framing) instead of dropping them onto
+      // an isolated settings page they have no context for. Once setup
+      // is done, the standalone page (also reachable from the sidebar
+      // by then) is the right place — that's where ongoing tweaks live.
+      href: agent?.setup_complete
+        ? "/dashboard/agent/guardrails"
+        : "/dashboard/onboarding?step=2",
       done: guardrailsRow,
       emoji: "🛡️",
       hint: "Decide what your agent should and shouldn't say",

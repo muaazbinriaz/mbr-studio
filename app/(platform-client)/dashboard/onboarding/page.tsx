@@ -12,7 +12,12 @@ interface LeadCaptureSettings {
   ask_message: boolean;
 }
 
-export default async function OnboardingPage() {
+export default async function OnboardingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ step?: string }>;
+}) {
+  const { step: stepOverride } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -69,6 +74,18 @@ export default async function OnboardingPage() {
     agentId = agent?.id ?? null;
     agentName = agent?.name ?? "";
     initialStep = Math.min(Math.max(agent?.onboarding_step ?? 0, 0), 4);
+
+    // Deep-link support — e.g. the Overview checklist's "Set up
+    // guardrails and tone" links here with ?step=2. Only ever honored
+    // if the user has genuinely reached that step or further — never
+    // skips them ahead of steps they haven't actually done, which
+    // would show earlier steps as falsely "completed" (checkmarked)
+    // in the progress bar. A user who's behind gets sent to their
+    // real current step instead; they'll reach Behavior naturally.
+    const parsedStep = Number(stepOverride);
+    if (Number.isInteger(parsedStep) && parsedStep >= 0 && parsedStep <= 4) {
+      initialStep = Math.min(parsedStep, initialStep);
+    }
     alreadyLive = agent?.setup_complete ?? false;
     const keys = agent?.embed_keys as { public_key: string }[] | undefined;
     publicKey = keys?.[0]?.public_key ?? null;

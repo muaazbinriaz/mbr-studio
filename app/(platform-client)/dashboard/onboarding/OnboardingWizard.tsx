@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Check,
@@ -16,7 +16,11 @@ import type { AgentTemplate } from "@/lib/agents/templates";
 import type { GuardrailToggles } from "@/lib/agents/build-system-prompt";
 import { applyTemplate } from "@/app/(platform-client)/dashboard/agent/templates/actions";
 import { KnowledgeBaseClient } from "@/app/(platform-client)/dashboard/knowledge-base/KnowledgeBaseClient";
-import { GuardrailsClient } from "@/app/(platform-client)/dashboard/agent/guardrails/GuardrailsClient";
+import { TrainQuickPanel } from "./TrainQuickPanel";
+import {
+  GuardrailsClient,
+  type GuardrailsClientHandle,
+} from "@/app/(platform-client)/dashboard/agent/guardrails/GuardrailsClient";
 import {
   saveOrgBasics,
   saveAgentName,
@@ -89,6 +93,7 @@ export function OnboardingWizard({
   documents: DocumentRow[];
 }) {
   const { start } = useRouteLoader();
+  const guardrailsRef = useRef<GuardrailsClientHandle>(null);
   const [step, setStep] = useState(initialStep);
   const [mobileView, setMobileView] = useState<"form" | "preview">("form");
   const [isPending, startTransition] = useTransition();
@@ -98,6 +103,7 @@ export function OnboardingWizard({
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
     null,
   );
+  const [trainMode, setTrainMode] = useState<"quick" | "advanced">("quick");
 
   const [primaryColor, setPrimaryColor] = useState(
     org?.primary_color ?? "#6366f1",
@@ -137,6 +143,9 @@ export function OnboardingWizard({
       return prev;
     });
 
+  const selectedTemplate =
+    templates.find((t) => t.id === selectedTemplateId) ?? null;
+
   const embedSnippet = publicKey
     ? `<script src="${typeof window !== "undefined" ? window.location.origin : ""}/chatbot.js" data-client="${publicKey}" defer></script>`
     : "";
@@ -171,6 +180,18 @@ export function OnboardingWizard({
         }
       }
 
+      goNext();
+    });
+  };
+
+  const handleBehaviorNext = () => {
+    setError(null);
+    startTransition(async () => {
+      const saveError = await guardrailsRef.current?.save();
+      if (saveError) {
+        setError(saveError);
+        return;
+      }
       goNext();
     });
   };
@@ -305,13 +326,13 @@ export function OnboardingWizard({
       )}
 
       <div
-        className={`grid grid-cols-1 gap-6 ${showPreview ? "lg:grid-cols-[55fr_45fr]" : ""}`}
+        className={`grid grid-cols-1 gap-6 ${showPreview ? "lg:grid-cols-[minmax(0,55fr)_minmax(0,45fr)]" : ""}`}
       >
         {/* Left: steps */}
         <div
-          className={
+          className={`min-w-0 ${
             showPreview && mobileView === "preview" ? "hidden lg:block" : ""
-          }
+          }`}
         >
           <AnimatePresence mode="wait">
             <motion.div
@@ -340,6 +361,8 @@ export function OnboardingWizard({
                       value={agentName}
                       onChange={(e) => setAgentName(e.target.value)}
                       placeholder="e.g. Aria, Sam, Support Bot"
+                      autoFocus
+                      onFocus={(e) => e.target.select()}
                       className="rounded-lg border border-border bg-background px-3 py-2.5 font-body text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                     />
                   </div>
@@ -377,16 +400,39 @@ export function OnboardingWizard({
 
               {step === 1 && (
                 <div>
-                  <h2 className="mb-1 font-heading text-lg font-semibold text-foreground">
-                    Add what your AI should know
-                  </h2>
-                  <p className="mb-4 font-body text-sm text-secondary-text">
-                    Scan your website, upload files, or type it in directly —
-                    this is the real Knowledge Base, not a simplified copy.
-                  </p>
-                  <div className="h-[min(75vh,680px)] min-h-[560px] overflow-y-auto rounded-xl border border-border">
-                    <KnowledgeBaseClient documents={documents} />
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div>
+                      <h2 className="mb-1 font-heading text-lg font-semibold text-foreground">
+                        Add what your AI should know
+                      </h2>
+                      <p className="font-body text-sm text-secondary-text">
+                        {trainMode === "quick"
+                          ? "Scan your website or describe your business — takes under a minute."
+                          : "Full Knowledge Base — scan pages, upload files, or manage Q&A pairs individually."}
+                      </p>
+                    </div>
+                    {trainMode === "advanced" && (
+                      <button
+                        type="button"
+                        onClick={() => setTrainMode("quick")}
+                        className="flex-none whitespace-nowrap font-body text-xs font-medium text-primary underline underline-offset-2"
+                      >
+                        Back to quick mode
+                      </button>
+                    )}
                   </div>
+
+                  {trainMode === "quick" ? (
+                    <TrainQuickPanel
+                      documents={documents}
+                      selectedTemplate={selectedTemplate}
+                      onAdvanced={() => setTrainMode("advanced")}
+                    />
+                  ) : (
+                    <div className="max-h-[min(75vh,680px)] min-h-[420px] overflow-y-auto rounded-xl border border-border">
+                      <KnowledgeBaseClient documents={documents} />
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -396,13 +442,15 @@ export function OnboardingWizard({
                     Set how it behaves
                   </h2>
                   <p className="mb-4 font-body text-sm text-secondary-text">
-                    Tone, guardrails, and lead capture — save your changes
-                    below, then continue.
+                    Tone, guardrails, and lead capture — hit Next when you're
+                    happy with how it behaves.
                   </p>
                   <GuardrailsClient
+                    ref={guardrailsRef}
                     guardrails={guardrails}
                     leadCaptureSettings={leadCaptureSettings}
                     orgName={agentName || "Your Business"}
+                    showOwnSaveButton={false}
                   />
                 </div>
               )}
@@ -618,9 +666,11 @@ export function OnboardingWizard({
                 onClick={
                   step === 0
                     ? handleStep0Next
-                    : step === 3
-                      ? handleBrandingNext
-                      : goNext
+                    : step === 2
+                      ? handleBehaviorNext
+                      : step === 3
+                        ? handleBrandingNext
+                        : goNext
                 }
                 disabled={isPending || (step === 0 && !agentName.trim())}
               >
@@ -640,10 +690,16 @@ export function OnboardingWizard({
         {/* Right: persistent live preview — only on steps where it
             reflects something the user just changed. */}
         {showPreview && (
-          <div className={mobileView === "form" ? "hidden lg:block" : ""}>
-            <div className="lg:sticky lg:top-24">
-              <p className="mb-3 font-body text-sm font-medium text-foreground">
+          <div
+            className={`min-w-0 ${mobileView === "form" ? "hidden lg:block" : ""}`}
+          >
+            <div className="lg:sticky lg:top-24 rounded-2xl border border-border bg-card p-6">
+              <p className="mb-1 font-body text-sm font-medium text-foreground">
                 Live preview
+              </p>
+              <p className="mb-4 font-body text-xs text-secondary-text">
+                This is exactly what visitors will see on your website — it
+                updates as you go.
               </p>
               <WidgetPreview
                 primaryColor={primaryColor}
@@ -651,7 +707,21 @@ export function OnboardingWizard({
                 welcomeMessage={welcomeMessage}
                 logoUrl={logoUrl}
                 position={widgetPosition}
+                suggestionChips={selectedTemplate?.greetingChips ?? []}
               />
+              <div className="mt-5 flex flex-col gap-2.5 border-t border-border pt-4">
+                <p className="font-body text-xs font-medium text-foreground">
+                  Why this matters
+                </p>
+                <p className="font-body text-xs text-secondary-text">
+                  A short, friendly welcome message gets visitors talking faster
+                  than a generic greeting.
+                </p>
+                <p className="font-body text-xs text-secondary-text">
+                  You can change the color, position, and message anytime from
+                  Appearance settings.
+                </p>
+              </div>
             </div>
           </div>
         )}

@@ -1,6 +1,12 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import {
+  forwardRef,
+  useImperativeHandle,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
 import { Loader2, Save, Check } from "lucide-react";
 
 import {
@@ -157,15 +163,30 @@ const LEAD_FIELD_DEFS: { key: keyof LeadCaptureSettings; label: string }[] = [
 
 type GuardrailsRow = GuardrailToggles | null;
 
-export function GuardrailsClient({
-  guardrails,
-  leadCaptureSettings,
-  orgName,
-}: {
-  guardrails: GuardrailsRow;
-  leadCaptureSettings: LeadCaptureSettings | null;
-  orgName: string;
-}) {
+export interface GuardrailsClientHandle {
+  /** Saves the current form state. Returns an error message on failure,
+   * or null on success — lets the Setup Wizard's "Next" button save
+   * guardrails itself, the same way it already does for every other
+   * step, instead of relying on a separate, easy-to-miss button. */
+  save: () => Promise<string | null>;
+}
+
+export const GuardrailsClient = forwardRef<
+  GuardrailsClientHandle,
+  {
+    guardrails: GuardrailsRow;
+    leadCaptureSettings: LeadCaptureSettings | null;
+    orgName: string;
+    /** False when embedded in the Setup Wizard — there, the wizard's
+     * own "Next" button drives saving, so this component's own Save
+     * button would just be a second, confusing way to do the same
+     * thing. Defaults to true for the standalone guardrails page. */
+    showOwnSaveButton?: boolean;
+  }
+>(function GuardrailsClient(
+  { guardrails, leadCaptureSettings, orgName, showOwnSaveButton = true },
+  ref,
+) {
   const [state, setState] = useState<GuardrailToggles>(() => ({
     no_competitors: guardrails?.no_competitors ?? false,
     stay_on_topic: guardrails?.stay_on_topic ?? true,
@@ -214,7 +235,7 @@ export function GuardrailsClient({
     setSaved(false);
   };
 
-  const handleSave = () => {
+  const persistGuardrails = async (): Promise<string | null> => {
     setError(null);
     const formData = new FormData();
     for (const def of TOGGLE_DEFS) {
@@ -227,23 +248,38 @@ export function GuardrailsClient({
       if (leadSettings[def.key]) formData.set(`lead_${def.key}`, "on");
     }
 
-    startTransition(async () => {
-      try {
-        const result = await saveGuardrails(formData);
-        if (result?.error) {
-          setError(result.error);
-        } else {
-          setSaved(true);
-        }
-      } catch (e) {
-        setError(
-          e instanceof Error
-            ? e.message
-            : "Something went wrong saving your changes — try again.",
-        );
+    try {
+      const result = await saveGuardrails(formData);
+      if (result?.error) {
+        setError(result.error);
+        return result.error;
       }
+      setSaved(true);
+      return null;
+    } catch (e) {
+      const message =
+        e instanceof Error
+          ? e.message
+          : "Something went wrong saving your changes — try again.";
+      setError(message);
+      return message;
+    }
+  };
+
+  const handleSave = () => {
+    startTransition(() => {
+      void persistGuardrails();
     });
   };
+
+  useImperativeHandle(ref, () => ({
+    save: () =>
+      new Promise<string | null>((resolve) => {
+        startTransition(async () => {
+          resolve(await persistGuardrails());
+        });
+      }),
+  }));
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
@@ -456,19 +492,21 @@ export function GuardrailsClient({
           </p>
         )}
 
-        <div className="flex items-center gap-3">
-          <Button onClick={handleSave} disabled={isPending}>
-            {isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4" />
+        {showOwnSaveButton && (
+          <div className="flex items-center gap-3">
+            <Button onClick={handleSave} disabled={isPending}>
+              {isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              Save changes
+            </Button>
+            {saved && !isPending && (
+              <span className="font-body text-sm text-success">Saved.</span>
             )}
-            Save changes
-          </Button>
-          {saved && !isPending && (
-            <span className="font-body text-sm text-success">Saved.</span>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       <div className="h-fit rounded-2xl border border-border bg-card p-6 lg:sticky lg:top-6">
@@ -485,4 +523,4 @@ export function GuardrailsClient({
       </div>
     </div>
   );
-}
+});

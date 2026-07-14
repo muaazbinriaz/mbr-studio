@@ -24,7 +24,7 @@ export const siteConfig = {
 
 export const navLinks = [
   { label: "Services", href: "/services", icon: Layers },
-  { label: "AI Agent", href: "/ai-agent", icon: Bot },
+  // { label: "AI Agent", href: "/ai-agent", icon: Bot }, // paused — re-enable when product is client-ready
   { label: "Portfolio", href: "/portfolio", icon: Briefcase },
   { label: "About", href: "/about", icon: Users },
   { label: "Blog", href: "/blog", icon: Newspaper },

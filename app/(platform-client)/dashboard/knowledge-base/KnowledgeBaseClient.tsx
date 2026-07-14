@@ -39,12 +39,15 @@ import {
   deleteKnowledgeBaseDocument,
   reindexKnowledgeBaseDocument,
   discoverKnowledgeBaseUrls,
-  scrapeAndIngestUrl,
+  scrapeForPreview,
+  confirmAddScrapedPage,
   refreshKnowledgeBaseUrlDocument,
   createPdfUploadUrl,
-  ingestUploadedPdf,
+  extractPdfForPreview,
+  confirmAddPdfDocument,
   updateKnowledgeBaseDocument,
   testKnowledgeBaseQuery,
+  cleanUpTextWithAi,
 } from "./actions";
 
 type DocumentRow = {
@@ -114,6 +117,42 @@ const SOURCE_TABS: { id: SourceTabId; label: string; icon: typeof Globe }[] = [
   { id: "manual_text", label: "Text", icon: AlignLeft },
   { id: "faq_pair", label: "Q&A", icon: HelpCircle },
 ];
+
+const SOURCE_TAB_HINTS: Record<SourceTabId, string> = {
+  url: "Scan live pages",
+  pdf: "PDF & docs",
+  manual_text: "Freeform notes",
+  faq_pair: "Question & answer",
+};
+
+/** Shared header used by every "add" panel — icon badge + title + subtitle,
+    so Website/Files/Text/Q&A all look like one consistent product instead
+    of four different mini-forms bolted together. */
+function PanelHeader({
+  icon: Icon,
+  title,
+  subtitle,
+}: {
+  icon: typeof Globe;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <div className="mb-4 flex items-start gap-3">
+      <span className="flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-primary/10 text-primary">
+        <Icon className="h-4 w-4" />
+      </span>
+      <div className="min-w-0">
+        <p className="font-body text-sm font-semibold text-foreground">
+          {title}
+        </p>
+        <p className="mt-0.5 font-body text-sm text-secondary-text">
+          {subtitle}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 const SOURCE_ICON: Record<string, typeof Globe> = {
   url: Globe,
@@ -322,9 +361,10 @@ export function KnowledgeBaseClient({
         </p>
       )}
 
-      {/* Source-type tabs — horizontally scrollable on narrow screens
-          instead of squeezing 4 tabs into a fixed-width row. */}
-      <div className="flex flex-none gap-1 overflow-x-auto rounded-xl border border-border bg-card p-1.5">
+      {/* Source-type tabs — premium segmented control. Equal-width cards on
+          sm+ screens, horizontally-scrolling row on very narrow phones so
+          nothing ever clips or overlaps. */}
+      <div className="flex flex-none gap-1.5 overflow-x-auto rounded-2xl border border-border bg-card/60 p-1.5 sm:grid sm:grid-cols-4 sm:overflow-visible">
         {SOURCE_TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -333,35 +373,50 @@ export function KnowledgeBaseClient({
               key={tab.id}
               type="button"
               onClick={() => switchTab(tab.id)}
-              className={`flex flex-none items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 font-body text-sm font-medium transition-colors sm:flex-1 ${
+              className={`group flex flex-none items-center gap-2.5 whitespace-nowrap rounded-xl px-3.5 py-2.5 text-left transition-all duration-150 sm:flex-auto ${
                 isActive
-                  ? "bg-primary/10 text-primary"
-                  : "text-secondary-text hover:bg-background"
+                  ? "bg-card shadow-sm ring-1 ring-primary/25"
+                  : "hover:bg-background"
               }`}
             >
-              <Icon className="h-4 w-4 flex-none" />
-              {tab.label}
               <span
-                className={`ml-0.5 rounded-full px-1.5 py-0.5 font-body text-[10px] ${
+                className={`flex h-8 w-8 flex-none items-center justify-center rounded-lg transition-colors ${
                   isActive
-                    ? "bg-primary/15 text-primary"
-                    : "bg-background text-secondary-text"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-background text-secondary-text group-hover:text-foreground"
                 }`}
               >
-                {tabCounts[tab.id]}
+                <Icon className="h-4 w-4" />
+              </span>
+              <span className="min-w-0">
+                <span
+                  className={`flex items-center gap-1.5 font-body text-sm font-semibold ${
+                    isActive
+                      ? "text-foreground"
+                      : "text-secondary-text group-hover:text-foreground"
+                  }`}
+                >
+                  {tab.label}
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 font-body text-[10px] font-medium ${
+                      isActive
+                        ? "bg-primary/10 text-primary"
+                        : "bg-background text-secondary-text"
+                    }`}
+                  >
+                    {tabCounts[tab.id]}
+                  </span>
+                </span>
+                <span className="hidden font-body text-[11px] text-secondary-text sm:block">
+                  {SOURCE_TAB_HINTS[tab.id]}
+                </span>
               </span>
             </button>
           );
         })}
       </div>
 
-      {/* Two-pane body: add-panel + list on the left, detail on the right.
-          Wrapped in @container so this responds to the space it ACTUALLY
-          has (e.g. squeezed into the onboarding wizard's 55%-width column)
-          instead of the viewport's lg: breakpoint. Without this, a fixed
-          400px sidebar + "wide" 1fr detail pane gets squeezed into an
-          unusably narrow sliver whenever this component is embedded in a
-          narrower host layout — which is exactly what was happening. */}
+      {/* Two-pane body: add-panel + list on the left, detail on the right. */}
       <div className="min-h-0 flex-1 @container">
         <div className="grid h-full min-h-0 grid-cols-1 gap-4 @3xl:grid-cols-[360px_1fr]">
           <div
@@ -426,14 +481,22 @@ export function KnowledgeBaseClient({
             } min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card`}
           >
             {!selected ? (
-              <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center">
-                <FileText
-                  className="h-8 w-8 text-secondary-text"
-                  strokeWidth={1.5}
-                />
-                <p className="font-body text-sm text-secondary-text">
-                  Select an entry to view it, or add a new one on the left.
-                </p>
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 px-8 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-background">
+                  <FileText
+                    className="h-6 w-6 text-secondary-text"
+                    strokeWidth={1.5}
+                  />
+                </div>
+                <div>
+                  <p className="font-body text-sm font-medium text-foreground">
+                    Nothing selected yet
+                  </p>
+                  <p className="mt-1 max-w-[26ch] font-body text-sm text-secondary-text">
+                    Pick an entry from the list, or add a new source on the left
+                    to see it here.
+                  </p>
+                </div>
               </div>
             ) : (
               <DocumentDetail
@@ -470,9 +533,15 @@ function TabEmptyState({ tab }: { tab: SourceTabId }) {
     manual_text: "No text entries yet — write your first one above.",
     faq_pair: "No Q&A pairs yet — add your first question and answer above.",
   };
+  const Icon = SOURCE_ICON[tab] ?? FileText;
   return (
-    <div className="px-6 py-14 text-center">
-      <p className="font-body text-sm text-secondary-text">{copy[tab]}</p>
+    <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
+      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-background">
+        <Icon className="h-5 w-5 text-secondary-text" strokeWidth={1.5} />
+      </div>
+      <p className="max-w-[30ch] font-body text-sm text-secondary-text">
+        {copy[tab]}
+      </p>
     </div>
   );
 }
@@ -633,12 +702,23 @@ function DocumentRowItem({
       ? doc.last_refreshed_at
       : doc.updated_at;
 
+  const RowIcon = SOURCE_ICON[doc.source_type] ?? FileText;
+
   return (
     <div
-      className={`flex w-full items-start gap-1.5 px-4 py-3 transition-colors duration-150 ${
+      className={`flex w-full items-start gap-2.5 px-4 py-3 transition-colors duration-150 ${
         isSelected ? "bg-primary/10" : "hover:bg-background"
       }`}
     >
+      <span
+        className={`mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-lg ${
+          isSelected
+            ? "bg-primary/15 text-primary"
+            : "bg-background text-secondary-text"
+        }`}
+      >
+        <RowIcon className="h-4 w-4" />
+      </span>
       <button
         type="button"
         onClick={onSelect}
@@ -943,7 +1023,13 @@ function DocumentDetail({
 
 function WebsiteAddPanel() {
   const [rootUrl, setRootUrl] = useState("");
-  type DiscoverState = "idle" | "discovering" | "selecting" | "scraping";
+  type DiscoverState =
+    | "idle"
+    | "discovering"
+    | "selecting"
+    | "structuring"
+    | "reviewing"
+    | "saving";
   const [discoverState, setDiscoverState] = useState<DiscoverState>("idle");
   const [discoveredPages, setDiscoveredPages] = useState<DiscoveredPage[]>([]);
   const [selectedUrls, setSelectedUrls] = useState<Set<string>>(new Set());
@@ -952,6 +1038,9 @@ function WebsiteAddPanel() {
     index: number;
     total: number;
   } | null>(null);
+  type PendingPage = { url: string; title: string; content: string };
+  const [pendingPages, setPendingPages] = useState<PendingPage[]>([]);
+  const [reviewIndex, setReviewIndex] = useState(0);
 
   const hostname = (() => {
     try {
@@ -999,7 +1088,7 @@ function WebsiteAddPanel() {
     setSelectedUrls(new Set(discoveredPages.map((p) => p.url)));
   const selectNone = () => setSelectedUrls(new Set());
 
-  const handleScrapeSelected = async () => {
+  const handleBuildPreview = async () => {
     const urls = Array.from(selectedUrls);
     if (urls.length === 0) {
       setUrlError("Select at least one page.");
@@ -1007,43 +1096,86 @@ function WebsiteAddPanel() {
     }
 
     setUrlError(null);
-    setDiscoverState("scraping");
+    setDiscoverState("structuring");
 
+    const built: PendingPage[] = [];
     for (let i = 0; i < urls.length; i++) {
       setScrapeProgress({ index: i + 1, total: urls.length });
-      const result = await scrapeAndIngestUrl(urls[i]);
+      const result = await scrapeForPreview(urls[i]);
       if (result.error) {
-        setUrlError(result.error);
+        setUrlError(`${urls[i]}: ${result.error}`);
+        continue;
       }
+      if (result.data) built.push(result.data);
     }
 
     setScrapeProgress(null);
-    setDiscoverState("idle");
-    setDiscoveredPages([]);
-    setSelectedUrls(new Set());
-    setRootUrl("");
+
+    if (built.length === 0) {
+      setDiscoverState("selecting");
+      return;
+    }
+
+    setPendingPages(built);
+    setReviewIndex(0);
+    setDiscoverState("reviewing");
   };
 
-  const cancelDiscover = () => {
+  const updatePendingPage = (index: number, patch: Partial<PendingPage>) => {
+    setPendingPages((prev) =>
+      prev.map((p, i) => (i === index ? { ...p, ...patch } : p)),
+    );
+  };
+
+  const resetDiscover = () => {
     setDiscoverState("idle");
     setDiscoveredPages([]);
     setSelectedUrls(new Set());
+    setPendingPages([]);
+    setReviewIndex(0);
+    setRootUrl("");
     setUrlError(null);
   };
 
+  const advanceReview = () => {
+    const next = reviewIndex + 1;
+    if (next >= pendingPages.length) {
+      resetDiscover();
+      return;
+    }
+    setReviewIndex(next);
+    setDiscoverState("reviewing");
+  };
+
+  const handleConfirmCurrent = async () => {
+    const page = pendingPages[reviewIndex];
+    if (!page) return;
+    setDiscoverState("saving");
+    const result = await confirmAddScrapedPage(page);
+    if (result.error) {
+      setUrlError(result.error);
+      setDiscoverState("reviewing");
+      return;
+    }
+    setUrlError(null);
+    advanceReview();
+  };
+
+  const handleSkipCurrent = () => advanceReview();
+
+  const cancelDiscover = () => resetDiscover();
+
   return (
     <div>
-      <p className="mb-3 font-body text-sm font-medium text-foreground">
-        Add from your website
-      </p>
-      <p className="mb-4 font-body text-sm text-secondary-text">
-        Paste your homepage URL — we&apos;ll scan your live site and find its
-        pages so you can pick which ones to add.
-      </p>
+      <PanelHeader
+        icon={Globe}
+        title="Add from your website"
+        subtitle="Paste your homepage URL — we'll scan your live site and find its pages so you can pick which ones to add."
+      />
 
       {discoverState === "idle" && (
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <div className="flex flex-1 items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+        <div className="flex flex-col gap-2.5 sm:flex-row">
+          <div className="flex flex-1 items-center gap-2 rounded-xl border border-border bg-background px-3.5 py-2.5 focus-within:ring-2 focus-within:ring-primary/30">
             <LinkIcon className="h-4 w-4 flex-none text-secondary-text" />
             <input
               value={rootUrl}
@@ -1052,7 +1184,7 @@ function WebsiteAddPanel() {
               className="w-full bg-transparent font-body text-sm text-foreground placeholder:text-secondary-text focus:outline-none"
             />
           </div>
-          <Button type="button" onClick={handleDiscover}>
+          <Button type="button" onClick={handleDiscover} className="sm:w-auto">
             <Search className="h-4 w-4" />
             Scan site
           </Button>
@@ -1068,10 +1200,16 @@ function WebsiteAddPanel() {
 
       {discoverState === "selecting" && (
         <div>
-          <div className="mb-2 flex items-center justify-between">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <p className="font-body text-sm text-secondary-text">
-              We scanned {hostname} and found {discoveredPages.length} page
-              {discoveredPages.length === 1 ? "" : "s"}.
+              Found{" "}
+              <span className="font-medium text-foreground">
+                {discoveredPages.length}
+              </span>{" "}
+              page{discoveredPages.length === 1 ? "" : "s"} on {hostname} ·{" "}
+              <span className="font-medium text-primary">
+                {selectedUrls.size} selected
+              </span>
             </p>
             <div className="flex flex-none gap-3">
               <button
@@ -1091,7 +1229,7 @@ function WebsiteAddPanel() {
             </div>
           </div>
 
-          <div className="flex max-h-64 flex-col divide-y divide-border overflow-y-auto rounded-lg border border-border">
+          <div className="flex max-h-72 flex-col divide-y divide-border overflow-y-auto rounded-xl border border-border">
             {discoveredPages.map((page) => {
               const checked = selectedUrls.has(page.url);
               const important = isLikelyImportantPage(page.url);
@@ -1132,8 +1270,8 @@ function WebsiteAddPanel() {
           </div>
 
           <div className="mt-4 flex gap-3">
-            <Button type="button" onClick={handleScrapeSelected}>
-              Add selected pages ({selectedUrls.size})
+            <Button type="button" onClick={handleBuildPreview}>
+              Review & add ({selectedUrls.size})
             </Button>
             <Button type="button" variant="outline" onClick={cancelDiscover}>
               Cancel
@@ -1142,12 +1280,101 @@ function WebsiteAddPanel() {
         </div>
       )}
 
-      {discoverState === "scraping" && scrapeProgress && (
+      {discoverState === "structuring" && scrapeProgress && (
         <div className="flex items-center gap-2 font-body text-sm text-secondary-text">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Adding page {scrapeProgress.index} of {scrapeProgress.total}...
+          Reading page {scrapeProgress.index} of {scrapeProgress.total} and
+          organizing it...
         </div>
       )}
+
+      {(discoverState === "reviewing" || discoverState === "saving") &&
+        pendingPages[reviewIndex] && (
+          <div className="rounded-xl border border-border bg-background p-4">
+            {/* Progress bar instead of plain "page X of Y" text */}
+            <div className="mb-3 flex items-center gap-1.5">
+              {pendingPages.map((_, i) => (
+                <span
+                  key={i}
+                  className={`h-1.5 flex-1 rounded-full transition-colors ${
+                    i < reviewIndex
+                      ? "bg-primary/40"
+                      : i === reviewIndex
+                        ? "bg-primary"
+                        : "bg-border"
+                  }`}
+                />
+              ))}
+            </div>
+            <div className="mb-1 flex items-center justify-between gap-3">
+              <p className="font-body text-sm font-medium text-foreground">
+                Review before adding — page {reviewIndex + 1} of{" "}
+                {pendingPages.length}
+              </p>
+              <span className="max-w-[45%] flex-none truncate font-body text-xs text-secondary-text">
+                {pendingPages[reviewIndex].url}
+              </span>
+            </div>
+            <p className="mb-3 font-body text-xs text-secondary-text">
+              Here&apos;s what we organized from this page. Edit anything before
+              it&apos;s added to your knowledge base — nothing is saved until
+              you confirm.
+            </p>
+
+            <input
+              value={pendingPages[reviewIndex].title}
+              onChange={(e) =>
+                updatePendingPage(reviewIndex, { title: e.target.value })
+              }
+              placeholder="Document title"
+              className="mb-2 w-full rounded-lg border border-border bg-card px-3 py-2 font-body text-sm font-medium text-foreground focus:outline-none"
+            />
+            <textarea
+              value={pendingPages[reviewIndex].content}
+              onChange={(e) =>
+                updatePendingPage(reviewIndex, { content: e.target.value })
+              }
+              rows={12}
+              className="w-full rounded-lg border border-border bg-card px-3 py-2 font-body text-sm leading-relaxed text-foreground focus:outline-none"
+            />
+
+            <div className="mt-4 flex flex-wrap gap-2.5">
+              <Button
+                type="button"
+                onClick={handleConfirmCurrent}
+                disabled={discoverState === "saving"}
+              >
+                {discoverState === "saving" ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Adding...
+                  </>
+                ) : (
+                  <>
+                    <CheckSquare className="h-4 w-4" />
+                    Add to Knowledge Base
+                  </>
+                )}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleSkipCurrent}
+                disabled={discoverState === "saving"}
+              >
+                Skip this page
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={cancelDiscover}
+                disabled={discoverState === "saving"}
+              >
+                Cancel all
+              </Button>
+            </div>
+          </div>
+        )}
 
       {urlError && (
         <p role="alert" className="mt-3 font-body text-sm text-error">
@@ -1167,8 +1394,13 @@ function FilesAddPanel() {
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [pdfStatus, setPdfStatus] = useState<
-    "idle" | "uploading" | "processing"
+    "idle" | "uploading" | "extracting" | "reviewing" | "saving"
   >("idle");
+  const [pending, setPending] = useState<{
+    storagePath: string;
+    title: string;
+    content: string;
+  } | null>(null);
 
   const handlePdfSelect = async (file: File | undefined) => {
     setPdfError(null);
@@ -1208,25 +1440,116 @@ function FilesAddPanel() {
       return;
     }
 
-    setPdfStatus("processing");
-    const result = await ingestUploadedPdf(data.path, file.name);
-    if (result.error) {
-      setPdfError(result.error);
+    setPdfStatus("extracting");
+    const result = await extractPdfForPreview(data.path, file.name);
+    if (result.error || !result.data) {
+      setPdfError(result.error ?? "Could not read that file.");
+      setPdfStatus("idle");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
     }
 
-    setPdfStatus("idle");
+    setPending(result.data);
+    setPdfStatus("reviewing");
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const handleConfirm = async () => {
+    if (!pending) return;
+    setPdfStatus("saving");
+    const result = await confirmAddPdfDocument(pending);
+    if (result.error) {
+      setPdfError(result.error);
+      setPdfStatus("reviewing");
+      return;
+    }
+    setPending(null);
+    setPdfError(null);
+    setPdfStatus("idle");
+  };
+
+  const handleCancel = () => {
+    setPending(null);
+    setPdfError(null);
+    setPdfStatus("idle");
+  };
+
+  if (pending && (pdfStatus === "reviewing" || pdfStatus === "saving")) {
+    return (
+      <div className="rounded-lg border border-border bg-background p-4">
+        <p className="mb-1 font-body text-sm font-medium text-foreground">
+          Review before adding
+        </p>
+        <p className="mb-3 font-body text-xs text-secondary-text">
+          Here&apos;s what we organized from this file. Edit anything before
+          it&apos;s added to your knowledge base.
+        </p>
+
+        <input
+          value={pending.title}
+          onChange={(e) =>
+            setPending((prev) =>
+              prev ? { ...prev, title: e.target.value } : prev,
+            )
+          }
+          placeholder="Document title"
+          className="mb-2 w-full rounded-lg border border-border bg-card px-3 py-2 font-body text-sm font-medium text-foreground focus:outline-none"
+        />
+        <textarea
+          value={pending.content}
+          onChange={(e) =>
+            setPending((prev) =>
+              prev ? { ...prev, content: e.target.value } : prev,
+            )
+          }
+          rows={12}
+          className="w-full rounded-lg border border-border bg-card px-3 py-2 font-body text-sm leading-relaxed text-foreground focus:outline-none"
+        />
+
+        <div className="mt-4 flex gap-3">
+          <Button
+            type="button"
+            onClick={handleConfirm}
+            disabled={pdfStatus === "saving"}
+          >
+            {pdfStatus === "saving" ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Adding...
+              </>
+            ) : (
+              <>
+                <CheckSquare className="h-4 w-4" />
+                Add to Knowledge Base
+              </>
+            )}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleCancel}
+            disabled={pdfStatus === "saving"}
+          >
+            Cancel
+          </Button>
+        </div>
+
+        {pdfError && (
+          <p role="alert" className="mt-3 font-body text-sm text-error">
+            {pdfError}
+          </p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div>
-      <p className="mb-3 font-body text-sm font-medium text-foreground">
-        Upload a file
-      </p>
-      <p className="mb-4 font-body text-sm text-secondary-text">
-        Menus, brochures, price sheets — up to 10MB, text-based (not a scanned
-        image).
-      </p>
+      <PanelHeader
+        icon={FileText}
+        title="Upload a file"
+        subtitle="Menus, brochures, price sheets — up to 10MB, text-based (not a scanned image)."
+      />
 
       <div
         onDragOver={(e) => {
@@ -1241,10 +1564,10 @@ function FilesAddPanel() {
             handlePdfSelect(e.dataTransfer.files?.[0]);
           }
         }}
-        className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-6 text-center transition-colors ${
+        className={`flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-4 py-9 text-center transition-colors ${
           isDragOver
             ? "border-primary bg-primary/5"
-            : "border-border bg-background"
+            : "border-border bg-background hover:border-primary/40"
         }`}
       >
         <input
@@ -1258,13 +1581,20 @@ function FilesAddPanel() {
         />
         {pdfStatus === "idle" && (
           <>
-            <Upload className="h-5 w-5 text-secondary-text" />
-            <p className="font-body text-xs text-secondary-text">
-              Drag a PDF here, or
-            </p>
+            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Upload className="h-5 w-5" />
+            </span>
+            <div>
+              <p className="font-body text-sm font-medium text-foreground">
+                Drag a PDF here
+              </p>
+              <p className="mt-0.5 font-body text-xs text-secondary-text">
+                or choose a file from your device
+              </p>
+            </div>
             <label
               htmlFor="pdf-upload"
-              className="cursor-pointer rounded-lg border border-border bg-card px-3 py-1.5 font-body text-xs font-medium text-foreground hover:bg-background"
+              className="cursor-pointer rounded-lg border border-border bg-card px-3.5 py-1.5 font-body text-xs font-medium text-foreground hover:bg-background"
             >
               Choose file
             </label>
@@ -1272,9 +1602,13 @@ function FilesAddPanel() {
         )}
         {pdfStatus !== "idle" && (
           <>
-            <Loader2 className="h-5 w-5 animate-spin text-secondary-text" />
+            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Loader2 className="h-5 w-5 animate-spin" />
+            </span>
             <p className="font-body text-xs text-secondary-text">
-              {pdfStatus === "uploading" ? "Uploading..." : "Processing..."}
+              {pdfStatus === "uploading"
+                ? "Uploading..."
+                : "Reading & organizing..."}
             </p>
           </>
         )}
@@ -1297,17 +1631,36 @@ function TextAddPanel() {
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+  const [isCleaning, setIsCleaning] = useState(false);
+
+  const handleCleanUp = async () => {
+    setError(null);
+    setIsCleaning(true);
+    const result = await cleanUpTextWithAi({ title, rawContent: content });
+    setIsCleaning(false);
+    if (result.error || !result.data) {
+      setError(result.error ?? "Couldn't clean this up — try again.");
+      return;
+    }
+    setContent(result.data.content);
+  };
 
   const handleAdd = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
-    const formData = new FormData(e.currentTarget);
+    const formData = new FormData();
+    formData.set("title", title);
+    formData.set("rawContent", content);
     formData.set("sourceType", "manual_text");
     startTransition(async () => {
       const result = await addKnowledgeBaseDocument(formData);
       if (result?.error) {
         setError(result.error);
       } else {
+        setTitle("");
+        setContent("");
         formRef.current?.reset();
       }
     });
@@ -1315,9 +1668,11 @@ function TextAddPanel() {
 
   return (
     <form ref={formRef} onSubmit={handleAdd} className="flex flex-col gap-4">
-      <p className="font-body text-sm font-medium text-foreground">
-        Write a text entry
-      </p>
+      <PanelHeader
+        icon={AlignLeft}
+        title="Write a text entry"
+        subtitle="Anything free-form — policies, pricing, opening hours. The AI only ever answers from what you save here."
+      />
       <div className="flex flex-col gap-1.5">
         <label
           htmlFor="text-title"
@@ -1327,7 +1682,8 @@ function TextAddPanel() {
         </label>
         <input
           id="text-title"
-          name="title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
           required
           placeholder="e.g. Pricing & Hours"
           className="rounded-lg border border-border bg-background px-3 py-2 font-body text-sm text-foreground placeholder:text-secondary-text focus:outline-none focus:ring-2 focus:ring-primary/40"
@@ -1335,17 +1691,33 @@ function TextAddPanel() {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label
-          htmlFor="text-content"
-          className="font-body text-sm font-medium text-foreground"
-        >
-          Content
-        </label>
+        <div className="flex items-center justify-between">
+          <label
+            htmlFor="text-content"
+            className="font-body text-sm font-medium text-foreground"
+          >
+            Content
+          </label>
+          <button
+            type="button"
+            onClick={handleCleanUp}
+            disabled={isCleaning || content.trim().length < 20}
+            className="flex items-center gap-1 font-body text-xs font-medium text-primary hover:underline disabled:cursor-not-allowed disabled:text-secondary-text disabled:no-underline"
+          >
+            {isCleaning ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Sparkles className="h-3 w-3" />
+            )}
+            Clean up with AI
+          </button>
+        </div>
         <textarea
           id="text-content"
-          name="rawContent"
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
           required
-          rows={5}
+          rows={8}
           placeholder={CONTENT_PLACEHOLDER}
           className="resize-none rounded-lg border border-border bg-background px-3 py-2.5 font-body text-sm text-foreground placeholder:text-secondary-text/70 focus:outline-none focus:ring-2 focus:ring-primary/40"
         />
@@ -1407,13 +1779,11 @@ function QaAddPanel() {
 
   return (
     <form ref={formRef} onSubmit={handleAdd} className="flex flex-col gap-4">
-      <p className="font-body text-sm font-medium text-foreground">
-        Add a question &amp; answer
-      </p>
-      <p className="-mt-2 font-body text-xs text-secondary-text">
-        Often the highest-quality source, since there&apos;s no ambiguity about
-        what the answer should be.
-      </p>
+      <PanelHeader
+        icon={HelpCircle}
+        title="Add a question & answer"
+        subtitle="Often the highest-quality source, since there's no ambiguity about what the answer should be."
+      />
 
       <div className="flex flex-col gap-1.5">
         <label
