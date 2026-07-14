@@ -164,6 +164,7 @@ app/
         loading.tsx
         OnboardingWizard.tsx
         page.tsx
+        TrainQuickPanel.tsx
       settings/
         api-keys/
           actions.ts
@@ -460,110 +461,6 @@ vercel.json
 
 <files>
 This section contains the contents of the repository's files.
-
-<file path="lib/knowledge-base/structure.ts">
-import { generateText } from "ai";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-
-/**
- * Turns raw scraped website text (nav/footer already stripped by
- * scrapePage(), but otherwise an unstructured wall of text) into a
- * clean, organized knowledge base document — the missing step between
- * "we fetched the page" and "this is good enough to answer customers
- * from." Mirrors the same provider/model pattern already used in
- * lib/channels/process-inbound-message.ts, so this doesn't introduce
- * a second AI-calling convention into the codebase.
- *
- * Deliberately conservative: told never to invent facts, and to omit
- * sections the source page doesn't actually cover, rather than padding
- * with generic filler. If structuring fails (model outage, empty
- * output), callers should fall back to the raw scraped text rather
- * than blocking the add flow entirely — see scrapeForPreview() in
- * knowledge-base/actions.ts.
- */
-
-const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
-const STRUCTURE_MODEL = "openrouter/free";
-const FALLBACK_MODELS = [
-  "meta-llama/llama-3.3-70b-instruct:free",
-  "deepseek/deepseek-r1:free",
-  "qwen/qwen-2.5-7b-instruct:free",
-];
-
-const SYSTEM_PROMPT =
-  "You clean up raw scraped website text into a well-organized knowledge " +
-  "base document for an AI customer support agent to read. You only use " +
-  "facts that are actually present in the source text — you never invent " +
-  "prices, hours, policies, or details. Return plain text only: no markdown " +
-  "symbols like #, *, or -, since this is read directly by both an AI model " +
-  "and a plain-text viewer with no markdown rendering.";
-
-const MAX_INPUT_CHARS = 12000;
-
-export interface StructureInput {
-  /** URL, filename, or entry title — used only as context in the prompt. */
-  source: string;
-  title: string;
-  rawText: string;
-}
-
-export interface StructureResult {
-  title: string;
-  content: string;
-}
-
-export async function structureScrapedContent(
-  input: StructureInput,
-): Promise<StructureResult> {
-  const trimmedRaw = input.rawText.trim();
-
-  if (!trimmedRaw || trimmedRaw.length < 40) {
-    throw new Error(
-      "This page didn't have enough readable text to build a knowledge base entry from.",
-    );
-  }
-
-  const truncated =
-    trimmedRaw.length > MAX_INPUT_CHARS
-      ? `${trimmedRaw.slice(0, MAX_INPUT_CHARS)}\n[content truncated to fit processing limits]`
-      : trimmedRaw;
-
-  const prompt = `Source: ${input.source}
-Title: ${input.title}
-
-RAW SCRAPED TEXT:
-${truncated}
-
-Turn this into a clean knowledge base document a support AI can read.
-
-Rules:
-- Organize into sections ONLY where the source actually has that content: ABOUT, PRODUCTS & SERVICES, PRICING, CONTACT, HOURS, DELIVERY, RETURNS & REFUNDS, FAQ. Skip any section with nothing to say — do not write "Not specified" or similar filler.
-- Each section header goes on its own line in plain capital letters (e.g. ABOUT), followed by a blank line, then the content for that section.
-- Under FAQ, format each item as "Q: <question>" then "A: <answer>" on the next line, with a blank line between each pair.
-- Strip navigation labels, cookie notices, "click here" links, repeated boilerplate, and anything that isn't real business information.
-- Do not invent prices, hours, or facts that are not present in the source text.
-- Plain text only — no markdown symbols.
-- Keep it concise and readable, not a wall of text.`;
-
-  const { text } = await generateText({
-    model: openrouter(STRUCTURE_MODEL, {
-      extraBody: { models: FALLBACK_MODELS },
-    }),
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: prompt }],
-    maxOutputTokens: 1200,
-  });
-
-  const cleaned = text.trim();
-  if (!cleaned || cleaned.length < 20) {
-    throw new Error(
-      "The AI couldn't organize this page's content — try adding it as plain text instead.",
-    );
-  }
-
-  return { title: input.title, content: cleaned };
-}
-</file>
 
 <file path="app/(marketing)/about/opengraph-image.tsx">
 import {
@@ -1910,6 +1807,327 @@ export default function Loading() {
       <div className="mt-8">
         <SkeletonPanel className="h-[28rem]" />
       </div>
+    </div>
+  );
+}
+</file>
+
+<file path="app/(platform-client)/dashboard/onboarding/TrainQuickPanel.tsx">
+"use client";
+
+import { useState, useTransition } from "react";
+import { Globe, Loader2, Sparkles, Check, ArrowRight } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import type { AgentTemplate } from "@/lib/agents/templates";
+import {
+  discoverKnowledgeBaseUrls,
+  scrapeForPreview,
+  confirmAddScrapedPage,
+  addKnowledgeBaseDocument,
+  updateKnowledgeBaseDocument,
+} from "@/app/(platform-client)/dashboard/knowledge-base/actions";
+
+type DocumentRow = {
+  id: string;
+  title: string;
+  status: string;
+  source_type: string;
+  chunkCount: number;
+};
+
+const MANUAL_TITLE = "Business Info";
+const MAX_CHARS = 20000;
+const QUICK_SCAN_LIMIT = 5;
+
+// Small, self-contained copy of the "important page" heuristic used in
+// KnowledgeBaseClient — duplicated on purpose to keep this panel fully
+// decoupled from the advanced tool's internals.
+const IMPORTANT_HINTS = [
+  "pricing",
+  "price",
+  "plans",
+  "about",
+  "faq",
+  "help",
+  "support",
+  "contact",
+  "hours",
+  "location",
+  "service",
+];
+
+function rankPages(pages: { url: string; title: string }[]) {
+  const scored = pages.map((p) => {
+    let path = "";
+    try {
+      path = new URL(p.url).pathname.toLowerCase();
+    } catch {
+      // ignore malformed URL, treat as low priority
+    }
+    const important = IMPORTANT_HINTS.some((h) => path.includes(h));
+    const isHome = path === "" || path === "/";
+    return { ...p, score: isHome ? 2 : important ? 1 : 0 };
+  });
+  return scored.sort((a, b) => b.score - a.score).slice(0, QUICK_SCAN_LIMIT);
+}
+
+function statusBadge(status: string) {
+  if (status === "error") return <Badge variant="destructive">Failed</Badge>;
+  if (status === "processing")
+    return <Badge variant="warning">Processing</Badge>;
+  return <Badge variant="success">Synced</Badge>;
+}
+
+export function TrainQuickPanel({
+  documents,
+  selectedTemplate,
+  onAdvanced,
+}: {
+  documents: DocumentRow[];
+  selectedTemplate: AgentTemplate | null;
+  onAdvanced: () => void;
+}) {
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  // --- Website scan ---
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [scanStatus, setScanStatus] = useState<
+    "idle" | "scanning" | "done" | "error"
+  >("idle");
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
+
+  // --- Manual text ---
+  const existingManualDoc = documents.find(
+    (d) => d.source_type === "manual_text" && d.title === MANUAL_TITLE,
+  );
+  const [manualText, setManualText] = useState("");
+  const [savedJustNow, setSavedJustNow] = useState(false);
+
+  const handleScan = () => {
+    setError(null);
+    if (!websiteUrl.trim()) {
+      setError("Enter your website URL first.");
+      return;
+    }
+    setScanStatus("scanning");
+    setScanMessage("Looking at your site…");
+
+    startTransition(async () => {
+      const discovered = await discoverKnowledgeBaseUrls(websiteUrl.trim());
+      if (discovered.error || discovered.pages.length === 0) {
+        setScanStatus("error");
+        setScanMessage(
+          discovered.error ?? "We couldn't find any pages on that site.",
+        );
+        return;
+      }
+
+      const picks = rankPages(discovered.pages);
+      let added = 0;
+
+      for (let i = 0; i < picks.length; i++) {
+        setScanMessage(`Adding page ${i + 1} of ${picks.length}…`);
+        const preview = await scrapeForPreview(picks[i].url);
+        if (preview.error || !preview.data) continue;
+        const saved = await confirmAddScrapedPage(preview.data);
+        if (!saved.error) added += 1;
+      }
+
+      if (added === 0) {
+        setScanStatus("error");
+        setScanMessage(
+          "We reached your site but couldn't pull any usable content — try pasting it in manually below.",
+        );
+        return;
+      }
+
+      setScanStatus("done");
+      setScanMessage(
+        `Added ${added} page${added === 1 ? "" : "s"} from your site.`,
+      );
+    });
+  };
+
+  const applyTemplateStarter = () => {
+    if (!selectedTemplate) return;
+    const joined = selectedTemplate.starterFaqs
+      .map((f) => f.content)
+      .join("\n\n");
+    setManualText((prev) => (prev.trim() ? `${prev}\n\n${joined}` : joined));
+  };
+
+  const handleSaveManual = () => {
+    setError(null);
+    if (!manualText.trim() || manualText.trim().length < 20) {
+      setError("Add at least a couple of sentences before saving.");
+      return;
+    }
+
+    startTransition(async () => {
+      const result = existingManualDoc
+        ? await updateKnowledgeBaseDocument(existingManualDoc.id, manualText)
+        : await (async () => {
+            const fd = new FormData();
+            fd.set("title", MANUAL_TITLE);
+            fd.set("rawContent", manualText);
+            fd.set("sourceType", "manual_text");
+            return addKnowledgeBaseDocument(fd);
+          })();
+
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+
+      setSavedJustNow(true);
+      setTimeout(() => setSavedJustNow(false), 2000);
+    });
+  };
+
+  const otherDocs = documents.filter(
+    (d) => !(d.source_type === "manual_text" && d.title === MANUAL_TITLE),
+  );
+
+  return (
+    <div className="flex flex-col gap-5">
+      {error && (
+        <p role="alert" className="font-body text-sm text-error">
+          {error}
+        </p>
+      )}
+
+      {/* Website scan */}
+      <div className="rounded-xl border border-border bg-card p-4">
+        <p className="mb-1 font-body text-sm font-semibold text-foreground">
+          Auto-fill from your website
+        </p>
+        <p className="mb-3 font-body text-xs text-secondary-text">
+          We&apos;ll scan your site and pull in the {QUICK_SCAN_LIMIT} pages
+          that matter most — home, pricing, FAQ, contact.
+        </p>
+        <div className="flex flex-col gap-2.5 sm:flex-row">
+          <div className="flex flex-1 items-center gap-2 rounded-lg border border-border bg-background px-3.5 py-2.5 focus-within:ring-2 focus-within:ring-primary/30">
+            <Globe className="h-4 w-4 flex-none text-secondary-text" />
+            <input
+              value={websiteUrl}
+              onChange={(e) => setWebsiteUrl(e.target.value)}
+              placeholder="https://yourbusiness.com"
+              disabled={scanStatus === "scanning"}
+              className="w-full bg-transparent font-body text-sm text-foreground placeholder:text-secondary-text focus:outline-none disabled:opacity-60"
+            />
+          </div>
+          <Button
+            type="button"
+            onClick={handleScan}
+            disabled={scanStatus === "scanning"}
+            className="sm:w-auto"
+          >
+            {scanStatus === "scanning" ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : null}
+            Scan website
+          </Button>
+        </div>
+        {scanMessage && (
+          <p
+            className={`mt-2.5 font-body text-xs ${
+              scanStatus === "error" ? "text-error" : "text-secondary-text"
+            }`}
+          >
+            {scanStatus === "done" && (
+              <Check className="mr-1 inline h-3.5 w-3.5 text-success" />
+            )}
+            {scanMessage}
+          </p>
+        )}
+      </div>
+
+      {/* Template starter */}
+      {selectedTemplate && (
+        <button
+          type="button"
+          onClick={applyTemplateStarter}
+          className="flex items-center gap-2.5 rounded-xl border border-dashed border-primary/30 bg-primary/5 px-4 py-3 text-left transition-colors hover:bg-primary/10"
+        >
+          <Sparkles className="h-4 w-4 flex-none text-primary" />
+          <span className="min-w-0 font-body text-sm text-foreground">
+            Fill in starter content for{" "}
+            <span className="font-semibold">{selectedTemplate.name}</span> —
+            edit it below to match your real business.
+          </span>
+        </button>
+      )}
+
+      {/* Manual textarea */}
+      <div>
+        <div className="mb-1.5 flex items-center justify-between">
+          <label className="font-body text-sm font-medium text-foreground">
+            Describe your business
+          </label>
+          <span className="font-body text-[11px] text-secondary-text">
+            {manualText.length} / {MAX_CHARS}
+          </span>
+        </div>
+        <textarea
+          value={manualText}
+          onChange={(e) => setManualText(e.target.value.slice(0, MAX_CHARS))}
+          placeholder="Products, prices, location, hours, FAQs — write it however makes sense. The AI only ever answers from what you put here."
+          rows={8}
+          className="w-full resize-y rounded-lg border border-border bg-background px-3.5 py-2.5 font-body text-sm text-foreground placeholder:text-secondary-text focus:outline-none focus:ring-2 focus:ring-primary/40"
+        />
+        <div className="mt-2.5 flex items-center gap-3">
+          <Button type="button" onClick={handleSaveManual} disabled={isPending}>
+            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Save
+          </Button>
+          {savedJustNow && (
+            <span className="font-body text-xs text-success">Saved.</span>
+          )}
+        </div>
+      </div>
+
+      {/* Compact list of what's already added */}
+      {otherDocs.length > 0 && (
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="mb-2.5 font-body text-xs font-medium text-secondary-text">
+            {otherDocs.length} source{otherDocs.length === 1 ? "" : "s"} added
+            from your website
+          </p>
+          <div className="flex flex-col gap-2">
+            {otherDocs.slice(0, 6).map((doc) => (
+              <div
+                key={doc.id}
+                className="flex items-center justify-between gap-2"
+              >
+                <span className="min-w-0 truncate font-body text-sm text-foreground">
+                  {doc.title}
+                </span>
+                {statusBadge(doc.status)}
+              </div>
+            ))}
+            {otherDocs.length > 6 && (
+              <p className="font-body text-xs text-secondary-text">
+                +{otherDocs.length - 6} more
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Escape hatch */}
+      <button
+        type="button"
+        onClick={onAdvanced}
+        className="flex items-center gap-1.5 self-start font-body text-xs font-medium text-secondary-text hover:text-foreground"
+      >
+        Need PDFs, individual page management, or Q&amp;A pairs?
+        <span className="inline-flex items-center gap-1 text-primary">
+          Advanced <ArrowRight className="h-3 w-3" />
+        </span>
+      </button>
     </div>
   );
 }
@@ -5541,6 +5759,110 @@ export async function extractPdfText(
 }
 </file>
 
+<file path="lib/knowledge-base/structure.ts">
+import { generateText } from "ai";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+
+/**
+ * Turns raw scraped website text (nav/footer already stripped by
+ * scrapePage(), but otherwise an unstructured wall of text) into a
+ * clean, organized knowledge base document — the missing step between
+ * "we fetched the page" and "this is good enough to answer customers
+ * from." Mirrors the same provider/model pattern already used in
+ * lib/channels/process-inbound-message.ts, so this doesn't introduce
+ * a second AI-calling convention into the codebase.
+ *
+ * Deliberately conservative: told never to invent facts, and to omit
+ * sections the source page doesn't actually cover, rather than padding
+ * with generic filler. If structuring fails (model outage, empty
+ * output), callers should fall back to the raw scraped text rather
+ * than blocking the add flow entirely — see scrapeForPreview() in
+ * knowledge-base/actions.ts.
+ */
+
+const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
+const STRUCTURE_MODEL = "openrouter/free";
+const FALLBACK_MODELS = [
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "deepseek/deepseek-r1:free",
+  "qwen/qwen-2.5-7b-instruct:free",
+];
+
+const SYSTEM_PROMPT =
+  "You clean up raw scraped website text into a well-organized knowledge " +
+  "base document for an AI customer support agent to read. You only use " +
+  "facts that are actually present in the source text — you never invent " +
+  "prices, hours, policies, or details. Return plain text only: no markdown " +
+  "symbols like #, *, or -, since this is read directly by both an AI model " +
+  "and a plain-text viewer with no markdown rendering.";
+
+const MAX_INPUT_CHARS = 12000;
+
+export interface StructureInput {
+  /** URL, filename, or entry title — used only as context in the prompt. */
+  source: string;
+  title: string;
+  rawText: string;
+}
+
+export interface StructureResult {
+  title: string;
+  content: string;
+}
+
+export async function structureScrapedContent(
+  input: StructureInput,
+): Promise<StructureResult> {
+  const trimmedRaw = input.rawText.trim();
+
+  if (!trimmedRaw || trimmedRaw.length < 40) {
+    throw new Error(
+      "This page didn't have enough readable text to build a knowledge base entry from.",
+    );
+  }
+
+  const truncated =
+    trimmedRaw.length > MAX_INPUT_CHARS
+      ? `${trimmedRaw.slice(0, MAX_INPUT_CHARS)}\n[content truncated to fit processing limits]`
+      : trimmedRaw;
+
+  const prompt = `Source: ${input.source}
+Title: ${input.title}
+
+RAW SCRAPED TEXT:
+${truncated}
+
+Turn this into a clean knowledge base document a support AI can read.
+
+Rules:
+- Organize into sections ONLY where the source actually has that content: ABOUT, PRODUCTS & SERVICES, PRICING, CONTACT, HOURS, DELIVERY, RETURNS & REFUNDS, FAQ. Skip any section with nothing to say — do not write "Not specified" or similar filler.
+- Each section header goes on its own line in plain capital letters (e.g. ABOUT), followed by a blank line, then the content for that section.
+- Under FAQ, format each item as "Q: <question>" then "A: <answer>" on the next line, with a blank line between each pair.
+- Strip navigation labels, cookie notices, "click here" links, repeated boilerplate, and anything that isn't real business information.
+- Do not invent prices, hours, or facts that are not present in the source text.
+- Plain text only — no markdown symbols.
+- Keep it concise and readable, not a wall of text.`;
+
+  const { text } = await generateText({
+    model: openrouter(STRUCTURE_MODEL, {
+      extraBody: { models: FALLBACK_MODELS },
+    }),
+    system: SYSTEM_PROMPT,
+    messages: [{ role: "user", content: prompt }],
+    maxOutputTokens: 1200,
+  });
+
+  const cleaned = text.trim();
+  if (!cleaned || cleaned.length < 20) {
+    throw new Error(
+      "The AI couldn't organize this page's content — try adding it as plain text instead.",
+    );
+  }
+
+  return { title: input.title, content: cleaned };
+}
+</file>
+
 <file path="lib/seo/og-image.tsx">
 import { ImageResponse } from "next/og";
 
@@ -7417,63 +7739,6 @@ with check (
   public.is_org_accessible(organization_id)
   and status = 'pending'
 );
-</file>
-
-<file path="supabase/migrations/20260713085517_stop_default_guardrails_seed.sql">
--- FIX: handle_new_user() was inserting a default agent_guardrails row for
--- every new signup, which made the dashboard's "Set up guardrails and
--- tone" checklist item appear pre-completed for users who never touched
--- it. build-system-prompt.ts already falls back to DEFAULT_GUARDRAILS
--- when no row exists, and saveGuardrails()/applyTemplate() both upsert —
--- so it's safe to stop seeding this row and only create it once the user
--- actually saves guardrails or picks a template.
-
-create or replace function public.handle_new_user()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  new_org_id uuid;
-  new_agent_id uuid;
-  base_slug text;
-  final_slug text;
-  slug_suffix text;
-begin
-  base_slug := lower(regexp_replace(split_part(new.email, '@', 1), '[^a-zA-Z0-9]+', '-', 'g'));
-  slug_suffix := substr(md5(random()::text), 1, 6);
-  final_slug := base_slug || '-' || slug_suffix;
-
-  insert into public.organizations (name, slug, welcome_message)
-  values (
-    initcap(replace(base_slug, '-', ' ')) || '''s Business',
-    final_slug,
-    'Hi! How can I help you today?'
-  )
-  returning id into new_org_id;
-
-  insert into public.organization_members (organization_id, user_id, role)
-  values (new_org_id, new.id, 'owner');
-
-  insert into public.agents (organization_id, name, agent_type)
-  values (new_org_id, 'Main Agent', 'general')
-  returning id into new_agent_id;
-
-  insert into public.embed_keys (agent_id, organization_id, public_key)
-  values (
-    new_agent_id,
-    new_org_id,
-    'clx_' || replace(gen_random_uuid()::text, '-', '')
-  );
-
-  -- Step 5 (default agent_guardrails insert) intentionally removed.
-  -- The checklist should only mark "guardrails" done once the user
-  -- actually visits and saves that page.
-
-  return new;
-end;
-$$;
 </file>
 
 <file path=".gitignore">
@@ -11631,112 +11896,6 @@ function Banner({
 }
 </file>
 
-<file path="components/platform/WidgetPreview.tsx">
-// components/platform/WidgetPreview.tsx
-//
-// Shared static preview of the client's embeddable chat widget. Extracted
-// from AppearanceClient.tsx and OnboardingWizard.tsx, which previously
-// duplicated this exact markup (see design-token audit).
-//
-// Intentionally light-mode-only and hardcoded (bg-white, #f1f2f6,
-// #14141c, #e4e4ec) — this simulates how the widget renders on the
-// CLIENT's own site, so nothing here should follow the studio
-// dashboard's own dark/light theme. The fake browser chrome + page
-// skeleton below exist purely so this reads as "a real website with
-// your widget on it" instead of an empty box.
-export function WidgetPreview({
-  primaryColor,
-  businessName,
-  welcomeMessage,
-  logoUrl,
-  position = "bottom-right",
-  suggestionChips = [],
-}: {
-  primaryColor: string;
-  businessName: string;
-  welcomeMessage: string;
-  logoUrl?: string | null;
-  position?: "bottom-right" | "bottom-left";
-  /** Optional starter questions (e.g. from the selected template) shown
-   * under the welcome bubble — gives instant visual feedback when the
-   * user picks a template, instead of the preview staying static. */
-  suggestionChips?: string[];
-}) {
-  const isLeft = position === "bottom-left";
-
-  return (
-    <div className="overflow-hidden rounded-2xl border border-[#e4e4ec] shadow-sm">
-      {/* Fake browser chrome */}
-      <div className="flex items-center gap-1.5 border-b border-[#e4e4ec] bg-[#f1f2f6] px-3 py-2.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-[#dcdce6]" />
-        <span className="h-2.5 w-2.5 rounded-full bg-[#dcdce6]" />
-        <span className="h-2.5 w-2.5 rounded-full bg-[#dcdce6]" />
-        <div className="ml-2 h-5 w-40 rounded-md bg-white" />
-      </div>
-
-      {/* Fake page content — purely decorative skeleton so the widget
-          doesn't float in an empty void. */}
-      <div className="relative flex h-72 flex-col gap-3 bg-white p-6">
-        <div className="h-3 w-2/5 rounded bg-[#eceef4]" />
-        <div className="h-2.5 w-3/5 rounded bg-[#f1f2f6]" />
-        <div className="h-2.5 w-1/3 rounded bg-[#f1f2f6]" />
-        <div className="mt-4 h-20 w-full rounded-lg bg-[#f7f8fb]" />
-
-        <div
-          className={`absolute bottom-4 flex h-14 w-14 items-center justify-center rounded-full shadow-lg ${
-            isLeft ? "left-4" : "right-4"
-          }`}
-          style={{ backgroundColor: primaryColor }}
-        >
-          <div className="h-6 w-6 rounded-full border-2 border-white" />
-        </div>
-
-        <div
-          className={`absolute bottom-24 w-64 overflow-hidden rounded-2xl bg-white shadow-2xl ${
-            isLeft ? "left-4" : "right-4"
-          }`}
-        >
-          <div
-            className="flex items-center gap-2 p-3"
-            style={{ backgroundColor: primaryColor }}
-          >
-            {logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={logoUrl}
-                alt=""
-                className="h-5 w-5 flex-none rounded-full object-cover"
-              />
-            ) : null}
-            <p className="font-body text-xs font-semibold text-white">
-              {businessName}
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 p-3">
-            <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#f1f2f6] px-3 py-2 font-body text-xs text-[#14141c]">
-              {welcomeMessage}
-            </div>
-            {suggestionChips.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {suggestionChips.slice(0, 3).map((chip) => (
-                  <span
-                    key={chip}
-                    className="rounded-full border px-2.5 py-1 font-body text-[11px] font-medium text-[#14141c]"
-                    style={{ borderColor: primaryColor }}
-                  >
-                    {chip}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-</file>
-
 <file path="components/sections/FeaturedProjects.tsx">
 // components/sections/FeaturedProjects.tsx (Server Component — no "use client")
 "use client";
@@ -13906,6 +14065,63 @@ export function ensureRateLimitPrune() {
 ensureRateLimitPrune();
 </file>
 
+<file path="supabase/migrations/20260713085517_stop_default_guardrails_seed.sql">
+-- FIX: handle_new_user() was inserting a default agent_guardrails row for
+-- every new signup, which made the dashboard's "Set up guardrails and
+-- tone" checklist item appear pre-completed for users who never touched
+-- it. build-system-prompt.ts already falls back to DEFAULT_GUARDRAILS
+-- when no row exists, and saveGuardrails()/applyTemplate() both upsert —
+-- so it's safe to stop seeding this row and only create it once the user
+-- actually saves guardrails or picks a template.
+
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  new_org_id uuid;
+  new_agent_id uuid;
+  base_slug text;
+  final_slug text;
+  slug_suffix text;
+begin
+  base_slug := lower(regexp_replace(split_part(new.email, '@', 1), '[^a-zA-Z0-9]+', '-', 'g'));
+  slug_suffix := substr(md5(random()::text), 1, 6);
+  final_slug := base_slug || '-' || slug_suffix;
+
+  insert into public.organizations (name, slug, welcome_message)
+  values (
+    initcap(replace(base_slug, '-', ' ')) || '''s Business',
+    final_slug,
+    'Hi! How can I help you today?'
+  )
+  returning id into new_org_id;
+
+  insert into public.organization_members (organization_id, user_id, role)
+  values (new_org_id, new.id, 'owner');
+
+  insert into public.agents (organization_id, name, agent_type)
+  values (new_org_id, 'Main Agent', 'general')
+  returning id into new_agent_id;
+
+  insert into public.embed_keys (agent_id, organization_id, public_key)
+  values (
+    new_agent_id,
+    new_org_id,
+    'clx_' || replace(gen_random_uuid()::text, '-', '')
+  );
+
+  -- Step 5 (default agent_guardrails insert) intentionally removed.
+  -- The checklist should only mark "guardrails" done once the user
+  -- actually visits and saves that page.
+
+  return new;
+end;
+$$;
+</file>
+
 <file path="test/widget-test.html">
 <!doctype html>
 <html lang="en">
@@ -13943,108 +14159,6 @@ ensureRateLimitPrune();
     ></script>
   </body>
 </html>
-</file>
-
-<file path="middleware.ts">
-import { createServerClient } from "@supabase/ssr";
-import { NextResponse, type NextRequest } from "next/server";
-
-/**
- * Protects:
- *   /admin/*      -> must be logged in AND a row in `admins`
- *   /dashboard/*  -> must be logged in (any organization_members role)
- *   /login,/signup -> redirect away if already logged in
- *
- * Everything else (marketing site, /api/chat, /api/contact) is
- * completely untouched — the matcher below only runs this middleware
- * for the paths listed, so (marketing) routes never pay the cost of
- * a Supabase round-trip.
- */
-export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({
-    request: { headers: request.headers },
-  });
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value),
-          );
-          response = NextResponse.next({
-            request: { headers: request.headers },
-          });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options),
-          );
-        },
-      },
-    },
-  );
-
-  // IMPORTANT: do not remove this call. It refreshes the session token
-  // and keeps getUser() accurate on every request.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const path = request.nextUrl.pathname;
-  const isAdminRoute = path.startsWith("/admin");
-  const isClientRoute = path.startsWith("/dashboard");
-  const isAuthRoute = path.startsWith("/login") || path.startsWith("/signup");
-
-  // Not logged in, hitting a protected route -> send to /login
-  if ((isAdminRoute || isClientRoute) && !user) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    url.searchParams.set("redirect", path);
-    return NextResponse.redirect(url);
-  }
-
-  // Hand the already-verified user to the route so client/dashboard
-  // layout.tsx doesn't have to pay for a second getUser() round-trip
-  // on every request — this is what was stretching the blocking
-  // window before /dashboard's HTML (and its theme-init script)
-  // could reach the browser.
-  if (user) {
-    response.headers.set("x-user-id", user.id);
-    if (user.email) response.headers.set("x-user-email", user.email);
-  }
-
-  // Logged in but not an admin, hitting /admin/* -> send to client dashboard
-  if (isAdminRoute && user) {
-    const { data: adminRow } = await supabase
-      .from("admins")
-      .select("user_id")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (!adminRow) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/dashboard";
-      return NextResponse.redirect(url);
-    }
-  }
-
-  // Already logged in, hitting /login or /signup -> send to dashboard
-  if (isAuthRoute && user) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
-    return NextResponse.redirect(url);
-  }
-
-  return response;
-}
-
-export const config = {
-  matcher: ["/admin/:path*", "/dashboard/:path*", "/login", "/signup"],
-};
 </file>
 
 <file path="README.md">
@@ -16819,6 +16933,112 @@ export function SkeletonSplitPane() {
 }
 </file>
 
+<file path="components/platform/WidgetPreview.tsx">
+// components/platform/WidgetPreview.tsx
+//
+// Shared static preview of the client's embeddable chat widget. Extracted
+// from AppearanceClient.tsx and OnboardingWizard.tsx, which previously
+// duplicated this exact markup (see design-token audit).
+//
+// Intentionally light-mode-only and hardcoded (bg-white, #f1f2f6,
+// #14141c, #e4e4ec) — this simulates how the widget renders on the
+// CLIENT's own site, so nothing here should follow the studio
+// dashboard's own dark/light theme. The fake browser chrome + page
+// skeleton below exist purely so this reads as "a real website with
+// your widget on it" instead of an empty box.
+export function WidgetPreview({
+  primaryColor,
+  businessName,
+  welcomeMessage,
+  logoUrl,
+  position = "bottom-right",
+  suggestionChips = [],
+}: {
+  primaryColor: string;
+  businessName: string;
+  welcomeMessage: string;
+  logoUrl?: string | null;
+  position?: "bottom-right" | "bottom-left";
+  /** Optional starter questions (e.g. from the selected template) shown
+   * under the welcome bubble — gives instant visual feedback when the
+   * user picks a template, instead of the preview staying static. */
+  suggestionChips?: string[];
+}) {
+  const isLeft = position === "bottom-left";
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-[#e4e4ec] shadow-sm">
+      {/* Fake browser chrome */}
+      <div className="flex items-center gap-1.5 border-b border-[#e4e4ec] bg-[#f1f2f6] px-3 py-2.5">
+        <span className="h-2.5 w-2.5 rounded-full bg-[#dcdce6]" />
+        <span className="h-2.5 w-2.5 rounded-full bg-[#dcdce6]" />
+        <span className="h-2.5 w-2.5 rounded-full bg-[#dcdce6]" />
+        <div className="ml-2 h-5 w-40 rounded-md bg-white" />
+      </div>
+
+      {/* Fake page content — purely decorative skeleton so the widget
+          doesn't float in an empty void. */}
+      <div className="relative flex h-72 flex-col gap-3 bg-white p-6">
+        <div className="h-3 w-2/5 rounded bg-[#eceef4]" />
+        <div className="h-2.5 w-3/5 rounded bg-[#f1f2f6]" />
+        <div className="h-2.5 w-1/3 rounded bg-[#f1f2f6]" />
+        <div className="mt-4 h-20 w-full rounded-lg bg-[#f7f8fb]" />
+
+        <div
+          className={`absolute bottom-4 flex h-14 w-14 items-center justify-center rounded-full shadow-lg ${
+            isLeft ? "left-4" : "right-4"
+          }`}
+          style={{ backgroundColor: primaryColor }}
+        >
+          <div className="h-6 w-6 rounded-full border-2 border-white" />
+        </div>
+
+        <div
+          className={`absolute bottom-24 w-64 overflow-hidden rounded-2xl bg-white shadow-2xl ${
+            isLeft ? "left-4" : "right-4"
+          }`}
+        >
+          <div
+            className="flex items-center gap-2 p-3"
+            style={{ backgroundColor: primaryColor }}
+          >
+            {logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logoUrl}
+                alt=""
+                className="h-5 w-5 flex-none rounded-full object-cover"
+              />
+            ) : null}
+            <p className="font-body text-xs font-semibold text-white">
+              {businessName}
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 p-3">
+            <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#f1f2f6] px-3 py-2 font-body text-xs text-[#14141c]">
+              {welcomeMessage}
+            </div>
+            {suggestionChips.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {suggestionChips.slice(0, 3).map((chip) => (
+                  <span
+                    key={chip}
+                    className="rounded-full border px-2.5 py-1 font-body text-[11px] font-medium text-[#14141c]"
+                    style={{ borderColor: primaryColor }}
+                  >
+                    {chip}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+</file>
+
 <file path="components/sections/Hero.tsx">
 // components/sections/Hero.tsx (Server Component — no "use client")
 
@@ -17886,6 +18106,133 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
 }
+</file>
+
+<file path="middleware.ts">
+import { createServerClient } from "@supabase/ssr";
+import { NextResponse, type NextRequest } from "next/server";
+
+/**
+ * Protects:
+ *   /admin/*      -> must be logged in AND a row in `admins`
+ *   /dashboard/*  -> must be logged in (any organization_members role)
+ *   /login,/signup -> redirect away if already logged in
+ *
+ * Everything else (marketing site, /api/chat, /api/contact) is
+ * completely untouched — the matcher below only runs this middleware
+ * for the paths listed, so (marketing) routes never pay the cost of
+ * a Supabase round-trip.
+ */
+// AI Agent product (marketing page + the whole SaaS app behind it) is
+// paused while it's still being finished. Remove this array + the block
+// below, and the matching matcher entries, once it's ready for clients.
+const AI_AGENT_PRODUCT_PATHS = [
+  "/ai-agent",
+  "/signup",
+  "/login",
+  "/dashboard",
+  "/admin",
+];
+
+export async function middleware(request: NextRequest) {
+  const path = request.nextUrl.pathname;
+
+  if (
+    AI_AGENT_PRODUCT_PATHS.some((p) => path === p || path.startsWith(`${p}/`))
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/";
+    return NextResponse.redirect(url);
+  }
+
+  let response = NextResponse.next({
+    request: { headers: request.headers },
+  });
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value),
+          );
+          response = NextResponse.next({
+            request: { headers: request.headers },
+          });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options),
+          );
+        },
+      },
+    },
+  );
+
+  // IMPORTANT: do not remove this call. It refreshes the session token
+  // and keeps getUser() accurate on every request.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // ⬇️ Reuse the `path` variable declared at the top – no duplicate declaration
+  const isAdminRoute = path.startsWith("/admin");
+  const isClientRoute = path.startsWith("/dashboard");
+  const isAuthRoute = path.startsWith("/login") || path.startsWith("/signup");
+
+  // Not logged in, hitting a protected route -> send to /login
+  if ((isAdminRoute || isClientRoute) && !user) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    url.searchParams.set("redirect", path);
+    return NextResponse.redirect(url);
+  }
+
+  // Hand the already-verified user to the route so client/dashboard
+  // layout.tsx doesn't have to pay for a second getUser() round-trip
+  // on every request.
+  if (user) {
+    response.headers.set("x-user-id", user.id);
+    if (user.email) response.headers.set("x-user-email", user.email);
+  }
+
+  // Logged in but not an admin, hitting /admin/* -> send to client dashboard
+  if (isAdminRoute && user) {
+    const { data: adminRow } = await supabase
+      .from("admins")
+      .select("user_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!adminRow) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/dashboard";
+      return NextResponse.redirect(url);
+    }
+  }
+
+  // Already logged in, hitting /login or /signup -> send to dashboard
+  if (isAuthRoute && user) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/dashboard";
+    return NextResponse.redirect(url);
+  }
+
+  return response;
+}
+
+export const config = {
+  matcher: [
+    "/admin/:path*",
+    "/dashboard/:path*",
+    "/login",
+    "/signup",
+    "/ai-agent/:path*",
+  ],
+};
 </file>
 
 <file path="next.config.ts">
@@ -25189,824 +25536,6 @@ export default async function BlogPage({
 }
 </file>
 
-<file path="app/(platform-client)/dashboard/knowledge-base/actions.ts">
-"use server";
-
-import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { ingestDocument } from "@/lib/knowledge-base/ingest";
-import { discoverPages, scrapePage } from "@/lib/knowledge-base/scrape";
-import { structureScrapedContent } from "@/lib/knowledge-base/structure";
-import { extractPdfText } from "@/lib/knowledge-base/pdf";
-import { getActiveAgentForCurrentUser } from "@/lib/auth/actions";
-import { embedText } from "@/lib/knowledge-base/embed";
-
-// NOTE: ingestDocument() uses the service-role client and bypasses RLS
-// entirely, so every call site in this file must verify ownership via
-// a plain (non-admin) select/update — using getActiveAgentForCurrentUser()
-// above, which is RLS-scoped — BEFORE calling it.
-
-export async function addKnowledgeBaseDocument(formData: FormData) {
-  const title = String(formData.get("title") ?? "").trim();
-  const rawContent = String(formData.get("rawContent") ?? "").trim();
-  const requestedType = String(formData.get("sourceType") ?? "manual_text");
-  const sourceType = requestedType === "faq_pair" ? "faq_pair" : "manual_text";
-
-  if (!title) return { error: "Give this document a short title." };
-  if (!rawContent || rawContent.length < 20) {
-    return { error: "Add a bit more detail — at least a few sentences." };
-  }
-
-  const agent = await getActiveAgentForCurrentUser();
-  if (!agent) return { error: "No active agent found for your organization." };
-
-  const supabase = await createClient();
-  const { data: doc, error } = await supabase
-    .from("knowledge_base_documents")
-    .insert({
-      agent_id: agent.id,
-      organization_id: agent.organization_id,
-      source_type: sourceType,
-      title,
-      raw_content: rawContent,
-      status: "processing",
-    })
-    .select("id")
-    .single();
-
-  if (error || !doc) {
-    return {
-      error: error?.message ?? "We couldn't save that — try again in a moment.",
-    };
-  }
-
-  try {
-    await ingestDocument(doc.id);
-  } catch (err) {
-    console.error("[knowledge-base] ingestion failed:", err);
-    revalidatePath("/dashboard/knowledge-base");
-    revalidatePath("/dashboard/onboarding");
-    return {
-      error:
-        "We saved it, but couldn't process it yet — check the status badge below.",
-    };
-  }
-
-  revalidatePath("/dashboard/knowledge-base");
-  revalidatePath("/dashboard/onboarding");
-  return { error: null };
-}
-
-// ============================================================
-// URL scraping (Prompt 11)
-// ============================================================
-
-export async function discoverKnowledgeBaseUrls(rootUrl: string) {
-  const agent = await getActiveAgentForCurrentUser();
-  if (!agent) {
-    return { error: "No active agent found for your organization.", pages: [] };
-  }
-
-  let normalized: string;
-  try {
-    const parsed = new URL(rootUrl);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      throw new Error("bad protocol");
-    }
-    normalized = parsed.href;
-  } catch {
-    return { error: "Enter a valid URL, e.g. https://example.com", pages: [] };
-  }
-
-  try {
-    const pages = await discoverPages(normalized);
-    return { error: null, pages };
-  } catch (err) {
-    return {
-      error:
-        err instanceof Error
-          ? err.message
-          : "We couldn't reach that website — check the URL and try again.",
-      pages: [],
-    };
-  }
-}
-
-export async function scrapeAndIngestUrl(url: string) {
-  const agent = await getActiveAgentForCurrentUser();
-  if (!agent) return { error: "No active agent found for your organization." };
-
-  let scraped: Awaited<ReturnType<typeof scrapePage>>;
-  try {
-    scraped = await scrapePage(url);
-  } catch (err) {
-    return {
-      error: err instanceof Error ? err.message : `Could not scrape ${url}.`,
-    };
-  }
-
-  const supabase = await createClient();
-  const { data: doc, error: insertError } = await supabase
-    .from("knowledge_base_documents")
-    .insert({
-      agent_id: agent.id,
-      organization_id: agent.organization_id,
-      source_type: "url",
-      source_url: url,
-      title: scraped.title,
-      raw_content: scraped.text,
-      status: "processing",
-      last_refreshed_at: new Date().toISOString(),
-    })
-    .select("id")
-    .single();
-
-  if (insertError || !doc) {
-    return { error: insertError?.message ?? `Failed to save ${url}.` };
-  }
-
-  try {
-    await ingestDocument(doc.id);
-  } catch (err) {
-    console.error("[knowledge-base] url ingestion failed:", err);
-    revalidatePath("/dashboard/knowledge-base");
-    revalidatePath("/dashboard/onboarding");
-    return { error: `Saved ${url}, but processing failed.` };
-  }
-
-  revalidatePath("/dashboard/knowledge-base");
-  revalidatePath("/dashboard/onboarding");
-  return { error: null };
-}
-
-// ============================================================
-// Scan → AI-structure → review before saving (Phase 1 upgrade).
-// Splits the old scrape-and-save-immediately flow into two steps:
-// preview (this function, no DB write) and confirm (below, the only
-// one that writes). The AI structuring pass is best-effort — if it
-// fails, we fall back to the raw scrape rather than blocking the
-// user from adding the page at all.
-// ============================================================
-
-export async function scrapeForPreview(url: string) {
-  const agent = await getActiveAgentForCurrentUser();
-  if (!agent) {
-    return {
-      error: "No active agent found for your organization.",
-      data: null,
-    };
-  }
-
-  let scraped: Awaited<ReturnType<typeof scrapePage>>;
-  try {
-    scraped = await scrapePage(url);
-  } catch (err) {
-    return {
-      error: err instanceof Error ? err.message : `Could not scrape ${url}.`,
-      data: null,
-    };
-  }
-
-  try {
-    const structured = await structureScrapedContent({
-      source: url,
-      title: scraped.title,
-      rawText: scraped.text,
-    });
-    return {
-      error: null,
-      data: { url, title: structured.title, content: structured.content },
-    };
-  } catch {
-    // AI structuring failed (model outage, page too thin, etc.) — fall
-    // back to the raw scrape so one flaky page doesn't block the whole
-    // batch. The user still reviews and can edit it before saving.
-    return {
-      error: null,
-      data: { url, title: scraped.title, content: scraped.text.slice(0, 8000) },
-    };
-  }
-}
-
-export async function confirmAddScrapedPage(input: {
-  url: string;
-  title: string;
-  content: string;
-}) {
-  const title = input.title.trim();
-  const content = input.content.trim();
-  if (!title) return { error: "This page needs a title." };
-  if (!content || content.length < 20) {
-    return { error: "This page's content looks too short to save." };
-  }
-
-  const agent = await getActiveAgentForCurrentUser();
-  if (!agent) return { error: "No active agent found for your organization." };
-
-  const supabase = await createClient();
-  const { data: doc, error: insertError } = await supabase
-    .from("knowledge_base_documents")
-    .insert({
-      agent_id: agent.id,
-      organization_id: agent.organization_id,
-      source_type: "url",
-      source_url: input.url,
-      title,
-      raw_content: content,
-      status: "processing",
-      last_refreshed_at: new Date().toISOString(),
-    })
-    .select("id")
-    .single();
-
-  if (insertError || !doc) {
-    return { error: insertError?.message ?? `Failed to save ${input.url}.` };
-  }
-
-  try {
-    await ingestDocument(doc.id);
-  } catch (err) {
-    console.error("[knowledge-base] url ingestion failed:", err);
-    revalidatePath("/dashboard/knowledge-base");
-    revalidatePath("/dashboard/onboarding");
-    return { error: `Saved ${input.url}, but processing failed.` };
-  }
-
-  revalidatePath("/dashboard/knowledge-base");
-  revalidatePath("/dashboard/onboarding");
-  return { error: null };
-}
-
-export async function refreshKnowledgeBaseUrlDocument(documentId: string) {
-  const supabase = await createClient();
-
-  const { data: doc } = await supabase
-    .from("knowledge_base_documents")
-    .select("id, source_url, source_type")
-    .eq("id", documentId)
-    .maybeSingle();
-
-  if (!doc || doc.source_type !== "url" || !doc.source_url) {
-    return { error: "This document has no source URL to refresh from." };
-  }
-
-  let scraped: Awaited<ReturnType<typeof scrapePage>>;
-  try {
-    scraped = await scrapePage(doc.source_url);
-  } catch (err) {
-    return {
-      error:
-        err instanceof Error
-          ? err.message
-          : "We couldn't re-scan that page — try again in a moment.",
-    };
-  }
-
-  await supabase
-    .from("knowledge_base_documents")
-    .update({
-      title: scraped.title,
-      raw_content: scraped.text,
-      status: "processing",
-      error_message: null,
-      last_refreshed_at: new Date().toISOString(),
-    })
-    .eq("id", documentId);
-
-  try {
-    await ingestDocument(documentId);
-  } catch (err) {
-    console.error("[knowledge-base] refresh failed:", err);
-    revalidatePath("/dashboard/knowledge-base");
-    revalidatePath("/dashboard/onboarding");
-    return {
-      error:
-        "We refreshed it, but couldn't reprocess it yet — check the status badge below.",
-    };
-  }
-
-  revalidatePath("/dashboard/knowledge-base");
-  revalidatePath("/dashboard/onboarding");
-  return { error: null };
-}
-
-// ============================================================
-// PDF upload (Prompt 11)
-// ============================================================
-
-export async function createPdfUploadUrl(fileName: string) {
-  const agent = await getActiveAgentForCurrentUser();
-  if (!agent) {
-    return {
-      error: "No active agent found for your organization.",
-      data: null,
-    };
-  }
-
-  const safeName = fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-  const path = `${agent.organization_id}/${Date.now()}-${safeName}`;
-
-  const supabase = await createClient();
-  const { data, error } = await supabase.storage
-    .from("knowledge-base-pdfs")
-    .createSignedUploadUrl(path);
-
-  if (error || !data) {
-    return {
-      error:
-        error?.message ??
-        "We couldn't start the upload — try again in a moment.",
-      data: null,
-    };
-  }
-
-  return {
-    error: null,
-    data: { path, token: data.token, signedUrl: data.signedUrl },
-  };
-}
-
-export async function ingestUploadedPdf(storagePath: string, fileName: string) {
-  const agent = await getActiveAgentForCurrentUser();
-  if (!agent) return { error: "No active agent found for your organization." };
-
-  if (!storagePath.startsWith(`${agent.organization_id}/`)) {
-    return { error: "This file does not belong to your organization." };
-  }
-
-  const admin = createAdminClient();
-  const { data: file, error: downloadError } = await admin.storage
-    .from("knowledge-base-pdfs")
-    .download(storagePath);
-
-  if (downloadError || !file) {
-    return {
-      error:
-        downloadError?.message ??
-        "We couldn't read that file — try uploading it again.",
-    };
-  }
-
-  const buffer = await file.arrayBuffer();
-
-  let extraction: Awaited<ReturnType<typeof extractPdfText>>;
-  try {
-    extraction = await extractPdfText(buffer);
-  } catch {
-    return {
-      error:
-        "Could not read this PDF — it may be corrupted or in an unsupported format.",
-    };
-  }
-
-  const supabase = await createClient();
-
-  if (extraction.looksScanned) {
-    await supabase.from("knowledge_base_documents").insert({
-      agent_id: agent.id,
-      organization_id: agent.organization_id,
-      source_type: "pdf",
-      title: fileName,
-      raw_content: extraction.text || null,
-      status: "error",
-      error_message:
-        "This PDF appears to be a scanned image with no selectable text — try re-exporting it as a text-based PDF, or paste the content manually.",
-    });
-    revalidatePath("/dashboard/knowledge-base");
-    revalidatePath("/dashboard/onboarding");
-    return { error: null };
-  }
-
-  const { data: doc, error: insertError } = await supabase
-    .from("knowledge_base_documents")
-    .insert({
-      agent_id: agent.id,
-      organization_id: agent.organization_id,
-      source_type: "pdf",
-      title: fileName,
-      raw_content: extraction.text,
-      status: "processing",
-    })
-    .select("id")
-    .single();
-
-  if (insertError || !doc) {
-    return {
-      error:
-        insertError?.message ??
-        "We couldn't save that — try again in a moment.",
-    };
-  }
-
-  try {
-    await ingestDocument(doc.id);
-  } catch (err) {
-    console.error("[knowledge-base] pdf ingestion failed:", err);
-    revalidatePath("/dashboard/knowledge-base");
-    revalidatePath("/dashboard/onboarding");
-    return {
-      error:
-        "We saved it, but couldn't process it yet — check the status badge below.",
-    };
-  }
-
-  revalidatePath("/dashboard/knowledge-base");
-  revalidatePath("/dashboard/onboarding");
-  return { error: null };
-}
-
-// ============================================================
-// PDF upload → extract → AI-structure → review before saving.
-// Mirrors the website scan flow: extractPdfForPreview() does the
-// extraction + structuring with no DB write, confirmAddPdfDocument()
-// is the only function that saves. ingestUploadedPdf() above is left
-// in place but unused by the client now — same low-risk pattern as
-// scrapeAndIngestUrl().
-// ============================================================
-
-export async function extractPdfForPreview(
-  storagePath: string,
-  fileName: string,
-) {
-  const agent = await getActiveAgentForCurrentUser();
-  if (!agent) {
-    return {
-      error: "No active agent found for your organization.",
-      data: null,
-    };
-  }
-
-  if (!storagePath.startsWith(`${agent.organization_id}/`)) {
-    return {
-      error: "This file does not belong to your organization.",
-      data: null,
-    };
-  }
-
-  const admin = createAdminClient();
-  const { data: file, error: downloadError } = await admin.storage
-    .from("knowledge-base-pdfs")
-    .download(storagePath);
-
-  if (downloadError || !file) {
-    return {
-      error:
-        downloadError?.message ??
-        "We couldn't read that file — try uploading it again.",
-      data: null,
-    };
-  }
-
-  const buffer = await file.arrayBuffer();
-
-  let extraction: Awaited<ReturnType<typeof extractPdfText>>;
-  try {
-    extraction = await extractPdfText(buffer);
-  } catch {
-    return {
-      error:
-        "Could not read this PDF — it may be corrupted or in an unsupported format.",
-      data: null,
-    };
-  }
-
-  if (extraction.looksScanned) {
-    return {
-      error:
-        "This PDF appears to be a scanned image with no selectable text — try re-exporting it as a text-based PDF, or paste the content manually.",
-      data: null,
-    };
-  }
-
-  try {
-    const structured = await structureScrapedContent({
-      source: fileName,
-      title: fileName,
-      rawText: extraction.text,
-    });
-    return {
-      error: null,
-      data: {
-        storagePath,
-        title: structured.title,
-        content: structured.content,
-      },
-    };
-  } catch {
-    return {
-      error: null,
-      data: {
-        storagePath,
-        title: fileName,
-        content: extraction.text.slice(0, 8000),
-      },
-    };
-  }
-}
-
-export async function confirmAddPdfDocument(input: {
-  storagePath: string;
-  title: string;
-  content: string;
-}) {
-  const title = input.title.trim();
-  const content = input.content.trim();
-  if (!title) return { error: "This document needs a title." };
-  if (!content || content.length < 20) {
-    return { error: "This document's content looks too short to save." };
-  }
-
-  const agent = await getActiveAgentForCurrentUser();
-  if (!agent) return { error: "No active agent found for your organization." };
-
-  if (!input.storagePath.startsWith(`${agent.organization_id}/`)) {
-    return { error: "This file does not belong to your organization." };
-  }
-
-  const supabase = await createClient();
-  const { data: doc, error: insertError } = await supabase
-    .from("knowledge_base_documents")
-    .insert({
-      agent_id: agent.id,
-      organization_id: agent.organization_id,
-      source_type: "pdf",
-      title,
-      raw_content: content,
-      status: "processing",
-    })
-    .select("id")
-    .single();
-
-  if (insertError || !doc) {
-    return {
-      error:
-        insertError?.message ??
-        "We couldn't save that — try again in a moment.",
-    };
-  }
-
-  try {
-    await ingestDocument(doc.id);
-  } catch (err) {
-    console.error("[knowledge-base] pdf ingestion failed:", err);
-    revalidatePath("/dashboard/knowledge-base");
-    revalidatePath("/dashboard/onboarding");
-    return { error: "Saved, but processing failed." };
-  }
-
-  revalidatePath("/dashboard/knowledge-base");
-  revalidatePath("/dashboard/onboarding");
-  return { error: null };
-}
-
-// ============================================================
-// Manual "Text" tab — optional AI cleanup before saving. Unlike the
-// website/PDF flows, saving here is still a separate explicit action
-// (addKnowledgeBaseDocument, unchanged) — this just lets the user
-// polish their own writing first if they want to.
-// ============================================================
-
-export async function cleanUpTextWithAi(input: {
-  title: string;
-  rawContent: string;
-}) {
-  const agent = await getActiveAgentForCurrentUser();
-  if (!agent)
-    return {
-      error: "No active agent found for your organization.",
-      data: null,
-    };
-
-  const title = input.title.trim() || "Untitled";
-  const rawContent = input.rawContent.trim();
-  if (!rawContent || rawContent.length < 20) {
-    return {
-      error: "Write a bit more content first — at least a couple of sentences.",
-      data: null,
-    };
-  }
-
-  try {
-    const structured = await structureScrapedContent({
-      source: title,
-      title,
-      rawText: rawContent,
-    });
-    return { error: null, data: { content: structured.content } };
-  } catch (err) {
-    return {
-      error:
-        err instanceof Error
-          ? err.message
-          : "Couldn't clean this up — try again.",
-      data: null,
-    };
-  }
-}
-
-export async function deleteKnowledgeBaseDocument(documentId: string) {
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("knowledge_base_documents")
-    .delete()
-    .eq("id", documentId);
-
-  revalidatePath("/dashboard/knowledge-base");
-  revalidatePath("/dashboard/onboarding");
-  return { error: error?.message ?? null };
-}
-
-export async function reindexKnowledgeBaseDocument(documentId: string) {
-  const supabase = await createClient();
-
-  const { data: doc } = await supabase
-    .from("knowledge_base_documents")
-    .select("id")
-    .eq("id", documentId)
-    .maybeSingle();
-
-  if (!doc) {
-    return { error: "Document not found." };
-  }
-
-  await supabase
-    .from("knowledge_base_documents")
-    .update({ status: "processing", error_message: null })
-    .eq("id", documentId);
-
-  try {
-    await ingestDocument(documentId);
-  } catch (err) {
-    console.error("[knowledge-base] re-index failed:", err);
-    revalidatePath("/dashboard/knowledge-base");
-    revalidatePath("/dashboard/onboarding");
-    return { error: "Re-index failed — see the status badge below." };
-  }
-
-  revalidatePath("/dashboard/knowledge-base");
-  revalidatePath("/dashboard/onboarding");
-  return { error: null };
-}
-
-// ============================================================
-// Inline edit (Prompt 18)
-// ============================================================
-
-export async function updateKnowledgeBaseDocument(
-  documentId: string,
-  rawContent: string,
-) {
-  const trimmed = rawContent.trim();
-  if (!trimmed || trimmed.length < 20) {
-    return { error: "Add a bit more detail — at least a few sentences." };
-  }
-
-  const supabase = await createClient();
-
-  const { data: doc } = await supabase
-    .from("knowledge_base_documents")
-    .select("id")
-    .eq("id", documentId)
-    .maybeSingle();
-
-  if (!doc) return { error: "Document not found." };
-
-  await supabase
-    .from("knowledge_base_documents")
-    .update({
-      raw_content: trimmed,
-      status: "processing",
-      error_message: null,
-    })
-    .eq("id", documentId);
-
-  try {
-    await ingestDocument(documentId);
-  } catch (err) {
-    console.error("[knowledge-base] edit re-ingest failed:", err);
-    revalidatePath("/dashboard/knowledge-base");
-    revalidatePath("/dashboard/onboarding");
-    return {
-      error:
-        "We saved your edit, but couldn't reprocess it yet — check the status badge below.",
-    };
-  }
-
-  revalidatePath("/dashboard/knowledge-base");
-  return { error: null };
-}
-
-// ============================================================
-// "Test what your agent knows" — same retrieval path the live
-// widget uses (match_knowledge_base_chunks), surfaced for the
-// dashboard owner instead of an end visitor.
-// ============================================================
-
-// Below this, a match is closer to "any two unrelated sentences of
-// English" than to a genuine answer — MiniLM cosine similarity for a
-// truly relevant chunk is typically 0.4+, while unrelated content still
-// floats around 0.15-0.3 from shared common words alone. Without this
-// floor, short/generic queries (e.g. "hi") always returned 5 confident-
-// looking results regardless of relevance, which made the tool actively
-// misleading rather than just imprecise. Tune down if it starts cutting
-// legitimate matches for your content.
-const MIN_CONFIDENT_SIMILARITY = 0.35;
-
-export async function testKnowledgeBaseQuery(query: string) {
-  const trimmed = query.trim();
-  if (!trimmed) return { error: "Type a question first.", matches: [] };
-
-  const agent = await getActiveAgentForCurrentUser();
-  if (!agent) {
-    return {
-      error: "No active agent found for your organization.",
-      matches: [],
-    };
-  }
-
-  const supabase = await createClient();
-
-  let queryEmbedding: number[];
-  try {
-    queryEmbedding = await embedText(trimmed);
-  } catch {
-    return {
-      error: "We couldn't test that question — try again in a moment.",
-      matches: [],
-    };
-  }
-
-  const { data: matchRows, error: matchError } = await supabase.rpc(
-    "match_knowledge_base_chunks",
-    {
-      query_embedding: queryEmbedding,
-      target_agent_id: agent.id,
-      match_count: 5,
-    },
-  );
-
-  if (matchError) {
-    return { error: matchError.message, matches: [] };
-  }
-
-  // match_knowledge_base_chunks already computes similarity — it was
-  // being fetched and immediately discarded. Filtering on it here is
-  // what turns "top 5 nearest, however irrelevant" into "the matches
-  // we'd actually trust the agent to answer from".
-  const confidentRows = (
-    (matchRows ?? []) as { id: string; content: string; similarity: number }[]
-  ).filter((m) => m.similarity >= MIN_CONFIDENT_SIMILARITY);
-
-  if (confidentRows.length === 0) return { error: null, matches: [] };
-
-  const chunkIds = confidentRows.map((m) => m.id);
-
-  const { data: chunkRows } = await supabase
-    .from("knowledge_base_chunks")
-    .select("id, document_id")
-    .in("id", chunkIds);
-
-  const chunkToDoc = new Map(
-    (chunkRows ?? []).map((c) => [c.id, c.document_id]),
-  );
-  const docIds = Array.from(new Set(chunkToDoc.values()));
-
-  const { data: docs } = await supabase
-    .from("knowledge_base_documents")
-    .select("id, title, source_type")
-    .in("id", docIds);
-
-  const docMap = new Map((docs ?? []).map((d) => [d.id, d]));
-
-  const seen = new Set<string>();
-  const matches: {
-    documentId: string;
-    title: string;
-    sourceType: string;
-    snippet: string;
-    similarity: number;
-  }[] = [];
-
-  for (const m of confidentRows) {
-    const docId = chunkToDoc.get(m.id);
-    if (!docId || seen.has(docId)) continue;
-    seen.add(docId);
-    const doc = docMap.get(docId);
-    matches.push({
-      documentId: docId,
-      title: doc?.title ?? "Untitled",
-      sourceType: doc?.source_type ?? "manual_text",
-      snippet:
-        m.content.length > 160 ? `${m.content.slice(0, 160)}…` : m.content,
-      similarity: m.similarity,
-    });
-  }
-
-  return { error: null, matches };
-}
-</file>
-
 <file path="app/(platform-client)/dashboard/onboarding/actions.ts">
 "use server";
 
@@ -28551,805 +28080,821 @@ export default function AiAgentPage() {
 }
 </file>
 
-<file path="app/(platform-client)/dashboard/agent/guardrails/GuardrailsClient.tsx">
-"use client";
+<file path="app/(platform-client)/dashboard/knowledge-base/actions.ts">
+"use server";
 
-import {
-  forwardRef,
-  useImperativeHandle,
-  useMemo,
-  useState,
-  useTransition,
-} from "react";
-import { Loader2, Save, Check } from "lucide-react";
+import { revalidatePath } from "next/cache";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { ingestDocument } from "@/lib/knowledge-base/ingest";
+import { discoverPages, scrapePage } from "@/lib/knowledge-base/scrape";
+import { structureScrapedContent } from "@/lib/knowledge-base/structure";
+import { extractPdfText } from "@/lib/knowledge-base/pdf";
+import { getActiveAgentForCurrentUser } from "@/lib/auth/actions";
+import { embedText } from "@/lib/knowledge-base/embed";
 
-import {
-  buildGuardrailInstructions,
-  type GuardrailToggles,
-} from "@/lib/agents/build-system-prompt";
-import { saveGuardrails } from "./actions";
-import { Button } from "@/components/ui/button";
+// NOTE: ingestDocument() uses the service-role client and bypasses RLS
+// entirely, so every call site in this file must verify ownership via
+// a plain (non-admin) select/update — using getActiveAgentForCurrentUser()
+// above, which is RLS-scoped — BEFORE calling it.
 
-const TONE_OPTIONS = [
-  { value: "professional", label: "Professional" },
-  { value: "friendly", label: "Friendly" },
-  { value: "formal", label: "Formal" },
-  { value: "casual", label: "Casual" },
-  { value: "fun", label: "Fun" },
-  { value: "concise", label: "Concise" },
-] as const;
+export async function addKnowledgeBaseDocument(formData: FormData) {
+  const title = String(formData.get("title") ?? "").trim();
+  const rawContent = String(formData.get("rawContent") ?? "").trim();
+  const requestedType = String(formData.get("sourceType") ?? "manual_text");
+  const sourceType = requestedType === "faq_pair" ? "faq_pair" : "manual_text";
 
-const LANGUAGE_OPTIONS = [
-  { value: "auto", label: "Match visitor's language" },
-  { value: "English", label: "Always English" },
-  { value: "Urdu", label: "Always Urdu" },
-  { value: "Arabic", label: "Always Arabic" },
-] as const;
-
-const PRESETS: {
-  id: string;
-  label: string;
-  description: string;
-  values: Partial<GuardrailToggles>;
-}[] = [
-  {
-    id: "strict",
-    label: "Strict & Professional",
-    description:
-      "Formal tone, no opinions, always pushes to contact for anything tricky.",
-    values: {
-      tone: "professional",
-      stay_on_topic: true,
-      no_competitors: true,
-      no_pricing: true,
-      no_refund_promise: true,
-      no_opinions: true,
-      always_polite: true,
-      push_contact: true,
-      capture_leads: true,
-    },
-  },
-  {
-    id: "friendly",
-    label: "Friendly & Casual",
-    description:
-      "Warm, casual tone, more relaxed about staying strictly on-topic.",
-    values: {
-      tone: "friendly",
-      stay_on_topic: false,
-      no_competitors: true,
-      no_pricing: false,
-      no_refund_promise: true,
-      no_opinions: false,
-      always_polite: true,
-      push_contact: false,
-      capture_leads: true,
-    },
-  },
-  {
-    id: "balanced",
-    label: "Balanced",
-    description: "A safe middle ground — professional but approachable.",
-    values: {
-      tone: "professional",
-      stay_on_topic: true,
-      no_competitors: true,
-      no_pricing: true,
-      no_refund_promise: true,
-      no_opinions: true,
-      always_polite: true,
-      push_contact: false,
-      capture_leads: true,
-    },
-  },
-];
-
-const TOGGLE_DEFS: {
-  key: keyof GuardrailToggles;
-  label: string;
-  description: string;
-}[] = [
-  {
-    key: "stay_on_topic",
-    label: "Stay on topic",
-    description:
-      "Decline unrelated questions and redirect back to the business.",
-  },
-  {
-    key: "no_competitors",
-    label: "No competitor mentions",
-    description: "Never mention or recommend competing businesses.",
-  },
-  {
-    key: "no_pricing",
-    label: "No pricing",
-    description:
-      "Never state specific prices, even if they're in the knowledge base.",
-  },
-  {
-    key: "no_refund_promise",
-    label: "No refund promises",
-    description: "Never commit to a refund, return, or binding policy.",
-  },
-  {
-    key: "no_opinions",
-    label: "No personal opinions",
-    description: "Stick to facts, never share subjective opinions.",
-  },
-  {
-    key: "always_polite",
-    label: "Always polite",
-    description: "Stay calm and courteous even if the visitor is rude.",
-  },
-  {
-    key: "push_contact",
-    label: "Push to contact",
-    description:
-      "Encourage visitors to reach out directly for anything non-trivial.",
-  },
-  {
-    key: "capture_leads",
-    label: "Capture leads",
-    description: "When the AI can't answer, show a quick contact-info form.",
-  },
-];
-
-interface LeadCaptureSettings {
-  ask_name: boolean;
-  ask_email: boolean;
-  ask_phone: boolean;
-  ask_message: boolean;
-}
-
-const DEFAULT_LEAD_SETTINGS: LeadCaptureSettings = {
-  ask_name: true,
-  ask_email: true,
-  ask_phone: false,
-  ask_message: false,
-};
-
-const LEAD_FIELD_DEFS: { key: keyof LeadCaptureSettings; label: string }[] = [
-  { key: "ask_name", label: "Ask for name" },
-  { key: "ask_email", label: "Ask for email" },
-  { key: "ask_phone", label: "Ask for phone" },
-  { key: "ask_message", label: "Ask for a message" },
-];
-
-type GuardrailsRow = GuardrailToggles | null;
-
-export interface GuardrailsClientHandle {
-  /** Saves the current form state. Returns an error message on failure,
-   * or null on success — lets the Setup Wizard's "Next" button save
-   * guardrails itself, the same way it already does for every other
-   * step, instead of relying on a separate, easy-to-miss button. */
-  save: () => Promise<string | null>;
-}
-
-export const GuardrailsClient = forwardRef<
-  GuardrailsClientHandle,
-  {
-    guardrails: GuardrailsRow;
-    leadCaptureSettings: LeadCaptureSettings | null;
-    orgName: string;
-    /** False when embedded in the Setup Wizard — there, the wizard's
-     * own "Next" button drives saving, so this component's own Save
-     * button would just be a second, confusing way to do the same
-     * thing. Defaults to true for the standalone guardrails page. */
-    showOwnSaveButton?: boolean;
+  if (!title) return { error: "Give this document a short title." };
+  if (!rawContent || rawContent.length < 20) {
+    return { error: "Add a bit more detail — at least a few sentences." };
   }
->(function GuardrailsClient(
-  { guardrails, leadCaptureSettings, orgName, showOwnSaveButton = true },
-  ref,
-) {
-  const [state, setState] = useState<GuardrailToggles>(() => ({
-    no_competitors: guardrails?.no_competitors ?? false,
-    stay_on_topic: guardrails?.stay_on_topic ?? true,
-    no_pricing: guardrails?.no_pricing ?? false,
-    always_polite: guardrails?.always_polite ?? true,
-    no_opinions: guardrails?.no_opinions ?? false,
-    push_contact: guardrails?.push_contact ?? false,
-    no_refund_promise: guardrails?.no_refund_promise ?? false,
-    capture_leads: guardrails?.capture_leads ?? true,
-    custom_rules: guardrails?.custom_rules ?? "",
-    tone: guardrails?.tone ?? "professional",
-    reply_language: guardrails?.reply_language ?? "auto",
-  }));
 
-  const [leadSettings, setLeadSettings] = useState<LeadCaptureSettings>(
-    leadCaptureSettings ?? DEFAULT_LEAD_SETTINGS,
-  );
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent) return { error: "No active agent found for your organization." };
 
-  const [isPending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const supabase = await createClient();
+  const { data: doc, error } = await supabase
+    .from("knowledge_base_documents")
+    .insert({
+      agent_id: agent.id,
+      organization_id: agent.organization_id,
+      source_type: sourceType,
+      title,
+      raw_content: rawContent,
+      status: "processing",
+    })
+    .select("id")
+    .single();
 
-  const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
+  if (error || !doc) {
+    return {
+      error: error?.message ?? "We couldn't save that — try again in a moment.",
+    };
+  }
 
-  const applyPreset = (presetId: string) => {
-    const preset = PRESETS.find((p) => p.id === presetId);
-    if (!preset) return;
-    setState((prev) => ({ ...prev, ...preset.values }));
-    setSelectedPreset(presetId);
-    setSaved(false);
-  };
+  try {
+    await ingestDocument(doc.id);
+  } catch (err) {
+    console.error("[knowledge-base] ingestion failed:", err);
+    revalidatePath("/dashboard/knowledge-base");
+    revalidatePath("/dashboard/onboarding");
+    return {
+      error:
+        "We saved it, but couldn't process it yet — check the status badge below.",
+    };
+  }
 
-  const preview = useMemo(
-    () => buildGuardrailInstructions(state, orgName),
-    [state, orgName],
-  );
+  revalidatePath("/dashboard/knowledge-base");
+  revalidatePath("/dashboard/onboarding");
+  return { error: null };
+}
 
-  const toggle = (key: keyof GuardrailToggles) => {
-    setState((prev) => ({ ...prev, [key]: !prev[key] }));
-    setSaved(false);
-  };
+// ============================================================
+// URL scraping (Prompt 11)
+// ============================================================
 
-  const toggleLeadField = (key: keyof LeadCaptureSettings) => {
-    setLeadSettings((prev) => ({ ...prev, [key]: !prev[key] }));
-    setSaved(false);
-  };
+export async function discoverKnowledgeBaseUrls(rootUrl: string) {
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent) {
+    return { error: "No active agent found for your organization.", pages: [] };
+  }
 
-  const persistGuardrails = async (): Promise<string | null> => {
-    setError(null);
-    const formData = new FormData();
-    for (const def of TOGGLE_DEFS) {
-      if (state[def.key]) formData.set(def.key, "on");
+  let normalized: string;
+  try {
+    const parsed = new URL(rootUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error("bad protocol");
     }
-    formData.set("tone", state.tone);
-    formData.set("reply_language", state.reply_language);
-    formData.set("custom_rules", state.custom_rules ?? "");
-    for (const def of LEAD_FIELD_DEFS) {
-      if (leadSettings[def.key]) formData.set(`lead_${def.key}`, "on");
-    }
+    normalized = parsed.href;
+  } catch {
+    return { error: "Enter a valid URL, e.g. https://example.com", pages: [] };
+  }
 
-    try {
-      const result = await saveGuardrails(formData);
-      if (result?.error) {
-        setError(result.error);
-        return result.error;
-      }
-      setSaved(true);
-      return null;
-    } catch (e) {
-      const message =
-        e instanceof Error
-          ? e.message
-          : "Something went wrong saving your changes — try again.";
-      setError(message);
-      return message;
-    }
-  };
+  try {
+    const pages = await discoverPages(normalized);
+    return { error: null, pages };
+  } catch (err) {
+    return {
+      error:
+        err instanceof Error
+          ? err.message
+          : "We couldn't reach that website — check the URL and try again.",
+      pages: [],
+    };
+  }
+}
 
-  const handleSave = () => {
-    startTransition(() => {
-      void persistGuardrails();
+export async function scrapeAndIngestUrl(url: string) {
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent) return { error: "No active agent found for your organization." };
+
+  let scraped: Awaited<ReturnType<typeof scrapePage>>;
+  try {
+    scraped = await scrapePage(url);
+  } catch (err) {
+    return {
+      error: err instanceof Error ? err.message : `Could not scrape ${url}.`,
+    };
+  }
+
+  const supabase = await createClient();
+  const { data: doc, error: insertError } = await supabase
+    .from("knowledge_base_documents")
+    .insert({
+      agent_id: agent.id,
+      organization_id: agent.organization_id,
+      source_type: "url",
+      source_url: url,
+      title: scraped.title,
+      raw_content: scraped.text,
+      status: "processing",
+      last_refreshed_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !doc) {
+    return { error: insertError?.message ?? `Failed to save ${url}.` };
+  }
+
+  try {
+    await ingestDocument(doc.id);
+  } catch (err) {
+    console.error("[knowledge-base] url ingestion failed:", err);
+    revalidatePath("/dashboard/knowledge-base");
+    revalidatePath("/dashboard/onboarding");
+    return { error: `Saved ${url}, but processing failed.` };
+  }
+
+  revalidatePath("/dashboard/knowledge-base");
+  revalidatePath("/dashboard/onboarding");
+  return { error: null };
+}
+
+// ============================================================
+// Scan → AI-structure → review before saving (Phase 1 upgrade).
+// Splits the old scrape-and-save-immediately flow into two steps:
+// preview (this function, no DB write) and confirm (below, the only
+// one that writes). The AI structuring pass is best-effort — if it
+// fails, we fall back to the raw scrape rather than blocking the
+// user from adding the page at all.
+// ============================================================
+
+export async function scrapeForPreview(url: string) {
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent) {
+    return {
+      error: "No active agent found for your organization.",
+      data: null,
+    };
+  }
+
+  let scraped: Awaited<ReturnType<typeof scrapePage>>;
+  try {
+    scraped = await scrapePage(url);
+  } catch (err) {
+    return {
+      error: err instanceof Error ? err.message : `Could not scrape ${url}.`,
+      data: null,
+    };
+  }
+
+  try {
+    const structured = await structureScrapedContent({
+      source: url,
+      title: scraped.title,
+      rawText: scraped.text,
     });
-  };
-
-  useImperativeHandle(ref, () => ({
-    save: () =>
-      new Promise<string | null>((resolve) => {
-        startTransition(async () => {
-          resolve(await persistGuardrails());
-        });
-      }),
-  }));
-
-  return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
-      <div className="flex flex-col gap-6">
-        <div className="overflow-hidden rounded-2xl border border-border bg-card p-6">
-          <h2 className="mb-1 font-heading text-base font-semibold text-foreground">
-            Quick presets
-          </h2>
-          <p className="mb-4 font-body text-xs text-secondary-text">
-            Pick a starting point — you can still fine-tune anything below.
-          </p>
-          <div className="@container">
-            <div className="grid grid-cols-1 gap-3 @sm:grid-cols-3">
-              {PRESETS.map((preset) => {
-                const isSelected = selectedPreset === preset.id;
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() => applyPreset(preset.id)}
-                    className={`rounded-xl border p-4 text-left transition-all duration-150 ${
-                      isSelected
-                        ? "border-primary bg-primary/5 shadow-sm ring-1 ring-primary/30"
-                        : "border-border hover:border-primary/50 hover:bg-card"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="font-body text-sm font-medium leading-snug text-foreground">
-                        {preset.label}
-                      </p>
-                      {isSelected && (
-                        <span className="flex h-4 w-4 flex-none items-center justify-center rounded-full bg-primary text-primary-foreground">
-                          <Check className="h-2.5 w-2.5" strokeWidth={3} />
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1 font-body text-xs leading-relaxed text-secondary-text">
-                      {preset.description}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setShowAdvanced((v) => !v)}
-          className="text-left font-body text-sm font-medium text-primary hover:underline"
-        >
-          {showAdvanced ? "Hide" : "Show"} advanced rules & customization
-        </button>
-
-        <div
-          className="grid transition-[grid-template-rows] duration-300 ease-in-out"
-          style={{ gridTemplateRows: showAdvanced ? "1fr" : "0fr" }}
-        >
-          <div className="overflow-hidden">
-            <div className="flex flex-col gap-6 pt-6">
-              <div className="overflow-hidden rounded-2xl border border-border bg-card p-6">
-                <h2 className="mb-4 font-heading text-base font-semibold text-foreground">
-                  Rules
-                </h2>
-                <div className="flex flex-col divide-y divide-border">
-                  {TOGGLE_DEFS.map((def) => (
-                    <label
-                      key={def.key}
-                      className="flex cursor-pointer items-start justify-between gap-4 py-4 first:pt-0 last:pb-0"
-                    >
-                      <div>
-                        <p className="font-body text-sm font-medium text-foreground">
-                          {def.label}
-                        </p>
-                        <p className="mt-0.5 font-body text-xs text-secondary-text">
-                          {def.description}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={Boolean(state[def.key])}
-                        onClick={() => toggle(def.key)}
-                        className={`relative h-6 w-11 flex-none rounded-full transition-colors duration-200 ${
-                          state[def.key] ? "bg-primary" : "bg-border"
-                        }`}
-                      >
-                        <span
-                          className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${
-                            state[def.key] ? "translate-x-5" : "translate-x-0"
-                          }`}
-                        />
-                      </button>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {state.capture_leads && (
-                <div className="overflow-hidden rounded-2xl border border-border bg-card p-6">
-                  <h2 className="mb-1 font-heading text-base font-semibold text-foreground">
-                    Lead capture form fields
-                  </h2>
-                  <p className="mb-4 font-body text-xs text-secondary-text">
-                    Which fields the widget&apos;s quick contact form asks for.
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    {LEAD_FIELD_DEFS.map((def) => (
-                      <label
-                        key={def.key}
-                        className="flex cursor-pointer items-center gap-2"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={leadSettings[def.key]}
-                          onChange={() => toggleLeadField(def.key)}
-                          className="h-4 w-4 rounded border-border accent-[var(--color-primary)]"
-                        />
-                        <span className="font-body text-sm text-foreground">
-                          {def.label}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="overflow-hidden rounded-2xl border border-border bg-card p-6">
-                <h2 className="mb-4 font-heading text-base font-semibold text-foreground">
-                  Tone & language
-                </h2>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div className="flex flex-col gap-1.5">
-                    <label
-                      htmlFor="tone"
-                      className="font-body text-sm font-medium text-foreground"
-                    >
-                      Tone
-                    </label>
-                    <select
-                      id="tone"
-                      value={state.tone}
-                      onChange={(e) => {
-                        setState((p) => ({ ...p, tone: e.target.value }));
-                        setSaved(false);
-                      }}
-                      className="rounded-lg border border-border bg-background px-3 py-2 font-body text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                    >
-                      {TONE_OPTIONS.map((t) => (
-                        <option key={t.value} value={t.value}>
-                          {t.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label
-                      htmlFor="reply_language"
-                      className="font-body text-sm font-medium text-foreground"
-                    >
-                      Reply language
-                    </label>
-                    <select
-                      id="reply_language"
-                      value={state.reply_language}
-                      onChange={(e) => {
-                        setState((p) => ({
-                          ...p,
-                          reply_language: e.target.value,
-                        }));
-                        setSaved(false);
-                      }}
-                      className="rounded-lg border border-border bg-background px-3 py-2 font-body text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                    >
-                      {LANGUAGE_OPTIONS.map((l) => (
-                        <option key={l.value} value={l.value}>
-                          {l.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="overflow-hidden rounded-2xl border border-border bg-card p-6">
-                <h2 className="mb-2 font-heading text-base font-semibold text-foreground">
-                  Custom rules
-                </h2>
-                <p className="mb-3 font-body text-xs text-secondary-text">
-                  Anything else the AI should always follow, in plain English.
-                </p>
-                <textarea
-                  rows={4}
-                  value={state.custom_rules ?? ""}
-                  onChange={(e) => {
-                    setState((p) => ({ ...p, custom_rules: e.target.value }));
-                    setSaved(false);
-                  }}
-                  placeholder="e.g. Always mention we're closed on Fridays."
-                  className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2.5 font-body text-sm text-foreground placeholder:text-secondary-text focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {error && (
-          <p role="alert" className="font-body text-sm text-error">
-            {error}
-          </p>
-        )}
-
-        {showOwnSaveButton && (
-          <div className="flex items-center gap-3">
-            <Button onClick={handleSave} disabled={isPending}>
-              {isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
-              Save changes
-            </Button>
-            {saved && !isPending && (
-              <span className="font-body text-sm text-success">Saved.</span>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="h-fit rounded-2xl border border-border bg-card p-6 lg:sticky lg:top-6">
-        <h2 className="mb-3 font-heading text-sm font-semibold uppercase tracking-wide text-secondary-text">
-          Here&apos;s what your AI will be told
-        </h2>
-        <p className="mb-3 font-body text-xs text-secondary-text">
-          Plain-English instructions your agent follows, based on your settings
-          above.
-        </p>
-        <pre className="whitespace-pre-wrap rounded-lg bg-background p-4 font-mono text-xs leading-relaxed text-foreground">
-          {preview}
-        </pre>
-      </div>
-    </div>
-  );
-});
-</file>
-
-<file path="app/(platform-client)/dashboard/knowledge-base/page.tsx">
-import { createClient } from "@/lib/supabase/server";
-import { KnowledgeBaseClient } from "./KnowledgeBaseClient";
-import { getCurrentOrg } from "@/lib/auth/current-org";
-
-export default async function KnowledgeBasePage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const orgResult = await getCurrentOrg(supabase, user?.id ?? "");
-  const membership = orgResult
-    ? { organization_id: orgResult.active.organizationId }
-    : null;
-
-  let agentId: string | null = null;
-  let documents: {
-    id: string;
-    title: string;
-    status: string;
-    source_type: string;
-    source_url: string | null;
-    created_at: string;
-    updated_at: string;
-    last_refreshed_at: string | null;
-    error_message: string | null;
-    raw_content: string | null;
-    chunkCount: number;
-  }[] = [];
-
-  if (membership) {
-    const { data: agent } = await supabase
-      .from("agents")
-      .select("id")
-      .eq("organization_id", membership.organization_id)
-      .eq("is_active", true)
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-
-    agentId = agent?.id ?? null;
-
-    if (agentId) {
-      const { data: docs } = await supabase
-        .from("knowledge_base_documents")
-        .select(
-          "id, title, status, source_type, source_url, created_at, updated_at, last_refreshed_at, error_message, raw_content",
-        )
-        .eq("agent_id", agentId)
-        .order("updated_at", { ascending: false });
-
-      // Client-side scale is small enough (typical small-business KB) that
-      // one extra query for chunk counts, reduced in JS, beats N+1 queries
-      // per document.
-      const { data: chunks } = await supabase
-        .from("knowledge_base_chunks")
-        .select("document_id")
-        .eq("agent_id", agentId);
-
-      const chunkCounts = new Map<string, number>();
-      for (const c of chunks ?? []) {
-        chunkCounts.set(
-          c.document_id,
-          (chunkCounts.get(c.document_id) ?? 0) + 1,
-        );
-      }
-
-      documents = (docs ?? []).map((d) => ({
-        ...d,
-        chunkCount: chunkCounts.get(d.id) ?? 0,
-      }));
-    }
+    return {
+      error: null,
+      data: { url, title: structured.title, content: structured.content },
+    };
+  } catch {
+    // AI structuring failed (model outage, page too thin, etc.) — fall
+    // back to the raw scrape so one flaky page doesn't block the whole
+    // batch. The user still reviews and can edit it before saving.
+    return {
+      error: null,
+      data: { url, title: scraped.title, content: scraped.text.slice(0, 8000) },
+    };
   }
-
-  return (
-    <div className="mx-auto flex h-[calc(100dvh-7.5rem)] w-full max-w-6xl flex-col md:h-[calc(100dvh-5rem)]">
-      <div className="mb-4 flex-none">
-        <h1 className="font-heading text-2xl font-bold text-foreground">
-          Knowledge Base
-        </h1>
-        <p className="mt-2 font-body text-sm text-secondary-text">
-          Add the facts your AI agent should answer from — FAQs, policies,
-          pricing, hours. The embedded widget only ever answers from what&apos;s
-          here.
-        </p>
-      </div>
-
-      {!agentId ? (
-        <div className="rounded-2xl border border-dashed border-border bg-card/50 px-8 py-16 text-center">
-          <p className="font-body text-sm text-secondary-text">
-            No active agent found for your organization yet.
-          </p>
-        </div>
-      ) : (
-        <div className="min-h-0 flex-1">
-          <KnowledgeBaseClient documents={documents} />
-        </div>
-      )}
-    </div>
-  );
-}
-</file>
-
-<file path="app/(platform-client)/dashboard/onboarding/page.tsx">
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { OnboardingWizard } from "./OnboardingWizard";
-import { AGENT_TEMPLATES } from "@/lib/agents/templates";
-import type { GuardrailToggles } from "@/lib/agents/build-system-prompt";
-import { getCurrentOrg } from "@/lib/auth/current-org";
-
-interface LeadCaptureSettings {
-  ask_name: boolean;
-  ask_email: boolean;
-  ask_phone: boolean;
-  ask_message: boolean;
 }
 
-export default async function OnboardingPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ step?: string }>;
+export async function confirmAddScrapedPage(input: {
+  url: string;
+  title: string;
+  content: string;
 }) {
-  const { step: stepOverride } = await searchParams;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const orgResult = user ? await getCurrentOrg(supabase, user.id) : null;
-  const membership = orgResult
-    ? { organization_id: orgResult.active.organizationId }
-    : null;
-
-  const { data: orgRow } = orgResult
-    ? await supabase
-        .from("organizations")
-        .select(
-          "name, primary_color, accent_color, welcome_message, logo_url, widget_position",
-        )
-        .eq("id", orgResult.active.organizationId)
-        .maybeSingle()
-    : { data: null };
-
-  let agentId: string | null = null;
-  let agentName = "";
-  let publicKey: string | null = null;
-  let initialStep = 0;
-  let alreadyLive = false;
-  let guardrails: GuardrailToggles | null = null;
-  let leadCaptureSettings: LeadCaptureSettings | null = null;
-  let documents: {
-    id: string;
-    title: string;
-    status: string;
-    source_type: string;
-    source_url: string | null;
-    created_at: string;
-    updated_at: string;
-    last_refreshed_at: string | null;
-    error_message: string | null;
-    raw_content: string | null;
-    chunkCount: number;
-  }[] = [];
-
-  if (membership) {
-    const { data: agent } = await supabase
-      .from("agents")
-      .select(
-        "id, name, setup_complete, onboarding_step, embed_keys(public_key)",
-      )
-      .eq("organization_id", membership.organization_id)
-      .eq("is_active", true)
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-
-    agentId = agent?.id ?? null;
-    agentName = agent?.name ?? "";
-    initialStep = Math.min(Math.max(agent?.onboarding_step ?? 0, 0), 4);
-
-    // Deep-link support — e.g. the Overview checklist's "Set up
-    // guardrails and tone" links here with ?step=2. Only ever honored
-    // if the user has genuinely reached that step or further — never
-    // skips them ahead of steps they haven't actually done, which
-    // would show earlier steps as falsely "completed" (checkmarked)
-    // in the progress bar. A user who's behind gets sent to their
-    // real current step instead; they'll reach Behavior naturally.
-    const parsedStep = Number(stepOverride);
-    if (Number.isInteger(parsedStep) && parsedStep >= 0 && parsedStep <= 4) {
-      initialStep = Math.min(parsedStep, initialStep);
-    }
-    alreadyLive = agent?.setup_complete ?? false;
-    const keys = agent?.embed_keys as { public_key: string }[] | undefined;
-    publicKey = keys?.[0]?.public_key ?? null;
-
-    if (agentId) {
-      const { data: gr } = await supabase
-        .from("agent_guardrails")
-        .select(
-          "no_competitors, stay_on_topic, no_pricing, always_polite, no_opinions, push_contact, no_refund_promise, capture_leads, custom_rules, tone, reply_language, lead_capture_settings",
-        )
-        .eq("agent_id", agentId)
-        .maybeSingle();
-      guardrails = gr ?? null;
-      leadCaptureSettings =
-        (gr?.lead_capture_settings as LeadCaptureSettings) ?? null;
-
-      const { data: docs } = await supabase
-        .from("knowledge_base_documents")
-        .select(
-          "id, title, status, source_type, source_url, created_at, updated_at, last_refreshed_at, error_message, raw_content",
-        )
-        .eq("agent_id", agentId)
-        .order("updated_at", { ascending: false });
-
-      const { data: chunks } = await supabase
-        .from("knowledge_base_chunks")
-        .select("document_id")
-        .eq("agent_id", agentId);
-
-      const chunkCounts = new Map<string, number>();
-      for (const c of chunks ?? []) {
-        chunkCounts.set(
-          c.document_id,
-          (chunkCounts.get(c.document_id) ?? 0) + 1,
-        );
-      }
-
-      documents = (docs ?? []).map((d) => ({
-        ...d,
-        chunkCount: chunkCounts.get(d.id) ?? 0,
-      }));
-    }
+  const title = input.title.trim();
+  const content = input.content.trim();
+  if (!title) return { error: "This page needs a title." };
+  if (!content || content.length < 20) {
+    return { error: "This page's content looks too short to save." };
   }
 
-  const org = orgRow as {
-    name: string;
-    primary_color: string;
-    accent_color: string;
-    welcome_message: string;
-    logo_url: string | null;
-    widget_position: string;
-  } | null;
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent) return { error: "No active agent found for your organization." };
 
-  return (
-    <div>
-      <h1 className="font-heading text-2xl font-bold text-foreground">
-        Get set up
-      </h1>
-      <p className="mt-2 font-body text-sm text-secondary-text">
-        Five quick steps — you&apos;ll see your live widget the whole way
-        through.
-      </p>
-      <div className="mt-8">
-        <OnboardingWizard
-          org={org}
-          agentId={agentId}
-          agentName={agentName}
-          publicKey={publicKey}
-          templates={AGENT_TEMPLATES}
-          initialStep={initialStep}
-          guardrails={guardrails}
-          leadCaptureSettings={leadCaptureSettings}
-          documents={documents}
-        />
-      </div>
-    </div>
+  const supabase = await createClient();
+  const { data: doc, error: insertError } = await supabase
+    .from("knowledge_base_documents")
+    .insert({
+      agent_id: agent.id,
+      organization_id: agent.organization_id,
+      source_type: "url",
+      source_url: input.url,
+      title,
+      raw_content: content,
+      status: "processing",
+      last_refreshed_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !doc) {
+    return { error: insertError?.message ?? `Failed to save ${input.url}.` };
+  }
+
+  try {
+    await ingestDocument(doc.id);
+  } catch (err) {
+    console.error("[knowledge-base] url ingestion failed:", err);
+    revalidatePath("/dashboard/knowledge-base");
+    revalidatePath("/dashboard/onboarding");
+    return { error: `Saved ${input.url}, but processing failed.` };
+  }
+
+  revalidatePath("/dashboard/knowledge-base");
+  revalidatePath("/dashboard/onboarding");
+  return { error: null };
+}
+
+export async function refreshKnowledgeBaseUrlDocument(documentId: string) {
+  const supabase = await createClient();
+
+  const { data: doc } = await supabase
+    .from("knowledge_base_documents")
+    .select("id, source_url, source_type")
+    .eq("id", documentId)
+    .maybeSingle();
+
+  if (!doc || doc.source_type !== "url" || !doc.source_url) {
+    return { error: "This document has no source URL to refresh from." };
+  }
+
+  let scraped: Awaited<ReturnType<typeof scrapePage>>;
+  try {
+    scraped = await scrapePage(doc.source_url);
+  } catch (err) {
+    return {
+      error:
+        err instanceof Error
+          ? err.message
+          : "We couldn't re-scan that page — try again in a moment.",
+    };
+  }
+
+  await supabase
+    .from("knowledge_base_documents")
+    .update({
+      title: scraped.title,
+      raw_content: scraped.text,
+      status: "processing",
+      error_message: null,
+      last_refreshed_at: new Date().toISOString(),
+    })
+    .eq("id", documentId);
+
+  try {
+    await ingestDocument(documentId);
+  } catch (err) {
+    console.error("[knowledge-base] refresh failed:", err);
+    revalidatePath("/dashboard/knowledge-base");
+    revalidatePath("/dashboard/onboarding");
+    return {
+      error:
+        "We refreshed it, but couldn't reprocess it yet — check the status badge below.",
+    };
+  }
+
+  revalidatePath("/dashboard/knowledge-base");
+  revalidatePath("/dashboard/onboarding");
+  return { error: null };
+}
+
+// ============================================================
+// PDF upload (Prompt 11)
+// ============================================================
+
+export async function createPdfUploadUrl(fileName: string) {
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent) {
+    return {
+      error: "No active agent found for your organization.",
+      data: null,
+    };
+  }
+
+  const safeName = fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+  const path = `${agent.organization_id}/${Date.now()}-${safeName}`;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.storage
+    .from("knowledge-base-pdfs")
+    .createSignedUploadUrl(path);
+
+  if (error || !data) {
+    return {
+      error:
+        error?.message ??
+        "We couldn't start the upload — try again in a moment.",
+      data: null,
+    };
+  }
+
+  return {
+    error: null,
+    data: { path, token: data.token, signedUrl: data.signedUrl },
+  };
+}
+
+export async function ingestUploadedPdf(storagePath: string, fileName: string) {
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent) return { error: "No active agent found for your organization." };
+
+  if (!storagePath.startsWith(`${agent.organization_id}/`)) {
+    return { error: "This file does not belong to your organization." };
+  }
+
+  const admin = createAdminClient();
+  const { data: file, error: downloadError } = await admin.storage
+    .from("knowledge-base-pdfs")
+    .download(storagePath);
+
+  if (downloadError || !file) {
+    return {
+      error:
+        downloadError?.message ??
+        "We couldn't read that file — try uploading it again.",
+    };
+  }
+
+  const buffer = await file.arrayBuffer();
+
+  let extraction: Awaited<ReturnType<typeof extractPdfText>>;
+  try {
+    extraction = await extractPdfText(buffer);
+  } catch {
+    return {
+      error:
+        "Could not read this PDF — it may be corrupted or in an unsupported format.",
+    };
+  }
+
+  const supabase = await createClient();
+
+  if (extraction.looksScanned) {
+    await supabase.from("knowledge_base_documents").insert({
+      agent_id: agent.id,
+      organization_id: agent.organization_id,
+      source_type: "pdf",
+      title: fileName,
+      raw_content: extraction.text || null,
+      status: "error",
+      error_message:
+        "This PDF appears to be a scanned image with no selectable text — try re-exporting it as a text-based PDF, or paste the content manually.",
+    });
+    revalidatePath("/dashboard/knowledge-base");
+    revalidatePath("/dashboard/onboarding");
+    return { error: null };
+  }
+
+  const { data: doc, error: insertError } = await supabase
+    .from("knowledge_base_documents")
+    .insert({
+      agent_id: agent.id,
+      organization_id: agent.organization_id,
+      source_type: "pdf",
+      title: fileName,
+      raw_content: extraction.text,
+      status: "processing",
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !doc) {
+    return {
+      error:
+        insertError?.message ??
+        "We couldn't save that — try again in a moment.",
+    };
+  }
+
+  try {
+    await ingestDocument(doc.id);
+  } catch (err) {
+    console.error("[knowledge-base] pdf ingestion failed:", err);
+    revalidatePath("/dashboard/knowledge-base");
+    revalidatePath("/dashboard/onboarding");
+    return {
+      error:
+        "We saved it, but couldn't process it yet — check the status badge below.",
+    };
+  }
+
+  revalidatePath("/dashboard/knowledge-base");
+  revalidatePath("/dashboard/onboarding");
+  return { error: null };
+}
+
+// ============================================================
+// PDF upload → extract → AI-structure → review before saving.
+// Mirrors the website scan flow: extractPdfForPreview() does the
+// extraction + structuring with no DB write, confirmAddPdfDocument()
+// is the only function that saves. ingestUploadedPdf() above is left
+// in place but unused by the client now — same low-risk pattern as
+// scrapeAndIngestUrl().
+// ============================================================
+
+export async function extractPdfForPreview(
+  storagePath: string,
+  fileName: string,
+) {
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent) {
+    return {
+      error: "No active agent found for your organization.",
+      data: null,
+    };
+  }
+
+  if (!storagePath.startsWith(`${agent.organization_id}/`)) {
+    return {
+      error: "This file does not belong to your organization.",
+      data: null,
+    };
+  }
+
+  const admin = createAdminClient();
+  const { data: file, error: downloadError } = await admin.storage
+    .from("knowledge-base-pdfs")
+    .download(storagePath);
+
+  if (downloadError || !file) {
+    return {
+      error:
+        downloadError?.message ??
+        "We couldn't read that file — try uploading it again.",
+      data: null,
+    };
+  }
+
+  const buffer = await file.arrayBuffer();
+
+  let extraction: Awaited<ReturnType<typeof extractPdfText>>;
+  try {
+    extraction = await extractPdfText(buffer);
+  } catch {
+    return {
+      error:
+        "Could not read this PDF — it may be corrupted or in an unsupported format.",
+      data: null,
+    };
+  }
+
+  if (extraction.looksScanned) {
+    return {
+      error:
+        "This PDF appears to be a scanned image with no selectable text — try re-exporting it as a text-based PDF, or paste the content manually.",
+      data: null,
+    };
+  }
+
+  try {
+    const structured = await structureScrapedContent({
+      source: fileName,
+      title: fileName,
+      rawText: extraction.text,
+    });
+    return {
+      error: null,
+      data: {
+        storagePath,
+        title: structured.title,
+        content: structured.content,
+      },
+    };
+  } catch {
+    return {
+      error: null,
+      data: {
+        storagePath,
+        title: fileName,
+        content: extraction.text.slice(0, 8000),
+      },
+    };
+  }
+}
+
+export async function confirmAddPdfDocument(input: {
+  storagePath: string;
+  title: string;
+  content: string;
+}) {
+  const title = input.title.trim();
+  const content = input.content.trim();
+  if (!title) return { error: "This document needs a title." };
+  if (!content || content.length < 20) {
+    return { error: "This document's content looks too short to save." };
+  }
+
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent) return { error: "No active agent found for your organization." };
+
+  if (!input.storagePath.startsWith(`${agent.organization_id}/`)) {
+    return { error: "This file does not belong to your organization." };
+  }
+
+  const supabase = await createClient();
+  const { data: doc, error: insertError } = await supabase
+    .from("knowledge_base_documents")
+    .insert({
+      agent_id: agent.id,
+      organization_id: agent.organization_id,
+      source_type: "pdf",
+      title,
+      raw_content: content,
+      status: "processing",
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !doc) {
+    return {
+      error:
+        insertError?.message ??
+        "We couldn't save that — try again in a moment.",
+    };
+  }
+
+  try {
+    await ingestDocument(doc.id);
+  } catch (err) {
+    console.error("[knowledge-base] pdf ingestion failed:", err);
+    revalidatePath("/dashboard/knowledge-base");
+    revalidatePath("/dashboard/onboarding");
+    return { error: "Saved, but processing failed." };
+  }
+
+  revalidatePath("/dashboard/knowledge-base");
+  revalidatePath("/dashboard/onboarding");
+  return { error: null };
+}
+
+// ============================================================
+// Manual "Text" tab — optional AI cleanup before saving. Unlike the
+// website/PDF flows, saving here is still a separate explicit action
+// (addKnowledgeBaseDocument, unchanged) — this just lets the user
+// polish their own writing first if they want to.
+// ============================================================
+
+export async function cleanUpTextWithAi(input: {
+  title: string;
+  rawContent: string;
+}) {
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent)
+    return {
+      error: "No active agent found for your organization.",
+      data: null,
+    };
+
+  const title = input.title.trim() || "Untitled";
+  const rawContent = input.rawContent.trim();
+  if (!rawContent || rawContent.length < 20) {
+    return {
+      error: "Write a bit more content first — at least a couple of sentences.",
+      data: null,
+    };
+  }
+
+  try {
+    const structured = await structureScrapedContent({
+      source: title,
+      title,
+      rawText: rawContent,
+    });
+    return { error: null, data: { content: structured.content } };
+  } catch (err) {
+    return {
+      error:
+        err instanceof Error
+          ? err.message
+          : "Couldn't clean this up — try again.",
+      data: null,
+    };
+  }
+}
+
+export async function deleteKnowledgeBaseDocument(documentId: string) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("knowledge_base_documents")
+    .delete()
+    .eq("id", documentId);
+
+  revalidatePath("/dashboard/knowledge-base");
+  revalidatePath("/dashboard/onboarding");
+  return { error: error?.message ?? null };
+}
+
+export async function reindexKnowledgeBaseDocument(documentId: string) {
+  const supabase = await createClient();
+
+  const { data: doc } = await supabase
+    .from("knowledge_base_documents")
+    .select("id")
+    .eq("id", documentId)
+    .maybeSingle();
+
+  if (!doc) {
+    return { error: "Document not found." };
+  }
+
+  await supabase
+    .from("knowledge_base_documents")
+    .update({ status: "processing", error_message: null })
+    .eq("id", documentId);
+
+  try {
+    await ingestDocument(documentId);
+  } catch (err) {
+    console.error("[knowledge-base] re-index failed:", err);
+    revalidatePath("/dashboard/knowledge-base");
+    revalidatePath("/dashboard/onboarding");
+    return { error: "Re-index failed — see the status badge below." };
+  }
+
+  revalidatePath("/dashboard/knowledge-base");
+  revalidatePath("/dashboard/onboarding");
+  return { error: null };
+}
+
+// ============================================================
+// Inline edit (Prompt 18)
+// ============================================================
+
+export async function updateKnowledgeBaseDocument(
+  documentId: string,
+  rawContent: string,
+) {
+  const trimmed = rawContent.trim();
+  if (!trimmed || trimmed.length < 20) {
+    return { error: "Add a bit more detail — at least a few sentences." };
+  }
+
+  const supabase = await createClient();
+
+  const { data: doc } = await supabase
+    .from("knowledge_base_documents")
+    .select("id")
+    .eq("id", documentId)
+    .maybeSingle();
+
+  if (!doc) return { error: "Document not found." };
+
+  await supabase
+    .from("knowledge_base_documents")
+    .update({
+      raw_content: trimmed,
+      status: "processing",
+      error_message: null,
+    })
+    .eq("id", documentId);
+
+  try {
+    await ingestDocument(documentId);
+  } catch (err) {
+    console.error("[knowledge-base] edit re-ingest failed:", err);
+    revalidatePath("/dashboard/knowledge-base");
+    revalidatePath("/dashboard/onboarding");
+    return {
+      error:
+        "We saved your edit, but couldn't reprocess it yet — check the status badge below.",
+    };
+  }
+
+  revalidatePath("/dashboard/knowledge-base");
+  return { error: null };
+}
+
+// ============================================================
+// "Test what your agent knows" — same retrieval path the live
+// widget uses (match_knowledge_base_chunks), surfaced for the
+// dashboard owner instead of an end visitor.
+// ============================================================
+
+// Below this, a match is closer to "any two unrelated sentences of
+// English" than to a genuine answer — MiniLM cosine similarity for a
+// truly relevant chunk is typically 0.4+, while unrelated content still
+// floats around 0.15-0.3 from shared common words alone. Without this
+// floor, short/generic queries (e.g. "hi") always returned 5 confident-
+// looking results regardless of relevance, which made the tool actively
+// misleading rather than just imprecise. Tune down if it starts cutting
+// legitimate matches for your content.
+const MIN_CONFIDENT_SIMILARITY = 0.35;
+
+export async function testKnowledgeBaseQuery(query: string) {
+  const trimmed = query.trim();
+  if (!trimmed) return { error: "Type a question first.", matches: [] };
+
+  const agent = await getActiveAgentForCurrentUser();
+  if (!agent) {
+    return {
+      error: "No active agent found for your organization.",
+      matches: [],
+    };
+  }
+
+  const supabase = await createClient();
+
+  let queryEmbedding: number[];
+  try {
+    queryEmbedding = await embedText(trimmed);
+  } catch {
+    return {
+      error: "We couldn't test that question — try again in a moment.",
+      matches: [],
+    };
+  }
+
+  const { data: matchRows, error: matchError } = await supabase.rpc(
+    "match_knowledge_base_chunks",
+    {
+      query_embedding: queryEmbedding,
+      target_agent_id: agent.id,
+      match_count: 5,
+    },
   );
+
+  if (matchError) {
+    return { error: matchError.message, matches: [] };
+  }
+
+  // match_knowledge_base_chunks already computes similarity — it was
+  // being fetched and immediately discarded. Filtering on it here is
+  // what turns "top 5 nearest, however irrelevant" into "the matches
+  // we'd actually trust the agent to answer from".
+  const confidentRows = (
+    (matchRows ?? []) as { id: string; content: string; similarity: number }[]
+  ).filter((m) => m.similarity >= MIN_CONFIDENT_SIMILARITY);
+
+  if (confidentRows.length === 0) return { error: null, matches: [] };
+
+  const chunkIds = confidentRows.map((m) => m.id);
+
+  const { data: chunkRows } = await supabase
+    .from("knowledge_base_chunks")
+    .select("id, document_id")
+    .in("id", chunkIds);
+
+  const chunkToDoc = new Map(
+    (chunkRows ?? []).map((c) => [c.id, c.document_id]),
+  );
+  const docIds = Array.from(new Set(chunkToDoc.values()));
+
+  const { data: docs } = await supabase
+    .from("knowledge_base_documents")
+    .select("id, title, source_type")
+    .in("id", docIds);
+
+  const docMap = new Map((docs ?? []).map((d) => [d.id, d]));
+
+  const seen = new Set<string>();
+  const matches: {
+    documentId: string;
+    title: string;
+    sourceType: string;
+    snippet: string;
+    similarity: number;
+  }[] = [];
+
+  for (const m of confidentRows) {
+    const docId = chunkToDoc.get(m.id);
+    if (!docId || seen.has(docId)) continue;
+    seen.add(docId);
+    const doc = docMap.get(docId);
+    matches.push({
+      documentId: docId,
+      title: doc?.title ?? "Untitled",
+      sourceType: doc?.source_type ?? "manual_text",
+      snippet:
+        m.content.length > 160 ? `${m.content.slice(0, 160)}…` : m.content,
+      similarity: m.similarity,
+    });
+  }
+
+  return { error: null, matches };
 }
 </file>
 
@@ -30256,63 +29801,805 @@ CHANNEL_TOKEN_ENCRYPTION_KEY=
 # issues by default)
 </file>
 
-<file path="config/site.ts">
-import { buildWhatsAppLink } from "@/config/contact";
-import { Layers, Bot, Briefcase, Users, Newspaper, Mail } from "lucide-react";
+<file path="app/(platform-client)/dashboard/agent/guardrails/GuardrailsClient.tsx">
+"use client";
 
-export const siteConfig = {
-  name: "MBR Studio",
-  title: "MBR Studio — Digital products, built to grow your business.",
-  founder: "Muaaz Bin Riaz",
-  tagline: "Digital products, built to grow your business.",
-  description:
-    "MBR Studio is a premium software agency building websites, AI-powered automation, and digital products for growing businesses.",
-  url: "https://mbrstudio.co",
-  ogImage: "/opengraph-image",
-  email: "mbrstudio.dev@gmail.com",
-  // Added fields for the chat route
-  consultationUrl: "https://cal.com/muaaz-riaz-itdnod/consultation",
+import {
+  forwardRef,
+  useImperativeHandle,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
+import { Loader2, Save, Check } from "lucide-react";
 
-  contactEmail: "mbrstudio.dev@gmail.com",
-  links: {
-    twitter: "https://twitter.com/mbrstudio",
-    linkedin: "https://www.linkedin.com/in/muaaz-bin-riaz-92b395298/",
-    github: "https://github.com/muaazbinriaz",
-  },
-} as const;
+import {
+  buildGuardrailInstructions,
+  type GuardrailToggles,
+} from "@/lib/agents/build-system-prompt";
+import { saveGuardrails } from "./actions";
+import { Button } from "@/components/ui/button";
 
-export const navLinks = [
-  { label: "Services", href: "/services", icon: Layers },
-  { label: "AI Agent", href: "/ai-agent", icon: Bot },
-  { label: "Portfolio", href: "/portfolio", icon: Briefcase },
-  { label: "About", href: "/about", icon: Users },
-  { label: "Blog", href: "/blog", icon: Newspaper },
-  { label: "Contact", href: "/contact", icon: Mail },
+const TONE_OPTIONS = [
+  { value: "professional", label: "Professional" },
+  { value: "friendly", label: "Friendly" },
+  { value: "formal", label: "Formal" },
+  { value: "casual", label: "Casual" },
+  { value: "fun", label: "Fun" },
+  { value: "concise", label: "Concise" },
 ] as const;
 
-export const primaryCta = {
-  label: "Book a Consultation",
-  href: siteConfig.consultationUrl,
-} as const;
+const LANGUAGE_OPTIONS = [
+  { value: "auto", label: "Match visitor's language" },
+  { value: "English", label: "Always English" },
+  { value: "Urdu", label: "Always Urdu" },
+  { value: "Arabic", label: "Always Arabic" },
+] as const;
 
-export const secondaryCta = {
-  label: "Start Free Trial",
-  href: "/signup",
-} as const;
+const PRESETS: {
+  id: string;
+  label: string;
+  description: string;
+  values: Partial<GuardrailToggles>;
+}[] = [
+  {
+    id: "strict",
+    label: "Strict & Professional",
+    description:
+      "Formal tone, no opinions, always pushes to contact for anything tricky.",
+    values: {
+      tone: "professional",
+      stay_on_topic: true,
+      no_competitors: true,
+      no_pricing: true,
+      no_refund_promise: true,
+      no_opinions: true,
+      always_polite: true,
+      push_contact: true,
+      capture_leads: true,
+    },
+  },
+  {
+    id: "friendly",
+    label: "Friendly & Casual",
+    description:
+      "Warm, casual tone, more relaxed about staying strictly on-topic.",
+    values: {
+      tone: "friendly",
+      stay_on_topic: false,
+      no_competitors: true,
+      no_pricing: false,
+      no_refund_promise: true,
+      no_opinions: false,
+      always_polite: true,
+      push_contact: false,
+      capture_leads: true,
+    },
+  },
+  {
+    id: "balanced",
+    label: "Balanced",
+    description: "A safe middle ground — professional but approachable.",
+    values: {
+      tone: "professional",
+      stay_on_topic: true,
+      no_competitors: true,
+      no_pricing: true,
+      no_refund_promise: true,
+      no_opinions: true,
+      always_polite: true,
+      push_contact: false,
+      capture_leads: true,
+    },
+  },
+];
 
-/**
- * Delegates to config/contact.ts's buildWhatsAppLink() — that file is
- * the single source of truth for the WhatsApp number (WHATSAPP_DIGITS /
- * WHATSAPP_DISPLAY). This used to hardcode a second literal number here,
- * which risked the contact page and the AI chatbot handoff pointing at
- * two different numbers if only one was ever updated.
- *
- * Passes an empty message override so the chatbot's handoff link keeps
- * its previous behavior (no pre-filled WhatsApp message) rather than
- * picking up buildWhatsAppLink()'s default qualification message.
- */
-export function getWhatsappLink(): string {
-  return buildWhatsAppLink("");
+const TOGGLE_DEFS: {
+  key: keyof GuardrailToggles;
+  label: string;
+  description: string;
+}[] = [
+  {
+    key: "stay_on_topic",
+    label: "Stay on topic",
+    description:
+      "Decline unrelated questions and redirect back to the business.",
+  },
+  {
+    key: "no_competitors",
+    label: "No competitor mentions",
+    description: "Never mention or recommend competing businesses.",
+  },
+  {
+    key: "no_pricing",
+    label: "No pricing",
+    description:
+      "Never state specific prices, even if they're in the knowledge base.",
+  },
+  {
+    key: "no_refund_promise",
+    label: "No refund promises",
+    description: "Never commit to a refund, return, or binding policy.",
+  },
+  {
+    key: "no_opinions",
+    label: "No personal opinions",
+    description: "Stick to facts, never share subjective opinions.",
+  },
+  {
+    key: "always_polite",
+    label: "Always polite",
+    description: "Stay calm and courteous even if the visitor is rude.",
+  },
+  {
+    key: "push_contact",
+    label: "Push to contact",
+    description:
+      "Encourage visitors to reach out directly for anything non-trivial.",
+  },
+  {
+    key: "capture_leads",
+    label: "Capture leads",
+    description: "When the AI can't answer, show a quick contact-info form.",
+  },
+];
+
+interface LeadCaptureSettings {
+  ask_name: boolean;
+  ask_email: boolean;
+  ask_phone: boolean;
+  ask_message: boolean;
+}
+
+const DEFAULT_LEAD_SETTINGS: LeadCaptureSettings = {
+  ask_name: true,
+  ask_email: true,
+  ask_phone: false,
+  ask_message: false,
+};
+
+const LEAD_FIELD_DEFS: { key: keyof LeadCaptureSettings; label: string }[] = [
+  { key: "ask_name", label: "Ask for name" },
+  { key: "ask_email", label: "Ask for email" },
+  { key: "ask_phone", label: "Ask for phone" },
+  { key: "ask_message", label: "Ask for a message" },
+];
+
+type GuardrailsRow = GuardrailToggles | null;
+
+export interface GuardrailsClientHandle {
+  /** Saves the current form state. Returns an error message on failure,
+   * or null on success — lets the Setup Wizard's "Next" button save
+   * guardrails itself, the same way it already does for every other
+   * step, instead of relying on a separate, easy-to-miss button. */
+  save: () => Promise<string | null>;
+}
+
+export const GuardrailsClient = forwardRef<
+  GuardrailsClientHandle,
+  {
+    guardrails: GuardrailsRow;
+    leadCaptureSettings: LeadCaptureSettings | null;
+    orgName: string;
+    /** False when embedded in the Setup Wizard — there, the wizard's
+     * own "Next" button drives saving, so this component's own Save
+     * button would just be a second, confusing way to do the same
+     * thing. Defaults to true for the standalone guardrails page. */
+    showOwnSaveButton?: boolean;
+  }
+>(function GuardrailsClient(
+  { guardrails, leadCaptureSettings, orgName, showOwnSaveButton = true },
+  ref,
+) {
+  const [state, setState] = useState<GuardrailToggles>(() => ({
+    no_competitors: guardrails?.no_competitors ?? false,
+    stay_on_topic: guardrails?.stay_on_topic ?? true,
+    no_pricing: guardrails?.no_pricing ?? false,
+    always_polite: guardrails?.always_polite ?? true,
+    no_opinions: guardrails?.no_opinions ?? false,
+    push_contact: guardrails?.push_contact ?? false,
+    no_refund_promise: guardrails?.no_refund_promise ?? false,
+    capture_leads: guardrails?.capture_leads ?? true,
+    custom_rules: guardrails?.custom_rules ?? "",
+    tone: guardrails?.tone ?? "professional",
+    reply_language: guardrails?.reply_language ?? "auto",
+  }));
+
+  const [leadSettings, setLeadSettings] = useState<LeadCaptureSettings>(
+    leadCaptureSettings ?? DEFAULT_LEAD_SETTINGS,
+  );
+
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
+
+  const applyPreset = (presetId: string) => {
+    const preset = PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+    setState((prev) => ({ ...prev, ...preset.values }));
+    setSelectedPreset(presetId);
+    setSaved(false);
+  };
+
+  const preview = useMemo(
+    () => buildGuardrailInstructions(state, orgName),
+    [state, orgName],
+  );
+
+  const toggle = (key: keyof GuardrailToggles) => {
+    setState((prev) => ({ ...prev, [key]: !prev[key] }));
+    setSaved(false);
+  };
+
+  const toggleLeadField = (key: keyof LeadCaptureSettings) => {
+    setLeadSettings((prev) => ({ ...prev, [key]: !prev[key] }));
+    setSaved(false);
+  };
+
+  const persistGuardrails = async (): Promise<string | null> => {
+    setError(null);
+    const formData = new FormData();
+    for (const def of TOGGLE_DEFS) {
+      if (state[def.key]) formData.set(def.key, "on");
+    }
+    formData.set("tone", state.tone);
+    formData.set("reply_language", state.reply_language);
+    formData.set("custom_rules", state.custom_rules ?? "");
+    for (const def of LEAD_FIELD_DEFS) {
+      if (leadSettings[def.key]) formData.set(`lead_${def.key}`, "on");
+    }
+
+    try {
+      const result = await saveGuardrails(formData);
+      if (result?.error) {
+        setError(result.error);
+        return result.error;
+      }
+      setSaved(true);
+      return null;
+    } catch (e) {
+      const message =
+        e instanceof Error
+          ? e.message
+          : "Something went wrong saving your changes — try again.";
+      setError(message);
+      return message;
+    }
+  };
+
+  const handleSave = () => {
+    startTransition(() => {
+      void persistGuardrails();
+    });
+  };
+
+  useImperativeHandle(ref, () => ({
+    save: () =>
+      new Promise<string | null>((resolve) => {
+        startTransition(async () => {
+          resolve(await persistGuardrails());
+        });
+      }),
+  }));
+
+  return (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
+      <div className="flex flex-col gap-6">
+        <div className="overflow-hidden rounded-2xl border border-border bg-card p-6">
+          <h2 className="mb-1 font-heading text-base font-semibold text-foreground">
+            Quick presets
+          </h2>
+          <p className="mb-4 font-body text-xs text-secondary-text">
+            Pick a starting point — you can still fine-tune anything below.
+          </p>
+          <div className="@container">
+            <div className="grid grid-cols-1 gap-3 @sm:grid-cols-3">
+              {PRESETS.map((preset) => {
+                const isSelected = selectedPreset === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => applyPreset(preset.id)}
+                    className={`rounded-xl border p-4 text-left transition-all duration-150 ${
+                      isSelected
+                        ? "border-primary bg-primary/5 shadow-sm ring-1 ring-primary/30"
+                        : "border-border hover:border-primary/50 hover:bg-card"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-body text-sm font-medium leading-snug text-foreground">
+                        {preset.label}
+                      </p>
+                      {isSelected && (
+                        <span className="flex h-4 w-4 flex-none items-center justify-center rounded-full bg-primary text-primary-foreground">
+                          <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 font-body text-xs leading-relaxed text-secondary-text">
+                      {preset.description}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowAdvanced((v) => !v)}
+          className="text-left font-body text-sm font-medium text-primary hover:underline"
+        >
+          {showAdvanced ? "Hide" : "Show"} advanced rules & customization
+        </button>
+
+        <div
+          className="grid transition-[grid-template-rows] duration-300 ease-in-out"
+          style={{ gridTemplateRows: showAdvanced ? "1fr" : "0fr" }}
+        >
+          <div className="overflow-hidden">
+            <div className="flex flex-col gap-6 pt-6">
+              <div className="overflow-hidden rounded-2xl border border-border bg-card p-6">
+                <h2 className="mb-4 font-heading text-base font-semibold text-foreground">
+                  Rules
+                </h2>
+                <div className="flex flex-col divide-y divide-border">
+                  {TOGGLE_DEFS.map((def) => (
+                    <label
+                      key={def.key}
+                      className="flex cursor-pointer items-start justify-between gap-4 py-4 first:pt-0 last:pb-0"
+                    >
+                      <div>
+                        <p className="font-body text-sm font-medium text-foreground">
+                          {def.label}
+                        </p>
+                        <p className="mt-0.5 font-body text-xs text-secondary-text">
+                          {def.description}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={Boolean(state[def.key])}
+                        onClick={() => toggle(def.key)}
+                        className={`relative h-6 w-11 flex-none rounded-full transition-colors duration-200 ${
+                          state[def.key] ? "bg-primary" : "bg-border"
+                        }`}
+                      >
+                        <span
+                          className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${
+                            state[def.key] ? "translate-x-5" : "translate-x-0"
+                          }`}
+                        />
+                      </button>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {state.capture_leads && (
+                <div className="overflow-hidden rounded-2xl border border-border bg-card p-6">
+                  <h2 className="mb-1 font-heading text-base font-semibold text-foreground">
+                    Lead capture form fields
+                  </h2>
+                  <p className="mb-4 font-body text-xs text-secondary-text">
+                    Which fields the widget&apos;s quick contact form asks for.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {LEAD_FIELD_DEFS.map((def) => (
+                      <label
+                        key={def.key}
+                        className="flex cursor-pointer items-center gap-2"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={leadSettings[def.key]}
+                          onChange={() => toggleLeadField(def.key)}
+                          className="h-4 w-4 rounded border-border accent-[var(--color-primary)]"
+                        />
+                        <span className="font-body text-sm text-foreground">
+                          {def.label}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="overflow-hidden rounded-2xl border border-border bg-card p-6">
+                <h2 className="mb-4 font-heading text-base font-semibold text-foreground">
+                  Tone & language
+                </h2>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1.5">
+                    <label
+                      htmlFor="tone"
+                      className="font-body text-sm font-medium text-foreground"
+                    >
+                      Tone
+                    </label>
+                    <select
+                      id="tone"
+                      value={state.tone}
+                      onChange={(e) => {
+                        setState((p) => ({ ...p, tone: e.target.value }));
+                        setSaved(false);
+                      }}
+                      className="rounded-lg border border-border bg-background px-3 py-2 font-body text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    >
+                      {TONE_OPTIONS.map((t) => (
+                        <option key={t.value} value={t.value}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label
+                      htmlFor="reply_language"
+                      className="font-body text-sm font-medium text-foreground"
+                    >
+                      Reply language
+                    </label>
+                    <select
+                      id="reply_language"
+                      value={state.reply_language}
+                      onChange={(e) => {
+                        setState((p) => ({
+                          ...p,
+                          reply_language: e.target.value,
+                        }));
+                        setSaved(false);
+                      }}
+                      className="rounded-lg border border-border bg-background px-3 py-2 font-body text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    >
+                      {LANGUAGE_OPTIONS.map((l) => (
+                        <option key={l.value} value={l.value}>
+                          {l.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="overflow-hidden rounded-2xl border border-border bg-card p-6">
+                <h2 className="mb-2 font-heading text-base font-semibold text-foreground">
+                  Custom rules
+                </h2>
+                <p className="mb-3 font-body text-xs text-secondary-text">
+                  Anything else the AI should always follow, in plain English.
+                </p>
+                <textarea
+                  rows={4}
+                  value={state.custom_rules ?? ""}
+                  onChange={(e) => {
+                    setState((p) => ({ ...p, custom_rules: e.target.value }));
+                    setSaved(false);
+                  }}
+                  placeholder="e.g. Always mention we're closed on Fridays."
+                  className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2.5 font-body text-sm text-foreground placeholder:text-secondary-text focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {error && (
+          <p role="alert" className="font-body text-sm text-error">
+            {error}
+          </p>
+        )}
+
+        {showOwnSaveButton && (
+          <div className="flex items-center gap-3">
+            <Button onClick={handleSave} disabled={isPending}>
+              {isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              Save changes
+            </Button>
+            {saved && !isPending && (
+              <span className="font-body text-sm text-success">Saved.</span>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="h-fit rounded-2xl border border-border bg-card p-6 lg:sticky lg:top-6">
+        <h2 className="mb-3 font-heading text-sm font-semibold uppercase tracking-wide text-secondary-text">
+          Here&apos;s what your AI will be told
+        </h2>
+        <p className="mb-3 font-body text-xs text-secondary-text">
+          Plain-English instructions your agent follows, based on your settings
+          above.
+        </p>
+        <pre className="whitespace-pre-wrap rounded-lg bg-background p-4 font-mono text-xs leading-relaxed text-foreground">
+          {preview}
+        </pre>
+      </div>
+    </div>
+  );
+});
+</file>
+
+<file path="app/(platform-client)/dashboard/knowledge-base/page.tsx">
+import { createClient } from "@/lib/supabase/server";
+import { KnowledgeBaseClient } from "./KnowledgeBaseClient";
+import { getCurrentOrg } from "@/lib/auth/current-org";
+
+export default async function KnowledgeBasePage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const orgResult = await getCurrentOrg(supabase, user?.id ?? "");
+  const membership = orgResult
+    ? { organization_id: orgResult.active.organizationId }
+    : null;
+
+  let agentId: string | null = null;
+  let documents: {
+    id: string;
+    title: string;
+    status: string;
+    source_type: string;
+    source_url: string | null;
+    created_at: string;
+    updated_at: string;
+    last_refreshed_at: string | null;
+    error_message: string | null;
+    raw_content: string | null;
+    chunkCount: number;
+  }[] = [];
+
+  if (membership) {
+    const { data: agent } = await supabase
+      .from("agents")
+      .select("id")
+      .eq("organization_id", membership.organization_id)
+      .eq("is_active", true)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    agentId = agent?.id ?? null;
+
+    if (agentId) {
+      const { data: docs } = await supabase
+        .from("knowledge_base_documents")
+        .select(
+          "id, title, status, source_type, source_url, created_at, updated_at, last_refreshed_at, error_message, raw_content",
+        )
+        .eq("agent_id", agentId)
+        .order("updated_at", { ascending: false });
+
+      // Client-side scale is small enough (typical small-business KB) that
+      // one extra query for chunk counts, reduced in JS, beats N+1 queries
+      // per document.
+      const { data: chunks } = await supabase
+        .from("knowledge_base_chunks")
+        .select("document_id")
+        .eq("agent_id", agentId);
+
+      const chunkCounts = new Map<string, number>();
+      for (const c of chunks ?? []) {
+        chunkCounts.set(
+          c.document_id,
+          (chunkCounts.get(c.document_id) ?? 0) + 1,
+        );
+      }
+
+      documents = (docs ?? []).map((d) => ({
+        ...d,
+        chunkCount: chunkCounts.get(d.id) ?? 0,
+      }));
+    }
+  }
+
+  return (
+    <div className="mx-auto flex h-[calc(100dvh-7.5rem)] w-full max-w-6xl flex-col md:h-[calc(100dvh-5rem)]">
+      <div className="mb-4 flex-none">
+        <h1 className="font-heading text-2xl font-bold text-foreground">
+          Knowledge Base
+        </h1>
+        <p className="mt-2 font-body text-sm text-secondary-text">
+          Add the facts your AI agent should answer from — FAQs, policies,
+          pricing, hours. The embedded widget only ever answers from what&apos;s
+          here.
+        </p>
+      </div>
+
+      {!agentId ? (
+        <div className="rounded-2xl border border-dashed border-border bg-card/50 px-8 py-16 text-center">
+          <p className="font-body text-sm text-secondary-text">
+            No active agent found for your organization yet.
+          </p>
+        </div>
+      ) : (
+        <div className="min-h-0 flex-1">
+          <KnowledgeBaseClient documents={documents} />
+        </div>
+      )}
+    </div>
+  );
+}
+</file>
+
+<file path="app/(platform-client)/dashboard/onboarding/page.tsx">
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { OnboardingWizard } from "./OnboardingWizard";
+import { AGENT_TEMPLATES } from "@/lib/agents/templates";
+import type { GuardrailToggles } from "@/lib/agents/build-system-prompt";
+import { getCurrentOrg } from "@/lib/auth/current-org";
+
+interface LeadCaptureSettings {
+  ask_name: boolean;
+  ask_email: boolean;
+  ask_phone: boolean;
+  ask_message: boolean;
+}
+
+export default async function OnboardingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ step?: string }>;
+}) {
+  const { step: stepOverride } = await searchParams;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const orgResult = user ? await getCurrentOrg(supabase, user.id) : null;
+  const membership = orgResult
+    ? { organization_id: orgResult.active.organizationId }
+    : null;
+
+  const { data: orgRow } = orgResult
+    ? await supabase
+        .from("organizations")
+        .select(
+          "name, primary_color, accent_color, welcome_message, logo_url, widget_position",
+        )
+        .eq("id", orgResult.active.organizationId)
+        .maybeSingle()
+    : { data: null };
+
+  let agentId: string | null = null;
+  let agentName = "";
+  let publicKey: string | null = null;
+  let initialStep = 0;
+  let alreadyLive = false;
+  let guardrails: GuardrailToggles | null = null;
+  let leadCaptureSettings: LeadCaptureSettings | null = null;
+  let documents: {
+    id: string;
+    title: string;
+    status: string;
+    source_type: string;
+    source_url: string | null;
+    created_at: string;
+    updated_at: string;
+    last_refreshed_at: string | null;
+    error_message: string | null;
+    raw_content: string | null;
+    chunkCount: number;
+  }[] = [];
+
+  if (membership) {
+    const { data: agent } = await supabase
+      .from("agents")
+      .select(
+        "id, name, setup_complete, onboarding_step, embed_keys(public_key)",
+      )
+      .eq("organization_id", membership.organization_id)
+      .eq("is_active", true)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    agentId = agent?.id ?? null;
+    agentName = agent?.name ?? "";
+    initialStep = Math.min(Math.max(agent?.onboarding_step ?? 0, 0), 4);
+
+    // Deep-link support — e.g. the Overview checklist's "Set up
+    // guardrails and tone" links here with ?step=2. Only ever honored
+    // if the user has genuinely reached that step or further — never
+    // skips them ahead of steps they haven't actually done, which
+    // would show earlier steps as falsely "completed" (checkmarked)
+    // in the progress bar. A user who's behind gets sent to their
+    // real current step instead; they'll reach Behavior naturally.
+    const parsedStep = Number(stepOverride);
+    if (Number.isInteger(parsedStep) && parsedStep >= 0 && parsedStep <= 4) {
+      initialStep = Math.min(parsedStep, initialStep);
+    }
+    alreadyLive = agent?.setup_complete ?? false;
+    const keys = agent?.embed_keys as { public_key: string }[] | undefined;
+    publicKey = keys?.[0]?.public_key ?? null;
+
+    if (agentId) {
+      const { data: gr } = await supabase
+        .from("agent_guardrails")
+        .select(
+          "no_competitors, stay_on_topic, no_pricing, always_polite, no_opinions, push_contact, no_refund_promise, capture_leads, custom_rules, tone, reply_language, lead_capture_settings",
+        )
+        .eq("agent_id", agentId)
+        .maybeSingle();
+      guardrails = gr ?? null;
+      leadCaptureSettings =
+        (gr?.lead_capture_settings as LeadCaptureSettings) ?? null;
+
+      const { data: docs } = await supabase
+        .from("knowledge_base_documents")
+        .select(
+          "id, title, status, source_type, source_url, created_at, updated_at, last_refreshed_at, error_message, raw_content",
+        )
+        .eq("agent_id", agentId)
+        .order("updated_at", { ascending: false });
+
+      const { data: chunks } = await supabase
+        .from("knowledge_base_chunks")
+        .select("document_id")
+        .eq("agent_id", agentId);
+
+      const chunkCounts = new Map<string, number>();
+      for (const c of chunks ?? []) {
+        chunkCounts.set(
+          c.document_id,
+          (chunkCounts.get(c.document_id) ?? 0) + 1,
+        );
+      }
+
+      documents = (docs ?? []).map((d) => ({
+        ...d,
+        chunkCount: chunkCounts.get(d.id) ?? 0,
+      }));
+    }
+  }
+
+  const org = orgRow as {
+    name: string;
+    primary_color: string;
+    accent_color: string;
+    welcome_message: string;
+    logo_url: string | null;
+    widget_position: string;
+  } | null;
+
+  return (
+    <div>
+      <h1 className="font-heading text-2xl font-bold text-foreground">
+        Get set up
+      </h1>
+      <p className="mt-2 font-body text-sm text-secondary-text">
+        Five quick steps — you&apos;ll see your live widget the whole way
+        through.
+      </p>
+      <div className="mt-8">
+        <OnboardingWizard
+          org={org}
+          agentId={agentId}
+          agentName={agentName}
+          publicKey={publicKey}
+          templates={AGENT_TEMPLATES}
+          initialStep={initialStep}
+          guardrails={guardrails}
+          leadCaptureSettings={leadCaptureSettings}
+          documents={documents}
+        />
+      </div>
+    </div>
+  );
 }
 </file>
 
@@ -30366,6 +30653,153 @@ export function getWhatsappLink(): string {
     "tailwindcss": "^4",
     "typescript": "^5"
   }
+}
+</file>
+
+<file path="app/(platform-client)/layout.tsx">
+import type { Metadata } from "next";
+import { headers } from "next/headers";
+import { createClient } from "@/lib/supabase/server";
+import { PlatformShell } from "@/components/platform/PlatformShell";
+import { getUnreadInboxCount } from "@/lib/inbox/queries";
+import { getCurrentOrg } from "@/lib/auth/current-org";
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
+
+export default async function ClientDashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  // middleware.ts already ran auth.getUser() for this exact request and
+  // redirects unauthenticated visitors before they ever reach this layout —
+  // calling getUser() again here was a fully redundant Supabase round-trip
+  // that added to the blocking window before any HTML (theme-init script
+  // included) could reach the browser. Read its result from the header
+  // middleware sets instead.
+  const requestHeaders = await headers();
+  const userId = requestHeaders.get("x-user-id") ?? "";
+  const userEmail = requestHeaders.get("x-user-email");
+
+  const supabase = await createClient();
+  const orgResult = await getCurrentOrg(supabase, userId);
+  const membership = orgResult
+    ? { organization_id: orgResult.active.organizationId }
+    : null;
+
+  const unreadCount = membership
+    ? await getUnreadInboxCount(supabase, membership.organization_id)
+    : 0;
+
+  let setupComplete = true;
+  let agentName = "Your Agent";
+  let agentStatus: "live" | "trial" | "paused" = "live";
+
+  if (membership) {
+    const { data: agent } = await supabase
+      .from("agents")
+      .select("setup_complete, name, is_active")
+      .eq("organization_id", membership.organization_id)
+      .eq("is_active", true)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    // No agent row yet (mid-provisioning) is treated as "not complete" —
+    // safer default than briefly flashing the full sidebar.
+    setupComplete = agent?.setup_complete ?? false;
+
+    if (agent?.name) agentName = agent.name;
+
+    const { data: orgRow } = await supabase
+      .from("organizations")
+      .select("status")
+      .eq("id", membership.organization_id)
+      .maybeSingle();
+
+    agentStatus = !agent?.is_active
+      ? "paused"
+      : orgRow?.status === "trial"
+        ? "trial"
+        : "live";
+  }
+
+  return (
+    <PlatformShell
+      variant="client"
+      userEmail={userEmail}
+      navBadges={{ "/dashboard/inbox": unreadCount }}
+      isReseller={!!orgResult?.active.isReseller}
+      setupComplete={setupComplete}
+      agentName={agentName}
+      agentStatus={agentStatus}
+      memberships={orgResult?.memberships ?? []}
+      activeOrgId={orgResult?.active.organizationId ?? null}
+    >
+      {children}
+    </PlatformShell>
+  );
+}
+</file>
+
+<file path="config/site.ts">
+import { buildWhatsAppLink } from "@/config/contact";
+import { Layers, Bot, Briefcase, Users, Newspaper, Mail } from "lucide-react";
+
+export const siteConfig = {
+  name: "MBR Studio",
+  title: "MBR Studio — Digital products, built to grow your business.",
+  founder: "Muaaz Bin Riaz",
+  tagline: "Digital products, built to grow your business.",
+  description:
+    "MBR Studio is a premium software agency building websites, AI-powered automation, and digital products for growing businesses.",
+  url: "https://mbrstudio.co",
+  ogImage: "/opengraph-image",
+  email: "mbrstudio.dev@gmail.com",
+  // Added fields for the chat route
+  consultationUrl: "https://cal.com/muaaz-riaz-itdnod/consultation",
+
+  contactEmail: "mbrstudio.dev@gmail.com",
+  links: {
+    twitter: "https://twitter.com/mbrstudio",
+    linkedin: "https://www.linkedin.com/in/muaaz-bin-riaz-92b395298/",
+    github: "https://github.com/muaazbinriaz",
+  },
+} as const;
+
+export const navLinks = [
+  { label: "Services", href: "/services", icon: Layers },
+  // { label: "AI Agent", href: "/ai-agent", icon: Bot }, // paused — re-enable when product is client-ready
+  { label: "Portfolio", href: "/portfolio", icon: Briefcase },
+  { label: "About", href: "/about", icon: Users },
+  { label: "Blog", href: "/blog", icon: Newspaper },
+  { label: "Contact", href: "/contact", icon: Mail },
+] as const;
+
+export const primaryCta = {
+  label: "Book a Consultation",
+  href: siteConfig.consultationUrl,
+} as const;
+
+export const secondaryCta = {
+  label: "Start Free Trial",
+  href: "/signup",
+} as const;
+
+/**
+ * Delegates to config/contact.ts's buildWhatsAppLink() — that file is
+ * the single source of truth for the WhatsApp number (WHATSAPP_DIGITS /
+ * WHATSAPP_DISPLAY). This used to hardcode a second literal number here,
+ * which risked the contact page and the AI chatbot handoff pointing at
+ * two different numbers if only one was ever updated.
+ *
+ * Passes an empty message override so the chatbot's handoff link keeps
+ * its previous behavior (no pre-filled WhatsApp message) rather than
+ * picking up buildWhatsAppLink()'s default qualification message.
+ */
+export function getWhatsappLink(): string {
+  return buildWhatsAppLink("");
 }
 </file>
 
@@ -32209,89 +32643,431 @@ function QaAddPanel() {
 }
 </file>
 
-<file path="app/(platform-client)/layout.tsx">
-import type { Metadata } from "next";
-import { headers } from "next/headers";
-import { createClient } from "@/lib/supabase/server";
-import { PlatformShell } from "@/components/platform/PlatformShell";
-import { getUnreadInboxCount } from "@/lib/inbox/queries";
-import { getCurrentOrg } from "@/lib/auth/current-org";
+<file path="components/platform/PlatformShell.tsx">
+"use client";
 
-export const metadata: Metadata = {
-  robots: { index: false, follow: false },
+import { useRef, useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { Menu, LogOut, Sun, Moon, ArrowLeft } from "lucide-react";
+import {
+  Building2,
+  Settings,
+  BookOpen,
+  MessagesSquare,
+  Palette,
+  ShieldCheck,
+  Sparkles,
+  Users,
+  KeyRound,
+  Webhook,
+  CreditCard,
+  Radio,
+  LayoutDashboard,
+  Bot,
+  CircleUserRound,
+} from "lucide-react";
+
+import { cn } from "@/lib/utils";
+import { signOut } from "@/lib/auth/actions";
+import { useTheme } from "@/components/theme/ThemeProvider";
+import { PlatformAmbient } from "@/components/platform/PlatformAmbient";
+import { useRouteLoader } from "@/components/loader/RouteLoader";
+import { DesktopNav, type NavGroup } from "@/components/platform/DesktopNav";
+import { MobileNav } from "@/components/platform/MobileNav";
+import { Logo } from "@/components/brand/Logo";
+import {
+  AgentSidebarShell,
+  type AgentStatus,
+} from "@/components/platform/AgentSidebarShell";
+import type { OrgMembership } from "@/lib/auth/current-org";
+export type PlatformVariant = "admin" | "client";
+
+const NAV_GROUPS_BY_VARIANT: Record<
+  PlatformVariant,
+  (isReseller: boolean, setupComplete: boolean) => NavGroup[]
+> = {
+  admin: () => [
+    { type: "link", label: "Overview", href: "/admin", icon: LayoutDashboard },
+    {
+      type: "link",
+      label: "Organizations",
+      href: "/admin/organizations",
+      icon: Building2,
+    },
+    {
+      type: "link",
+      label: "Billing",
+      href: "/admin/billing",
+      icon: CreditCard,
+    },
+    {
+      type: "link",
+      label: "Settings",
+      href: "/admin/settings",
+      icon: Settings,
+    },
+  ],
+
+  client: (isReseller, setupComplete) => {
+    // Pre-setup: only what's actually usable with zero data. Inbox/Leads/
+    // Channels/templates are meaningless before the agent is live, so they
+    // don't even appear — not hidden-but-reachable, genuinely absent.
+    if (!setupComplete) {
+      return [
+        {
+          type: "link",
+          label: "Overview",
+          href: "/dashboard",
+          icon: LayoutDashboard,
+        },
+        {
+          type: "link",
+          label: "Setup Wizard",
+          href: "/dashboard/onboarding",
+          icon: Sparkles,
+        },
+        {
+          type: "link",
+          label: "Knowledge Base",
+          href: "/dashboard/knowledge-base",
+          icon: BookOpen,
+        },
+        {
+          type: "link",
+          label: "Settings",
+          href: "/dashboard/settings",
+          icon: Settings,
+        },
+      ];
+    }
+
+    // Essential: what a small-business owner touches regularly, always
+    // one click away. Everything else lives under two grouped menus —
+    // "Agent" (config that shapes what the bot says/does) and "Account"
+    // (billing, keys, webhooks) — instead of one flat 9-item dropdown.
+    // Nothing is removed, just re-prioritized and grouped by intent.
+    const groups: NavGroup[] = [
+      {
+        type: "link",
+        label: "Overview",
+        href: "/dashboard",
+        icon: LayoutDashboard,
+      },
+      {
+        type: "link",
+        label: "Knowledge Base",
+        href: "/dashboard/knowledge-base",
+        icon: BookOpen,
+      },
+      {
+        type: "link",
+        label: "Inbox",
+        href: "/dashboard/inbox",
+        icon: MessagesSquare,
+      },
+      { type: "link", label: "Leads", href: "/dashboard/leads", icon: Users },
+    ];
+
+    if (isReseller) {
+      groups.push({
+        type: "link",
+        label: "Clients",
+        href: "/dashboard/clients",
+        icon: Building2,
+      });
+    }
+
+    groups.push({
+      type: "dropdown",
+      label: "Agent",
+      icon: Bot,
+      items: [
+        {
+          label: "Guardrails",
+          href: "/dashboard/agent/guardrails",
+          icon: ShieldCheck,
+        },
+        {
+          label: "Templates",
+          href: "/dashboard/agent/templates",
+          icon: Sparkles,
+        },
+        { label: "Appearance", href: "/dashboard/appearance", icon: Palette },
+        { label: "Channels", href: "/dashboard/channels", icon: Radio },
+        {
+          label: "Setup Wizard",
+          href: "/dashboard/onboarding",
+          icon: Sparkles,
+        },
+      ],
+    });
+
+    groups.push({
+      type: "dropdown",
+      label: "Account",
+      icon: CircleUserRound,
+      items: [
+        { label: "Settings", href: "/dashboard/settings", icon: Settings },
+        {
+          label: "Billing",
+          href: "/dashboard/settings/billing",
+          icon: CreditCard,
+        },
+        {
+          label: "API Keys",
+          href: "/dashboard/settings/api-keys",
+          icon: KeyRound,
+        },
+        {
+          label: "Webhooks",
+          href: "/dashboard/settings/webhooks",
+          icon: Webhook,
+        },
+      ],
+    });
+
+    return groups;
+  },
 };
 
-export default async function ClientDashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  // middleware.ts already ran auth.getUser() for this exact request and
-  // redirects unauthenticated visitors before they ever reach this layout —
-  // calling getUser() again here was a fully redundant Supabase round-trip
-  // that added to the blocking window before any HTML (theme-init script
-  // included) could reach the browser. Read its result from the header
-  // middleware sets instead.
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("x-user-id") ?? "";
-  const userEmail = requestHeaders.get("x-user-email");
+const BRAND_SUFFIX_BY_VARIANT: Record<PlatformVariant, string> = {
+  admin: "— Admin",
+  client: "",
+};
+function flattenHrefs(groups: NavGroup[]): { href: string }[] {
+  return groups.flatMap((group) =>
+    group.type === "link"
+      ? [{ href: group.href }]
+      : group.items.map((item) => ({ href: item.href })),
+  );
+}
 
-  const supabase = await createClient();
-  const orgResult = await getCurrentOrg(supabase, userId);
-  const membership = orgResult
-    ? { organization_id: orgResult.active.organizationId }
-    : null;
+/**
+ * Same longest-match logic the old sidebar shell used — carried over
+ * unchanged, just applied to the flattened list of every href across
+ * all top-level groups and their dropdown items.
+ */
+function getActiveHref(
+  pathname: string,
+  hrefs: { href: string }[],
+): string | null {
+  let best: string | null = null;
 
-  const unreadCount = membership
-    ? await getUnreadInboxCount(supabase, membership.organization_id)
-    : 0;
+  for (const item of hrefs) {
+    const isRootRoute = item.href === "/admin" || item.href === "/dashboard";
+    const matches =
+      pathname === item.href ||
+      (!isRootRoute && pathname.startsWith(`${item.href}/`));
 
-  let setupComplete = true;
-  let agentName = "Your Agent";
-  let agentStatus: "live" | "trial" | "paused" = "live";
-
-  if (membership) {
-    const { data: agent } = await supabase
-      .from("agents")
-      .select("setup_complete, name, is_active")
-      .eq("organization_id", membership.organization_id)
-      .eq("is_active", true)
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    // No agent row yet (mid-provisioning) is treated as "not complete" —
-    // safer default than briefly flashing the full sidebar.
-    setupComplete = agent?.setup_complete ?? false;
-
-    if (agent?.name) agentName = agent.name;
-
-    const { data: orgRow } = await supabase
-      .from("organizations")
-      .select("status")
-      .eq("id", membership.organization_id)
-      .maybeSingle();
-
-    agentStatus = !agent?.is_active
-      ? "paused"
-      : orgRow?.status === "trial"
-        ? "trial"
-        : "live";
+    if (matches && (best === null || item.href.length > best.length)) {
+      best = item.href;
+    }
   }
 
+  return best;
+}
+
+export function PlatformShell({
+  variant,
+  userEmail,
+  navBadges,
+  isReseller = false,
+  setupComplete = true,
+  agentName,
+  agentStatus,
+  memberships = [],
+  activeOrgId = null,
+  children,
+}: {
+  variant: PlatformVariant;
+  userEmail?: string | null;
+  /** Keyed by nav item href, e.g. { "/dashboard/inbox": 3 } */
+  navBadges?: Record<string, number>;
+  isReseller?: boolean;
+  /** Client variant only — false collapses the sidebar to setup-only items. */
+  setupComplete?: boolean;
+  /** Client variant + setupComplete only — used by the agent sidebar shell. */
+  agentName?: string;
+  agentStatus?: AgentStatus;
+  memberships?: OrgMembership[];
+  activeOrgId?: string | null;
+  children: React.ReactNode;
+}) {
+  const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const { theme, toggleTheme } = useTheme();
+  const { start } = useRouteLoader();
+
+  // Once the agent is live, the client dashboard IS the agent's
+  // management console — no separate "Manage" click needed. Pre-setup
+  // (still in the wizard) and the admin variant keep the lighter
+  // top-nav shell below, unchanged.
+  if (variant === "client" && setupComplete) {
+    return (
+      <AgentSidebarShell
+        agentName={agentName ?? "Your Agent"}
+        agentStatus={agentStatus ?? "live"}
+        userEmail={userEmail}
+        isReseller={isReseller}
+        navBadges={navBadges}
+        memberships={memberships}
+        activeOrgId={activeOrgId}
+      >
+        {children}
+      </AgentSidebarShell>
+    );
+  }
+
+  const groups = NAV_GROUPS_BY_VARIANT[variant](isReseller, setupComplete);
+  const brandSuffix = BRAND_SUFFIX_BY_VARIANT[variant];
+  const activeHref = getActiveHref(pathname, flattenHrefs(groups));
+
   return (
-    <PlatformShell
-      variant="client"
-      userEmail={userEmail}
-      navBadges={{ "/dashboard/inbox": unreadCount }}
-      isReseller={!!orgResult?.active.isReseller}
-      setupComplete={setupComplete}
-      agentName={agentName}
-      agentStatus={agentStatus}
-      memberships={orgResult?.memberships ?? []}
-      activeOrgId={orgResult?.active.organizationId ?? null}
-    >
-      {children}
-    </PlatformShell>
+    <div className="relative min-h-screen bg-background">
+      <PlatformAmbient />
+
+      <header className="fixed inset-x-0 top-0 z-30 border-b border-border bg-background/85 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 md:px-8">
+          <div className="flex items-center gap-3">
+            <Link
+              href={variant === "admin" ? "/admin" : "/dashboard"}
+              onClick={() => {
+                if (
+                  pathname !== (variant === "admin" ? "/admin" : "/dashboard")
+                )
+                  start();
+              }}
+              className="flex items-center gap-2 font-heading text-base font-semibold tracking-tight text-foreground"
+            >
+              <Logo markClassName="h-6 w-6" />
+              {brandSuffix && (
+                <span className="font-body text-sm font-normal text-secondary-text">
+                  {brandSuffix}
+                </span>
+              )}
+            </Link>
+            <Link
+              href="/"
+              onClick={() => start()}
+              className="group hidden items-center gap-1.5 rounded-full border border-border px-3 py-1.5 font-body text-xs text-secondary-text transition-all duration-150 hover:border-primary/30 hover:bg-card hover:text-foreground sm:inline-flex"
+            >
+              <ArrowLeft
+                className="h-3 w-3 transition-transform duration-150 group-hover:-translate-x-0.5"
+                strokeWidth={1.75}
+              />
+              Back to website
+            </Link>
+          </div>
+
+          <DesktopNav
+            groups={groups}
+            activeHref={activeHref}
+            navBadges={navBadges}
+          />
+
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label={
+                theme === "dark"
+                  ? "Switch to light theme"
+                  : "Switch to dark theme"
+              }
+              className="hidden rounded-lg p-2 text-secondary-text transition-colors duration-150 hover:bg-card hover:text-foreground md:inline-flex"
+            >
+              {theme === "dark" ? (
+                <Sun className="h-4 w-4" strokeWidth={1.75} />
+              ) : (
+                <Moon className="h-4 w-4" strokeWidth={1.75} />
+              )}
+            </button>
+
+            <UserMenu userEmail={userEmail} />
+
+            <button
+              type="button"
+              onClick={() => setMobileOpen(true)}
+              aria-label="Open menu"
+              aria-expanded={mobileOpen}
+              className="rounded-lg p-3 text-foreground hover:bg-card md:hidden"
+            >
+              <Menu className="h-5 w-5" strokeWidth={1.75} />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <MobileNav
+        open={mobileOpen}
+        onClose={() => setMobileOpen(false)}
+        groups={groups}
+        activeHref={activeHref}
+        navBadges={navBadges}
+        userEmail={userEmail}
+      />
+
+      <main className="min-w-0 pt-16">
+        <div className="mx-auto max-w-6xl px-6 py-8 md:px-10 md:py-10">
+          {children}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function UserMenu({ userEmail }: { userEmail?: string | null }) {
+  const { start } = useRouteLoader();
+  const signOutFormRef = useRef<HTMLFormElement>(null);
+
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          aria-label="Account menu"
+          className="hidden h-9 w-9 items-center justify-center rounded-full bg-primary/10 font-body text-sm font-semibold text-primary transition-colors duration-150 hover:bg-primary/20 data-[state=open]:bg-primary/20 md:flex"
+        >
+          {userEmail?.[0]?.toUpperCase() ?? "?"}
+        </button>
+      </DropdownMenu.Trigger>
+
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="end"
+          sideOffset={8}
+          className="z-50 w-56 rounded-xl border border-border bg-card p-1.5 shadow-xl shadow-black/[0.06] dark:shadow-black/30"
+        >
+          {userEmail && (
+            <>
+              <DropdownMenu.Label className="truncate px-3 pb-2 pt-1.5 font-body text-xs text-secondary-text">
+                {userEmail}
+              </DropdownMenu.Label>
+              <DropdownMenu.Separator className="mx-1 mb-1.5 h-px bg-border" />
+            </>
+          )}
+
+          <DropdownMenu.Item
+            onSelect={() => {
+              start();
+              signOutFormRef.current?.requestSubmit();
+            }}
+            className="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 font-body text-sm font-medium text-secondary-text outline-none transition-colors duration-150 data-[highlighted]:bg-background data-[highlighted]:text-foreground"
+          >
+            <LogOut className="h-4 w-4 flex-none" strokeWidth={1.75} />
+            Log out
+          </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+
+      {/* Real submit target for the server action — kept off-screen and
+          triggered via requestSubmit() so the visible row can be a
+          proper Radix Item (correct role, keyboard nav, Escape/outside
+          click handling) instead of a <form> standing in for one. */}
+      <form ref={signOutFormRef} action={signOut} className="hidden" />
+    </DropdownMenu.Root>
   );
 }
 </file>
@@ -32315,6 +33091,7 @@ import type { AgentTemplate } from "@/lib/agents/templates";
 import type { GuardrailToggles } from "@/lib/agents/build-system-prompt";
 import { applyTemplate } from "@/app/(platform-client)/dashboard/agent/templates/actions";
 import { KnowledgeBaseClient } from "@/app/(platform-client)/dashboard/knowledge-base/KnowledgeBaseClient";
+import { TrainQuickPanel } from "./TrainQuickPanel";
 import {
   GuardrailsClient,
   type GuardrailsClientHandle,
@@ -32401,6 +33178,7 @@ export function OnboardingWizard({
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
     null,
   );
+  const [trainMode, setTrainMode] = useState<"quick" | "advanced">("quick");
 
   const [primaryColor, setPrimaryColor] = useState(
     org?.primary_color ?? "#6366f1",
@@ -32697,16 +33475,39 @@ export function OnboardingWizard({
 
               {step === 1 && (
                 <div>
-                  <h2 className="mb-1 font-heading text-lg font-semibold text-foreground">
-                    Add what your AI should know
-                  </h2>
-                  <p className="mb-4 font-body text-sm text-secondary-text">
-                    Scan your website, upload files, or type it in directly —
-                    this is the real Knowledge Base, not a simplified copy.
-                  </p>
-                  <div className="max-h-[min(75vh,680px)] min-h-[420px] overflow-y-auto rounded-xl border border-border">
-                    <KnowledgeBaseClient documents={documents} />
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div>
+                      <h2 className="mb-1 font-heading text-lg font-semibold text-foreground">
+                        Add what your AI should know
+                      </h2>
+                      <p className="font-body text-sm text-secondary-text">
+                        {trainMode === "quick"
+                          ? "Scan your website or describe your business — takes under a minute."
+                          : "Full Knowledge Base — scan pages, upload files, or manage Q&A pairs individually."}
+                      </p>
+                    </div>
+                    {trainMode === "advanced" && (
+                      <button
+                        type="button"
+                        onClick={() => setTrainMode("quick")}
+                        className="flex-none whitespace-nowrap font-body text-xs font-medium text-primary underline underline-offset-2"
+                      >
+                        Back to quick mode
+                      </button>
+                    )}
                   </div>
+
+                  {trainMode === "quick" ? (
+                    <TrainQuickPanel
+                      documents={documents}
+                      selectedTemplate={selectedTemplate}
+                      onAdvanced={() => setTrainMode("advanced")}
+                    />
+                  ) : (
+                    <div className="max-h-[min(75vh,680px)] min-h-[420px] overflow-y-auto rounded-xl border border-border">
+                      <KnowledgeBaseClient documents={documents} />
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -33313,435 +34114,6 @@ export default async function DashboardPage({
         )}
       </div>
     </div>
-  );
-}
-</file>
-
-<file path="components/platform/PlatformShell.tsx">
-"use client";
-
-import { useRef, useState } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Menu, LogOut, Sun, Moon, ArrowLeft } from "lucide-react";
-import {
-  Building2,
-  Settings,
-  BookOpen,
-  MessagesSquare,
-  Palette,
-  ShieldCheck,
-  Sparkles,
-  Users,
-  KeyRound,
-  Webhook,
-  CreditCard,
-  Radio,
-  LayoutDashboard,
-  Bot,
-  CircleUserRound,
-} from "lucide-react";
-
-import { cn } from "@/lib/utils";
-import { signOut } from "@/lib/auth/actions";
-import { useTheme } from "@/components/theme/ThemeProvider";
-import { PlatformAmbient } from "@/components/platform/PlatformAmbient";
-import { useRouteLoader } from "@/components/loader/RouteLoader";
-import { DesktopNav, type NavGroup } from "@/components/platform/DesktopNav";
-import { MobileNav } from "@/components/platform/MobileNav";
-import { Logo } from "@/components/brand/Logo";
-import {
-  AgentSidebarShell,
-  type AgentStatus,
-} from "@/components/platform/AgentSidebarShell";
-import type { OrgMembership } from "@/lib/auth/current-org";
-export type PlatformVariant = "admin" | "client";
-
-const NAV_GROUPS_BY_VARIANT: Record<
-  PlatformVariant,
-  (isReseller: boolean, setupComplete: boolean) => NavGroup[]
-> = {
-  admin: () => [
-    { type: "link", label: "Overview", href: "/admin", icon: LayoutDashboard },
-    {
-      type: "link",
-      label: "Organizations",
-      href: "/admin/organizations",
-      icon: Building2,
-    },
-    {
-      type: "link",
-      label: "Billing",
-      href: "/admin/billing",
-      icon: CreditCard,
-    },
-    {
-      type: "link",
-      label: "Settings",
-      href: "/admin/settings",
-      icon: Settings,
-    },
-  ],
-
-  client: (isReseller, setupComplete) => {
-    // Pre-setup: only what's actually usable with zero data. Inbox/Leads/
-    // Channels/templates are meaningless before the agent is live, so they
-    // don't even appear — not hidden-but-reachable, genuinely absent.
-    if (!setupComplete) {
-      return [
-        {
-          type: "link",
-          label: "Overview",
-          href: "/dashboard",
-          icon: LayoutDashboard,
-        },
-        {
-          type: "link",
-          label: "Setup Wizard",
-          href: "/dashboard/onboarding",
-          icon: Sparkles,
-        },
-        {
-          type: "link",
-          label: "Knowledge Base",
-          href: "/dashboard/knowledge-base",
-          icon: BookOpen,
-        },
-        {
-          type: "link",
-          label: "Settings",
-          href: "/dashboard/settings",
-          icon: Settings,
-        },
-      ];
-    }
-
-    // Essential: what a small-business owner touches regularly, always
-    // one click away. Everything else lives under two grouped menus —
-    // "Agent" (config that shapes what the bot says/does) and "Account"
-    // (billing, keys, webhooks) — instead of one flat 9-item dropdown.
-    // Nothing is removed, just re-prioritized and grouped by intent.
-    const groups: NavGroup[] = [
-      {
-        type: "link",
-        label: "Overview",
-        href: "/dashboard",
-        icon: LayoutDashboard,
-      },
-      {
-        type: "link",
-        label: "Knowledge Base",
-        href: "/dashboard/knowledge-base",
-        icon: BookOpen,
-      },
-      {
-        type: "link",
-        label: "Inbox",
-        href: "/dashboard/inbox",
-        icon: MessagesSquare,
-      },
-      { type: "link", label: "Leads", href: "/dashboard/leads", icon: Users },
-    ];
-
-    if (isReseller) {
-      groups.push({
-        type: "link",
-        label: "Clients",
-        href: "/dashboard/clients",
-        icon: Building2,
-      });
-    }
-
-    groups.push({
-      type: "dropdown",
-      label: "Agent",
-      icon: Bot,
-      items: [
-        {
-          label: "Guardrails",
-          href: "/dashboard/agent/guardrails",
-          icon: ShieldCheck,
-        },
-        {
-          label: "Templates",
-          href: "/dashboard/agent/templates",
-          icon: Sparkles,
-        },
-        { label: "Appearance", href: "/dashboard/appearance", icon: Palette },
-        { label: "Channels", href: "/dashboard/channels", icon: Radio },
-        {
-          label: "Setup Wizard",
-          href: "/dashboard/onboarding",
-          icon: Sparkles,
-        },
-      ],
-    });
-
-    groups.push({
-      type: "dropdown",
-      label: "Account",
-      icon: CircleUserRound,
-      items: [
-        { label: "Settings", href: "/dashboard/settings", icon: Settings },
-        {
-          label: "Billing",
-          href: "/dashboard/settings/billing",
-          icon: CreditCard,
-        },
-        {
-          label: "API Keys",
-          href: "/dashboard/settings/api-keys",
-          icon: KeyRound,
-        },
-        {
-          label: "Webhooks",
-          href: "/dashboard/settings/webhooks",
-          icon: Webhook,
-        },
-      ],
-    });
-
-    return groups;
-  },
-};
-
-const BRAND_SUFFIX_BY_VARIANT: Record<PlatformVariant, string> = {
-  admin: "— Admin",
-  client: "",
-};
-function flattenHrefs(groups: NavGroup[]): { href: string }[] {
-  return groups.flatMap((group) =>
-    group.type === "link"
-      ? [{ href: group.href }]
-      : group.items.map((item) => ({ href: item.href })),
-  );
-}
-
-/**
- * Same longest-match logic the old sidebar shell used — carried over
- * unchanged, just applied to the flattened list of every href across
- * all top-level groups and their dropdown items.
- */
-function getActiveHref(
-  pathname: string,
-  hrefs: { href: string }[],
-): string | null {
-  let best: string | null = null;
-
-  for (const item of hrefs) {
-    const isRootRoute = item.href === "/admin" || item.href === "/dashboard";
-    const matches =
-      pathname === item.href ||
-      (!isRootRoute && pathname.startsWith(`${item.href}/`));
-
-    if (matches && (best === null || item.href.length > best.length)) {
-      best = item.href;
-    }
-  }
-
-  return best;
-}
-
-export function PlatformShell({
-  variant,
-  userEmail,
-  navBadges,
-  isReseller = false,
-  setupComplete = true,
-  agentName,
-  agentStatus,
-  memberships = [],
-  activeOrgId = null,
-  children,
-}: {
-  variant: PlatformVariant;
-  userEmail?: string | null;
-  /** Keyed by nav item href, e.g. { "/dashboard/inbox": 3 } */
-  navBadges?: Record<string, number>;
-  isReseller?: boolean;
-  /** Client variant only — false collapses the sidebar to setup-only items. */
-  setupComplete?: boolean;
-  /** Client variant + setupComplete only — used by the agent sidebar shell. */
-  agentName?: string;
-  agentStatus?: AgentStatus;
-  memberships?: OrgMembership[];
-  activeOrgId?: string | null;
-  children: React.ReactNode;
-}) {
-  const pathname = usePathname();
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const { theme, toggleTheme } = useTheme();
-  const { start } = useRouteLoader();
-
-  // Once the agent is live, the client dashboard IS the agent's
-  // management console — no separate "Manage" click needed. Pre-setup
-  // (still in the wizard) and the admin variant keep the lighter
-  // top-nav shell below, unchanged.
-  if (variant === "client" && setupComplete) {
-    return (
-      <AgentSidebarShell
-        agentName={agentName ?? "Your Agent"}
-        agentStatus={agentStatus ?? "live"}
-        userEmail={userEmail}
-        isReseller={isReseller}
-        navBadges={navBadges}
-        memberships={memberships}
-        activeOrgId={activeOrgId}
-      >
-        {children}
-      </AgentSidebarShell>
-    );
-  }
-
-  const groups = NAV_GROUPS_BY_VARIANT[variant](isReseller, setupComplete);
-  const brandSuffix = BRAND_SUFFIX_BY_VARIANT[variant];
-  const activeHref = getActiveHref(pathname, flattenHrefs(groups));
-
-  return (
-    <div className="relative min-h-screen bg-background">
-      <PlatformAmbient />
-
-      <header className="fixed inset-x-0 top-0 z-30 border-b border-border bg-background/85 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 md:px-8">
-          <div className="flex items-center gap-3">
-            <Link
-              href={variant === "admin" ? "/admin" : "/dashboard"}
-              onClick={() => {
-                if (
-                  pathname !== (variant === "admin" ? "/admin" : "/dashboard")
-                )
-                  start();
-              }}
-              className="flex items-center gap-2 font-heading text-base font-semibold tracking-tight text-foreground"
-            >
-              <Logo markClassName="h-6 w-6" />
-              {brandSuffix && (
-                <span className="font-body text-sm font-normal text-secondary-text">
-                  {brandSuffix}
-                </span>
-              )}
-            </Link>
-            <Link
-              href="/"
-              onClick={() => start()}
-              className="group hidden items-center gap-1.5 rounded-full border border-border px-3 py-1.5 font-body text-xs text-secondary-text transition-all duration-150 hover:border-primary/30 hover:bg-card hover:text-foreground sm:inline-flex"
-            >
-              <ArrowLeft
-                className="h-3 w-3 transition-transform duration-150 group-hover:-translate-x-0.5"
-                strokeWidth={1.75}
-              />
-              Back to website
-            </Link>
-          </div>
-
-          <DesktopNav
-            groups={groups}
-            activeHref={activeHref}
-            navBadges={navBadges}
-          />
-
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={toggleTheme}
-              aria-label={
-                theme === "dark"
-                  ? "Switch to light theme"
-                  : "Switch to dark theme"
-              }
-              className="hidden rounded-lg p-2 text-secondary-text transition-colors duration-150 hover:bg-card hover:text-foreground md:inline-flex"
-            >
-              {theme === "dark" ? (
-                <Sun className="h-4 w-4" strokeWidth={1.75} />
-              ) : (
-                <Moon className="h-4 w-4" strokeWidth={1.75} />
-              )}
-            </button>
-
-            <UserMenu userEmail={userEmail} />
-
-            <button
-              type="button"
-              onClick={() => setMobileOpen(true)}
-              aria-label="Open menu"
-              aria-expanded={mobileOpen}
-              className="rounded-lg p-3 text-foreground hover:bg-card md:hidden"
-            >
-              <Menu className="h-5 w-5" strokeWidth={1.75} />
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <MobileNav
-        open={mobileOpen}
-        onClose={() => setMobileOpen(false)}
-        groups={groups}
-        activeHref={activeHref}
-        navBadges={navBadges}
-        userEmail={userEmail}
-      />
-
-      <main className="min-w-0 pt-16">
-        <div className="mx-auto max-w-6xl px-6 py-8 md:px-10 md:py-10">
-          {children}
-        </div>
-      </main>
-    </div>
-  );
-}
-
-function UserMenu({ userEmail }: { userEmail?: string | null }) {
-  const { start } = useRouteLoader();
-  const signOutFormRef = useRef<HTMLFormElement>(null);
-
-  return (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
-        <button
-          type="button"
-          aria-label="Account menu"
-          className="hidden h-9 w-9 items-center justify-center rounded-full bg-primary/10 font-body text-sm font-semibold text-primary transition-colors duration-150 hover:bg-primary/20 data-[state=open]:bg-primary/20 md:flex"
-        >
-          {userEmail?.[0]?.toUpperCase() ?? "?"}
-        </button>
-      </DropdownMenu.Trigger>
-
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content
-          align="end"
-          sideOffset={8}
-          className="z-50 w-56 rounded-xl border border-border bg-card p-1.5 shadow-xl shadow-black/[0.06] dark:shadow-black/30"
-        >
-          {userEmail && (
-            <>
-              <DropdownMenu.Label className="truncate px-3 pb-2 pt-1.5 font-body text-xs text-secondary-text">
-                {userEmail}
-              </DropdownMenu.Label>
-              <DropdownMenu.Separator className="mx-1 mb-1.5 h-px bg-border" />
-            </>
-          )}
-
-          <DropdownMenu.Item
-            onSelect={() => {
-              start();
-              signOutFormRef.current?.requestSubmit();
-            }}
-            className="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 font-body text-sm font-medium text-secondary-text outline-none transition-colors duration-150 data-[highlighted]:bg-background data-[highlighted]:text-foreground"
-          >
-            <LogOut className="h-4 w-4 flex-none" strokeWidth={1.75} />
-            Log out
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-
-      {/* Real submit target for the server action — kept off-screen and
-          triggered via requestSubmit() so the visible row can be a
-          proper Radix Item (correct role, keyboard nav, Escape/outside
-          click handling) instead of a <form> standing in for one. */}
-      <form ref={signOutFormRef} action={signOut} className="hidden" />
-    </DropdownMenu.Root>
   );
 }
 </file>

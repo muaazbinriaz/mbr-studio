@@ -442,8 +442,8 @@ export function OnboardingWizard({
                     Set how it behaves
                   </h2>
                   <p className="mb-4 font-body text-sm text-secondary-text">
-                    Tone, guardrails, and lead capture — hit Next when you're
-                    happy with how it behaves.
+                    Tone, guardrails, and lead capture — hit Next when
+                    you&apos;re happy with how it behaves.
                   </p>
                   <GuardrailsClient
                     ref={guardrailsRef}
