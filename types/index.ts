@@ -22,6 +22,14 @@ export interface Project {
   outcome?: { metric: string; label: string }[];
   visuals?: string[];
   link?: string; // ✅ live site link
+  // Transparency badge shown on project cards. Use this instead of
+  // implying a paid client relationship in `client` for self-initiated
+  // work — never combine a real-sounding client name with no badge.
+  badge?:
+    | "Personal Project"
+    | "Concept Project"
+    | "Independent Build"
+    | "Self-Initiated Project";
   // Optional — when the project/write-up was published/last revised.
   // Left unset for now rather than guessing; fill in real dates as
   // case studies are written up. Powers datePublished/dateModified in

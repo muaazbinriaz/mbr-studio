@@ -21,6 +21,7 @@ import { breadcrumbSchema } from "@/lib/seo/schemas";
 import { siteConfig } from "@/config/site";
 import { PLANS } from "@/lib/billing/plans";
 import { SuppressLauncherOnMount } from "@/components/chatbot/SuppressLauncherOnMount";
+import { notFound } from "next/navigation";
 
 export const metadata: Metadata = {
   title: "AI Agent",
@@ -100,6 +101,7 @@ const FEATURES = [
 ] as const;
 
 export default function AiAgentPage() {
+  notFound();
   return (
     <>
       <JsonLd

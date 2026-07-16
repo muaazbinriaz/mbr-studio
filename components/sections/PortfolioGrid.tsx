@@ -163,6 +163,11 @@ function PortfolioCard({
           <span className="absolute left-4 top-4 rounded-full bg-background/80 px-3 py-1 font-body text-xs font-medium text-muted-foreground backdrop-blur-sm">
             {project.category}
           </span>
+          {project.badge && (
+            <span className="absolute right-4 top-4 rounded-full border border-border bg-background/80 px-3 py-1 font-body text-xs font-medium text-secondary-text backdrop-blur-sm">
+              {project.badge}
+            </span>
+          )}
         </div>
 
         <div className="p-6">

@@ -172,3 +172,188 @@ export function SkeletonSplitPane() {
     </div>
   );
 }
+
+// ---------------------------------------------------------------------
+// Marketing-site skeletons (blog, home, portfolio, contact, etc.)
+// Added because (marketing)/loading.tsx was a single generic skeleton
+// used across every marketing page — see loading-state audit.
+// ---------------------------------------------------------------------
+
+// Hero heading block. align="left" matches inner pages (blog, services,
+// about...); align="center" matches the home/ai-agent hero treatment.
+export function SkeletonHero({
+  align = "left",
+  maxWidth = "max-w-2xl",
+}: {
+  align?: "left" | "center";
+  maxWidth?: string;
+}) {
+  const wrap = align === "center" ? "mx-auto text-center" : "";
+  return (
+    <div className={cn(maxWidth, wrap)}>
+      <SkeletonBlock
+        className={cn("h-4 w-32", align === "center" && "mx-auto")}
+      />
+      <SkeletonBlock
+        className={cn(
+          "mt-4 h-10 w-full",
+          align === "center" && "mx-auto max-w-md",
+        )}
+      />
+      <SkeletonBlock
+        className={cn(
+          "mt-3 h-4 w-3/4",
+          align === "center" && "mx-auto max-w-sm",
+        )}
+      />
+    </div>
+  );
+}
+
+// Image card — portfolio grid, case-studies grid.
+export function SkeletonImageCard() {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-card">
+      <SkeletonBlock className="aspect-[4/3] w-full rounded-none" />
+      <div className="p-5">
+        <SkeletonBlock className="h-4 w-3/4" />
+        <SkeletonBlock className="mt-2 h-3 w-1/2" />
+      </div>
+    </div>
+  );
+}
+
+export function SkeletonImageCardGrid({
+  count = 6,
+  gridClassName = "grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3",
+}: {
+  count?: number;
+  gridClassName?: string;
+}) {
+  return (
+    <div className={cn("grid", gridClassName)}>
+      {Array.from({ length: count }).map((_, i) => (
+        <SkeletonImageCard key={i} />
+      ))}
+    </div>
+  );
+}
+
+// Blog card (image + eyebrow + title + excerpt) — matches BlogCard.tsx.
+export function SkeletonBlogCard() {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-card">
+      <SkeletonBlock className="aspect-[16/10] w-full rounded-none" />
+      <div className="p-5">
+        <SkeletonBlock className="h-3 w-20 rounded-full" />
+        <SkeletonBlock className="mt-3 h-4 w-full" />
+        <SkeletonBlock className="mt-2 h-4 w-2/3" />
+        <SkeletonBlock className="mt-4 h-3 w-24" />
+      </div>
+    </div>
+  );
+}
+
+// Large editorial featured-article treatment — matches FeaturedArticle.tsx
+// (image left, text right on desktop, stacked on mobile).
+export function SkeletonFeaturedCard() {
+  return (
+    <div className="grid grid-cols-1 overflow-hidden rounded-3xl border border-border bg-card md:grid-cols-2">
+      <SkeletonBlock className="aspect-[16/10] w-full rounded-none md:aspect-auto" />
+      <div className="flex flex-col justify-center p-8 md:p-10">
+        <SkeletonBlock className="h-3 w-32" />
+        <SkeletonBlock className="mt-4 h-7 w-full" />
+        <SkeletonBlock className="mt-2 h-7 w-3/4" />
+        <SkeletonBlock className="mt-4 h-4 w-full" />
+        <SkeletonBlock className="mt-1 h-4 w-2/3" />
+      </div>
+    </div>
+  );
+}
+
+// Full article detail page — hero image, title, meta row, body lines.
+export function SkeletonArticleDetail() {
+  return (
+    <div className="mx-auto max-w-3xl">
+      <SkeletonBlock className="h-4 w-40" />
+      <SkeletonBlock className="mt-6 h-64 w-full rounded-2xl md:h-96" />
+      <SkeletonBlock className="mt-8 h-9 w-full" />
+      <SkeletonBlock className="mt-2 h-9 w-2/3" />
+      <div className="mt-4 flex gap-3">
+        <SkeletonBlock className="h-4 w-24" />
+        <SkeletonBlock className="h-4 w-20" />
+      </div>
+      <div className="mt-10 flex flex-col gap-3">
+        <SkeletonBlock className="h-4 w-full" />
+        <SkeletonBlock className="h-4 w-full" />
+        <SkeletonBlock className="h-4 w-5/6" />
+        <SkeletonBlock className="mt-4 h-4 w-full" />
+        <SkeletonBlock className="h-4 w-full" />
+        <SkeletonBlock className="h-4 w-2/3" />
+      </div>
+    </div>
+  );
+}
+
+// Contact form (left) + 2 info cards (right) — matches contact/page.tsx.
+export function SkeletonFormWithSidebar() {
+  return (
+    <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1.5fr_1fr]">
+      <div className="rounded-2xl border border-border bg-card p-6">
+        <SkeletonBlock className="h-10 w-full" />
+        <SkeletonBlock className="mt-4 h-10 w-full" />
+        <SkeletonBlock className="mt-4 h-10 w-full" />
+        <SkeletonBlock className="mt-4 h-28 w-full" />
+        <SkeletonBlock className="mt-5 h-11 w-40" />
+      </div>
+      <div className="flex flex-col gap-4">
+        <SkeletonBlock className="h-28 w-full rounded-2xl" />
+        <SkeletonBlock className="h-28 w-full rounded-2xl" />
+      </div>
+    </div>
+  );
+}
+
+// Long landing page (home, services, about, ai-agent) — centered hero
+// followed by several alternating full-width section blocks. Not pixel
+// exact per section, but matches real total scroll length so the page
+// doesn't jump/shrink drastically when real content swaps in.
+export function SkeletonLongPage({ sections = 5 }: { sections?: number }) {
+  return (
+    <div>
+      <div className="mx-auto max-w-6xl px-6 py-20 text-center md:px-10 md:py-24">
+        <SkeletonHero align="center" />
+      </div>
+      {Array.from({ length: sections }).map((_, i) => (
+        <div key={i} className="border-t border-border">
+          <div className="mx-auto max-w-6xl px-6 py-16 md:px-10">
+            <SkeletonBlock className="mx-auto h-7 w-64" />
+            <div className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              <SkeletonPanel className="h-40" />
+              <SkeletonPanel className="h-40" />
+              <SkeletonPanel className="h-40" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Plain text page (privacy, terms) — heading + paragraph lines.
+export function SkeletonTextPage() {
+  return (
+    <div className="mx-auto max-w-3xl">
+      <SkeletonBlock className="h-9 w-64" />
+      <SkeletonBlock className="mt-2 h-4 w-40" />
+      <div className="mt-10 flex flex-col gap-3">
+        {Array.from({ length: 10 }).map((_, i) => (
+          <SkeletonBlock
+            key={i}
+            className={cn("h-4", i % 4 === 3 ? "w-2/3" : "w-full")}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}

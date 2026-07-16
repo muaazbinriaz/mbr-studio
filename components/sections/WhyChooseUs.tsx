@@ -77,13 +77,13 @@ export function WhyChooseUs() {
                   key={item.title}
                   viewport={{ once: true, amount: 0.4 }}
                   transition={{ duration: 0.4, delay: index * 0.06 }}
-                  className="flex gap-5 py-8 first:pt-0 last:pb-0"
+                  className="group flex gap-5 py-8 first:pt-0 last:pb-0"
                 >
-                  <div className="flex h-11 w-11 flex-none items-center justify-center rounded-lg bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg shadow-primary/20">
+                  <div className="flex h-11 w-11 flex-none items-center justify-center rounded-lg bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg shadow-primary/20 transition-transform duration-300 ease-out group-hover:scale-110 group-hover:shadow-primary/30">
                     <Icon className="h-5 w-5" strokeWidth={1.75} />
                   </div>
                   <div>
-                    <h3 className="mb-1.5 font-heading text-lg font-semibold text-text">
+                    <h3 className="mb-1.5 font-heading text-lg font-semibold text-text transition-colors duration-200 group-hover:text-primary">
                       {item.title}
                     </h3>
                     <p className="max-w-md font-body text-sm leading-relaxed text-secondary-text">

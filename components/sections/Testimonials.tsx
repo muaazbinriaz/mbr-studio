@@ -45,7 +45,7 @@ export function Testimonials() {
     return (
       <section className="border-t border-border bg-secondary-background">
         <div className="mx-auto max-w-3xl px-6 py-24 text-center md:px-10 md:py-32">
-          <p className="mb-3 font-body text-sm font-medium tracking-wide text-accent">
+          <p className="mb-3 font-body text-sm font-medium tracking-wide text-gradient-animated">
             What clients say
           </p>
           <div className="rounded-2xl border border-border bg-card/60 px-8 py-14 backdrop-blur-md">
@@ -86,7 +86,7 @@ function TestimonialCarousel({
     <section className="border-t border-border bg-secondary-background">
       <div className="mx-auto max-w-3xl px-6 py-24 md:px-10 md:py-32">
         <FadeIn>
-          <p className="mb-10 text-center font-body text-sm font-medium tracking-wide text-accent">
+          <p className="mb-10 text-center font-body text-sm font-medium tracking-wide text-gradient-animated">
             What clients say
           </p>
         </FadeIn>

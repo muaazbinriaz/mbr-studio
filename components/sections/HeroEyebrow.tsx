@@ -1,35 +1,3 @@
-// // components/sections/HeroEyebrow.tsx
-// "use client";
-
-// import { motion, useReducedMotion } from "framer-motion";
-// import { Sparkles } from "lucide-react";
-
-// /**
-//  * Step 1 redesign: was a plain line of text. Now a glass pill badge with
-//  * a live-pulse dot + sparkle icon — the "glassmorphism / premium badge"
-//  * treatment from the redesign brief, applied to the single most-seen
-//  * element on the site.
-//  */
-// export function HeroEyebrow() {
-//   const shouldReduceMotion = useReducedMotion();
-
-//   return (
-//     <motion.div
-//       initial={shouldReduceMotion ? false : { opacity: 0, y: 8 }}
-//       animate={{ opacity: 1, y: 0 }}
-//       transition={{ duration: 0.4 }}
-//       className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-border/80 bg-card/60 px-4 py-1.5 text-sm font-medium text-secondary-text shadow-sm backdrop-blur-md"
-//     >
-//       <span className="relative flex h-2 w-2" aria-hidden="true">
-//         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75 motion-reduce:animate-none" />
-//         <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
-//       </span>
-//       <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-//       Web Development Agency + the AI Chat Agent behind it — try it live below
-//     </motion.div>
-//   );
-// }
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -51,9 +19,9 @@ import { Sparkles } from "lucide-react";
  */
 
 const PHRASES = [
-  "🚀 Web Development Agency + the AI Agent behind it — try it live below",
-  "💬 Websites, AI Chatbots & WhatsApp Automation — built by one senior engineer",
-  "✨ See the AI agent in action — right there in the corner →",
+  "🚀 Websites, SaaS products & landing pages — built by one senior engineer",
+  "💬 AI chatbots & WhatsApp automation, when your business needs them",
+  "✨ See a live AI agent in action — right there in the corner →",
 ];
 
 // Widest phrase — reserves a fixed width via an invisible sizer below so
@@ -66,17 +34,20 @@ const PHRASE_DURATION = 4200; // ms each phrase stays visible
 export function HeroEyebrow() {
   const shouldReduceMotion = useReducedMotion();
   const [index, setIndex] = useState(0);
+  const [paused, setPaused] = useState(false);
 
   useEffect(() => {
-    if (shouldReduceMotion) return;
+    if (shouldReduceMotion || paused) return;
     const interval = setInterval(() => {
       setIndex((i) => (i + 1) % PHRASES.length);
     }, PHRASE_DURATION);
     return () => clearInterval(interval);
-  }, [shouldReduceMotion]);
+  }, [shouldReduceMotion, paused]);
 
   return (
     <motion.div
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
       initial={shouldReduceMotion ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}

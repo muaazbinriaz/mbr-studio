@@ -28,9 +28,9 @@ export function Hero() {
           <HeroEyebrow />
 
           <h1 className="max-w-4xl font-heading text-2xl font-bold leading-[1.05] tracking-tight text-text sm:text-3xl md:text-4xl lg:text-5xl">
-            Websites and AI automation,{" "}
+            Custom software,{" "}
             <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              engineered to convert.
+              engineered to grow your business.
             </span>
           </h1>
 

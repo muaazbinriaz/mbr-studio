@@ -18,8 +18,9 @@ export function HeroSubAndCta() {
         className="mt-6 max-w-2xl font-body text-base text-secondary-text
  sm:text-lg md:text-xl"
       >
-        MBR Studio designs, builds, and automates digital products for founders
-        who need results — not just deliverables.
+        Websites, SaaS products, AI chatbots &amp; agents, WhatsApp and business
+        automation, and UI/UX design — built by a senior engineer who ships
+        production-ready code, not just deliverables.
       </motion.p>
 
       <motion.div

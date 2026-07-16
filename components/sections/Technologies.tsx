@@ -1,35 +1,77 @@
 "use client";
 
 import { FadeIn } from "@/components/animations/FadeIn";
-
-import { motion, useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "framer-motion";
+import {
+  Layers,
+  Atom,
+  FileCode2,
+  Palette,
+  Sparkles,
+  Component,
+  Blocks,
+  Shapes,
+  Database,
+  Bot,
+  Gem,
+  Network,
+  ListChecks,
+  ShieldCheck,
+  Mail,
+  Triangle,
+} from "lucide-react";
 
 /**
- * Technologies — Prompt 11 (part 2 of 2)
+ * Technologies — infinite horizontal scroll ("Vercel/Stripe/Linear-style"
+ * tech strip). List is generated ONLY from technologies actually present
+ * in package.json — nothing fabricated.
  *
- * Blueprint ref: Part 1, Section 7 (Home Page section order:
- * ... → Why Choose Us → Technologies → Testimonials → ...)
- *
- * DESIGN NOTE: rendered as a clean typographic wordmark row rather than
- * pulling in brand SVG logos. Two reasons: (1) it keeps the "restraint,
- * typography over decoration" principle from the design system intact
- * instead of introducing a new icon language just for this strip, and
- * (2) real brand marks (Next.js triangle, Vercel logo, etc.) are
- * trademarked assets — safer and more consistent to reference the
- * names in your own type system than to source and embed logo files.
- * If you'd rather have actual logo marks, the `simple-icons` /
- * `react-icons/si` package is the standard way to add them — happy to
- * wire that in as a follow-up if you confirm you want real marks.
+ * Icons are generic lucide-react glyphs (not brand logo marks) — keeps us
+ * clear of trademarked assets while still giving each item a visual anchor.
+ * Track is duplicated once internally for a seamless loop; only the CSS
+ * animation (.tech-marquee-track, in globals.css) moves it, so it stays
+ * GPU-accelerated and respects prefers-reduced-motion automatically.
  */
 
 const STACK = [
-  "Next.js",
-  "React",
-  "TypeScript",
-  "Tailwind CSS",
-  "Framer Motion",
-  "Vercel",
+  { name: "Next.js", icon: Layers },
+  { name: "React", icon: Atom },
+  { name: "TypeScript", icon: FileCode2 },
+  { name: "Tailwind CSS", icon: Palette },
+  { name: "Framer Motion", icon: Sparkles },
+  { name: "Radix UI", icon: Component },
+  { name: "shadcn/ui", icon: Blocks },
+  { name: "Lucide Icons", icon: Shapes },
+  { name: "Supabase", icon: Database },
+  { name: "Anthropic Claude", icon: Bot },
+  { name: "Google Gemini", icon: Gem },
+  { name: "OpenRouter", icon: Network },
+  { name: "React Hook Form", icon: ListChecks },
+  { name: "Zod", icon: ShieldCheck },
+  { name: "Resend", icon: Mail },
+  { name: "Vercel", icon: Triangle },
 ] as const;
+
+function StackRow({ keyPrefix }: { keyPrefix: string }) {
+  return (
+    <span className="flex items-center">
+      {STACK.map((tech) => (
+        <span
+          key={`${keyPrefix}-${tech.name}`}
+          className="mx-5 flex items-center gap-2.5 whitespace-nowrap sm:mx-7"
+        >
+          <tech.icon
+            className="h-5 w-5 flex-none text-primary/70 transition-colors duration-200 sm:h-5 sm:w-5"
+            aria-hidden="true"
+          />
+          <span className="font-heading text-base font-semibold tracking-tight text-secondary-text transition-colors duration-200 sm:text-lg">
+            {tech.name}
+          </span>
+        </span>
+      ))}
+    </span>
+  );
+}
 
 export function Technologies() {
   const shouldReduceMotion = useReducedMotion();
@@ -39,26 +81,51 @@ export function Technologies() {
       <div className="mx-auto max-w-6xl px-6 py-16 md:px-10 md:py-20">
         <FadeIn>
           <p className="mb-10 text-center font-body text-sm font-medium tracking-wide text-secondary-text">
-            Built on a modern, production-grade stack
+            Built with Modern Technologies
           </p>
         </FadeIn>
 
-        <motion.div
-          initial={shouldReduceMotion ? false : { opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true, amount: 0.6 }}
-          transition={{ duration: 0.5 }}
-          className="flex flex-wrap items-center justify-center gap-x-10 gap-y-6 sm:gap-x-14"
-        >
-          {STACK.map((tech) => (
-            <span
-              key={tech}
-              className="font-heading text-lg font-semibold tracking-tight text-secondary-text transition-colors duration-200 hover:text-text sm:text-xl"
-            >
-              {tech}
-            </span>
-          ))}
-        </motion.div>
+        {shouldReduceMotion ? (
+          <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-6 sm:gap-x-14">
+            {STACK.map((tech) => (
+              <span
+                key={tech.name}
+                className="flex items-center gap-2.5 whitespace-nowrap"
+              >
+                <tech.icon
+                  className="h-5 w-5 flex-none text-primary/70"
+                  aria-hidden="true"
+                />
+                <span className="font-heading text-base font-semibold tracking-tight text-secondary-text sm:text-lg">
+                  {tech.name}
+                </span>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div
+            className="group relative w-full overflow-hidden"
+            role="presentation"
+            aria-hidden="true"
+          >
+            {/* Fade edges so items don't hard-cut at the container edge */}
+            <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-background to-transparent sm:w-28" />
+            <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-background to-transparent sm:w-28" />
+
+            {/* Only this element moves; pauses on hover via CSS (see
+                .tech-marquee-track in globals.css) */}
+            <div className="tech-marquee-track flex w-max whitespace-nowrap">
+              <StackRow keyPrefix="a" />
+              <StackRow keyPrefix="b" />
+            </div>
+          </div>
+        )}
+
+        {/* Screen-reader friendly, non-animated list — the marquee above
+            is aria-hidden since it's decorative/duplicated content */}
+        <span className="sr-only">
+          Technologies used: {STACK.map((t) => t.name).join(", ")}
+        </span>
       </div>
     </section>
   );

@@ -5,9 +5,10 @@ export const siteConfig = {
   name: "MBR Studio",
   title: "MBR Studio — Digital products, built to grow your business.",
   founder: "Muaaz Bin Riaz",
-  tagline: "Digital products, built to grow your business.",
+  tagline:
+    "Websites, SaaS & AI automation — built directly by the engineer who ships them.",
   description:
-    "MBR Studio is a premium software agency building websites, AI-powered automation, and digital products for growing businesses.",
+    "MBR Studio is a boutique software studio building websites, SaaS products, and AI-powered automation for growing businesses.",
   url: "https://mbrstudio.co",
   ogImage: "/opengraph-image",
   email: "mbrstudio.dev@gmail.com",
@@ -34,11 +35,6 @@ export const navLinks = [
 export const primaryCta = {
   label: "Book a Consultation",
   href: siteConfig.consultationUrl,
-} as const;
-
-export const secondaryCta = {
-  label: "Start Free Trial",
-  href: "/signup",
 } as const;
 
 /**

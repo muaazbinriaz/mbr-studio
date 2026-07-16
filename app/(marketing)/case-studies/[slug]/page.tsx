@@ -80,6 +80,11 @@ export default async function CaseStudyPage({ params }: CaseStudyPageProps) {
             <span className="rounded-full bg-primary/10 px-3 py-1 font-body text-xs font-medium text-primary">
               {project.category}
             </span>
+            {project.badge && (
+              <span className="rounded-full border border-border px-3 py-1 font-body text-xs font-medium text-secondary-text">
+                {project.badge}
+              </span>
+            )}
             <span className="font-body text-sm text-secondary-text">
               {project.client} · {project.industry}
             </span>
@@ -200,8 +205,10 @@ export default async function CaseStudyPage({ params }: CaseStudyPageProps) {
             </div>
           ) : (
             <p className="max-w-lg font-body text-base text-secondary-text">
-              Results and metrics for this project are being finalized with the
-              client — reach out if you&apos;d like the details directly.
+              This was a self-initiated project, so there&apos;s no client
+              engagement to report metrics from — happy to walk through the
+              technical decisions and trade-offs directly if you&apos;re
+              curious.
             </p>
           )}
         </div>

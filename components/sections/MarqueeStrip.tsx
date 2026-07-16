@@ -20,8 +20,11 @@ import { useReducedMotion } from "framer-motion";
 
 const MARQUEE_ITEMS: { emoji: string; text: string }[] = [
   { emoji: "🚀", text: "From idea to launch in weeks, not months" },
-  { emoji: "🤖", text: "AI chat agents that qualify leads while you sleep" },
-  { emoji: "📱", text: "WhatsApp automation for bookings & support" },
+  { emoji: "🌐", text: "Websites, SaaS products & landing pages that convert" },
+  {
+    emoji: "🤖",
+    text: "AI chat agents & WhatsApp automation, when you need them",
+  },
   { emoji: "🔐", text: "Client-owned code & accounts, always" },
   { emoji: "⚡", text: "Built by one senior engineer — no bloated agency" },
 ];

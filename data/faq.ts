@@ -4,12 +4,12 @@ export const faq: FaqItem[] = [
   {
     question: "How much does a website cost?",
     answer:
-      "A basic business website starts from $300. Professional websites with custom design range from $500–$1000. E-commerce stores start from $800. Final pricing depends on your specific requirements — contact us for a free quote.",
+      "Business websites typically range $300–$1000 depending on design complexity and features, and e-commerce stores range $800 and up. Every project is scoped individually — book a free consultation for an exact quote.",
   },
   {
     question: "How long does it take to build a website?",
     answer:
-      "A basic website takes 1–2 weeks. A professional business website takes 2–3 weeks. E-commerce stores take 3–4 weeks. Timeline depends on how quickly you provide content and feedback.",
+      "Basic websites take 1–2 weeks, professional business sites 2–3 weeks, and e-commerce builds 3–4 weeks. Timelines shift based on how quickly you provide content and feedback.",
   },
   {
     question: "Do you provide hosting?",
@@ -20,6 +20,11 @@ export const faq: FaqItem[] = [
     question: "Do you redesign existing websites?",
     answer:
       "Yes! We redesign outdated websites into modern, fast, mobile-friendly experiences. Share your current website and we'll give you a free improvement proposal.",
+  },
+  {
+    question: "Do you build SaaS products or MVPs?",
+    answer:
+      "Yes — from a first clickable prototype through to a production-ready platform with auth, billing, and a real database. If you've got a product idea and need someone to actually build it, that's exactly the kind of project we take on.",
   },
   {
     question: "What is an AI chatbot and do I need one?",
@@ -34,7 +39,7 @@ export const faq: FaqItem[] = [
   {
     question: "Do you work with international clients?",
     answer:
-      "Yes! We work with clients from Pakistan, UAE, UK, USA, and worldwide. Communication is in English and we work across time zones.",
+      "Yes — we work with clients remotely and are comfortable communicating in English across time zones, so location isn't a barrier to working together.",
   },
   {
     question: "How do I get started?",

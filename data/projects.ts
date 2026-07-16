@@ -18,6 +18,15 @@
  * NOT invent plausible-sounding metrics or narrative to fill these
  * fields early. A fabricated stat on a real client's case study is a
  * false claim, not a placeholder.
+ *
+ * HONESTY PASS: `client` no longer names a business as if it were a
+ * paying client for any project below — all three are personal /
+ * self-initiated builds used to demonstrate skill, and now carry
+ * `badge: "Personal Project"` so this is visible on the card itself,
+ * not just in this comment. The real subject of each project (e.g. the
+ * Lumière Skin Clinic concept) still lives in `title` and `summary` —
+ * nothing about the work itself is hidden, only the implied client
+ * relationship is corrected.
  */
 import type { Project } from "@/types";
 import type { BusinessType } from "@/lib/chat/estimator";
@@ -26,10 +35,11 @@ export const projects: Project[] = [
   {
     slug: "lumiere-skin-clinic",
     title: "Lumière Skin Clinic Website",
-    client: "Lumière Skin Clinic, Rawalpindi",
-    industry: "Healthcare / Aesthetic Clinic",
+    client: "Personal Project",
+    industry: "Healthcare / Aesthetic Clinic (concept build)",
+    badge: "Personal Project",
     summary:
-      "A full-stack web application for Lumière Skin Clinic, delivering a complete digital presence with AI chatbot, online booking, and admin dashboard. Built with Next.js, TypeScript, and MongoDB.",
+      "A full-stack web application built as a self-initiated concept for a skin clinic, delivering a complete digital presence with AI chatbot, online booking, and admin dashboard. Built with Next.js, TypeScript, and MongoDB.",
     image: "/images/projects/skin-clinic/skin-clinic.png",
     images: [
       "/images/projects/skin-clinic/skin-clinic-services.png",
@@ -48,7 +58,7 @@ export const projects: Project[] = [
     category: "AI Chatbot",
     link: "https://lumeiri-skin-clinic.vercel.app/",
     problem:
-      "Lumière needed a professional online presence that could handle appointment bookings and answer common patient questions without adding to staff workload.",
+      "Clinics like this typically need a professional online presence that can handle appointment bookings and answer common patient questions without adding to staff workload — I built this to prove out that exact workflow end to end.",
     solution:
       "Built a full-stack site with an integrated AI chatbot for FAQs and lead capture, an online booking flow, and an admin dashboard for staff to manage bookings and content — on Next.js, TypeScript, and MongoDB.",
     outcome: [],
@@ -57,8 +67,9 @@ export const projects: Project[] = [
   {
     slug: "jobmatch-ai-job-matching",
     title: "JobMatch — AI-Powered CV Analysis & Job Matching",
-    client: "Personal / SaaS Project",
+    client: "Personal Project",
     industry: "Startup / SaaS",
+    badge: "Personal Project",
     summary:
       "An AI-powered job matching platform where users upload their CV as a PDF and get matched against live job listings. The app extracts skills, experience, and education using an LLM, then searches real-time job data to surface relevant openings — all behind secure email/password authentication.",
     image: "/images/projects/jobmatch/hero.png",
@@ -92,8 +103,9 @@ export const projects: Project[] = [
   {
     slug: "mern-trello-task-board",
     title: "MERN Trello-Style Collaborative Task Board",
-    client: "Personal / SaaS Project",
+    client: "Personal Project",
     industry: "Startup / SaaS",
+    badge: "Personal Project",
     summary:
       "A full-stack collaborative Kanban board app inspired by Trello. Users create boards, invite teammates by email, and manage drag-and-drop lists and cards with real-time updates powered by WebSockets — complete with image uploads, tagging, and automation rules.",
     image: "/images/projects/task-board/hero.png",

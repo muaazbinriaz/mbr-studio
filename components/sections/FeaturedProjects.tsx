@@ -27,7 +27,7 @@ export function FeaturedProjects() {
               className="font-heading text-h2-feature font-bold leading-tight tracking-tight text-text
 "
             >
-              Recent projects, real results.
+              Projects that showcase what I can build.
             </h2>
           </div>
 

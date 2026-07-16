@@ -142,15 +142,15 @@ function ProcessStep({
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.5 }}
       transition={{ duration: 0.5, delay: shouldReduceMotion ? 0 : 0.05 }}
-      className="relative flex gap-6 pl-0 md:gap-8"
+      className="group relative flex gap-6 pl-0 md:gap-8"
     >
       {/* Numbered marker */}
-      <div className="relative z-10 flex h-10 w-10 flex-none items-center justify-center rounded-full border border-border bg-card font-heading text-xs font-semibold text-text md:h-12 md:w-12 md:text-sm">
+      <div className="relative z-10 flex h-10 w-10 flex-none items-center justify-center rounded-full border border-border bg-card font-heading text-xs font-semibold text-text transition-all duration-300 ease-out group-hover:-translate-y-0.5 group-hover:border-primary group-hover:bg-primary group-hover:text-primary-foreground group-hover:shadow-lg group-hover:shadow-primary/25 md:h-12 md:w-12 md:text-sm">
         {step.number}
       </div>
 
       <div className="pt-1.5 md:pt-2.5">
-        <h3 className="mb-2 font-heading text-xl font-semibold text-text md:text-2xl">
+        <h3 className="mb-2 font-heading text-xl font-semibold text-text transition-colors duration-200 group-hover:text-primary md:text-2xl">
           {step.title}
         </h3>
         <p
