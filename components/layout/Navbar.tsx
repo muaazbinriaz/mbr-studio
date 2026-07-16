@@ -55,6 +55,8 @@ export function Navbar() {
   const { theme, toggleTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [hidden, setHidden] = useState(false);
+  const lastScrollY = useRef(0);
   const pathname = usePathname();
 
   // Hydration-safe theme icon: SSR always assumes "dark" (no `window` to
@@ -81,7 +83,19 @@ export function Navbar() {
   const menuButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > SCROLL_THRESHOLD);
+    const onScroll = () => {
+      const currentY = window.scrollY;
+      setScrolled(currentY > SCROLL_THRESHOLD);
+
+      if (currentY < SCROLL_THRESHOLD) {
+        setHidden(false);
+      } else if (currentY > lastScrollY.current) {
+        setHidden(true); // scrolling down → hide
+      } else if (currentY < lastScrollY.current) {
+        setHidden(false); // scrolling up → show
+      }
+      lastScrollY.current = currentY;
+    };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
@@ -90,6 +104,10 @@ export function Navbar() {
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    if (open) setHidden(false);
+  }, [open]);
 
   // Same focus-trap primitive MobileNav.tsx uses, instead of a
   // hand-rolled keydown/Tab-cycling effect duplicated here.
@@ -120,7 +138,8 @@ export function Navbar() {
     <>
       <header
         className={cn(
-          "sticky top-0 z-40 border-b transition-[background-color,backdrop-filter,border-color] duration-200 ease-out",
+          "sticky top-0 z-40 border-b transition-[transform,background-color,backdrop-filter,border-color] duration-300 ease-out",
+          hidden ? "-translate-y-full" : "translate-y-0",
           scrolled
             ? "border-border bg-background/85 backdrop-blur-md"
             : "border-transparent bg-transparent backdrop-blur-none",

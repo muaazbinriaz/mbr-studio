@@ -23,7 +23,9 @@ export function useFocusTrap(
     const focusables = () =>
       Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
 
-    (initialFocusRef?.current ?? focusables()[0])?.focus();
+    (initialFocusRef?.current ?? focusables()[0])?.focus({
+      preventScroll: true,
+    });
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -41,17 +43,17 @@ export function useFocusTrap(
 
       if (e.shiftKey && document.activeElement === firstEl) {
         e.preventDefault();
-        lastEl.focus();
+        lastEl.focus({ preventScroll: true });
       } else if (!e.shiftKey && document.activeElement === lastEl) {
         e.preventDefault();
-        firstEl.focus();
+        firstEl.focus({ preventScroll: true });
       }
     }
 
     container.addEventListener("keydown", handleKeyDown);
     return () => {
       container.removeEventListener("keydown", handleKeyDown);
-      previouslyFocused?.focus();
+      previouslyFocused?.focus({ preventScroll: true });
     };
   }, [isActive, containerRef, onClose, initialFocusRef]);
 }

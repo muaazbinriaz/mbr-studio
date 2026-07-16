@@ -518,8 +518,8 @@ export function ChatWindow() {
             // there. Kept visible on `sm`+ where the panel is a bottom-right
             // floating card that doesn't cover this screen area, so the
             // button coexisting below it (Intercom-style) still works.
-            "fixed z-50 h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl shadow-black/30 sm:flex sm:bottom-8 sm:right-8",
-            isOpen || !panelExited ? "hidden" : "flex bottom-2 right-2",
+            "fixed z-50 h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl shadow-black/30 sm:h-14 sm:w-14 sm:flex sm:bottom-4 sm:right-3",
+            isOpen || !panelExited ? "hidden" : "flex bottom-1.5 right-1.5",
           )}
         >
           <AnimatePresence mode="wait" initial={false}>
