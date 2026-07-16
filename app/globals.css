@@ -172,7 +172,12 @@ nav a {
     scroll-behavior: smooth;
   }
 
+  html {
+    overflow-x: hidden;
+  }
+
   body {
+    overflow-x: hidden;
     background: var(--color-background);
     color: var(--color-foreground);
     transition:

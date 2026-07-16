@@ -47,7 +47,7 @@ export const blogPosts: BlogPost[] = [
     title: "How Modern Websites + AI Automation Help Businesses Grow in 2026",
     summary:
       "A website isn't optional and AI isn't a replacement for one — here's how the two work together to actually generate leads, cut support load, and grow revenue.",
-    publishedAt: "2026-07-15T08:00:00Z",
+    publishedAt: "2026-07-28T08:00:00Z",
     authorName: "Muaaz Bin Riaz",
     category: "Website Development",
     tags: [

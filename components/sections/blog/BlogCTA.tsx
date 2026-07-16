@@ -29,6 +29,8 @@ export function BlogCTA() {
         </p>
         <Link
           href={primaryCta.href}
+          target="_blank"
+          rel="noopener noreferrer"
           className="mt-7 inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-primary to-primary/90 px-6 text-base font-medium text-primary-foreground transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/20"
         >
           {primaryCta.label}
