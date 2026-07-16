@@ -518,7 +518,7 @@ export function ChatWindow() {
             // there. Kept visible on `sm`+ where the panel is a bottom-right
             // floating card that doesn't cover this screen area, so the
             // button coexisting below it (Intercom-style) still works.
-            "fixed z-50 h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl shadow-black/30 sm:h-14 sm:w-14 sm:flex sm:bottom-4 sm:right-3",
+            "fixed z-50 h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl shadow-black/30 sm:h-14 sm:w-14 sm:flex sm:bottom-4 sm:right-[max(12px,calc((100vw_-_1152px)/2_+_12px))]",
             isOpen || !panelExited ? "hidden" : "flex bottom-1.5 right-1.5",
           )}
         >

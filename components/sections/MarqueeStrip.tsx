@@ -76,7 +76,7 @@ export function MarqueeStrip() {
 
   return (
     <div
-      className="relative w-full overflow-hidden bg-card/60 py-3.5 backdrop-blur-sm"
+      className="relative mx-auto w-full max-w-6xl overflow-hidden bg-card/60 py-3.5 backdrop-blur-sm"
       role="presentation"
       aria-hidden="true"
     >
