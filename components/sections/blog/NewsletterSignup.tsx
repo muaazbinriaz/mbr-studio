@@ -71,7 +71,7 @@ export function NewsletterSignup() {
             required
             placeholder="you@business.com"
             disabled={isPending}
-            className="h-11 flex-1 rounded-lg border border-border bg-background px-4 text-sm text-text placeholder:text-secondary-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+            className="h-11 flex-1 rounded-lg border border-border bg-background px-4 text-sm leading-none text-text placeholder:text-secondary-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
           />
           <button
             type="submit"

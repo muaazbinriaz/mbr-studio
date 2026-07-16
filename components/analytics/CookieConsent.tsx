@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import { Analytics } from "@vercel/analytics/react";
 
 const CONSENT_KEY = "mbr-analytics-consent";
@@ -8,7 +8,7 @@ const CONSENT_KEY = "mbr-analytics-consent";
 export function CookieConsent() {
   const [consent, setConsent] = useState<"granted" | "denied" | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const stored = localStorage.getItem(CONSENT_KEY);
     if (stored === "granted" || stored === "denied") setConsent(stored);
   }, []);

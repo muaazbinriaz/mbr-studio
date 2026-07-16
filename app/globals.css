@@ -177,7 +177,6 @@ nav a {
   }
 
   body {
-    overflow-x: hidden;
     background: var(--color-background);
     color: var(--color-foreground);
     transition:

@@ -51,7 +51,7 @@ export function HeroEyebrow() {
       initial={shouldReduceMotion ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="relative mb-6 inline-flex w-fit max-w-full items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-full border border-primary/30 bg-card/60 px-5 py-2 text-base font-semibold shadow-sm backdrop-blur-md sm:text-lg"
+      className="relative mb-6 inline-flex w-fit max-w-full items-center gap-2.5 overflow-hidden rounded-full border border-primary/30 bg-card/60 px-5 py-2 text-sm font-semibold shadow-sm backdrop-blur-md sm:text-base lg:whitespace-nowrap lg:text-lg"
     >
       {/* Slow diagonal shimmer sweep — purely decorative, sits behind the text */}
       {!shouldReduceMotion && (
@@ -78,7 +78,7 @@ export function HeroEyebrow() {
         {/* Invisible sizer holding the longest phrase — locks the pill's
             width permanently so it can never grow/shrink on rotation. */}
         <span
-          className="invisible col-start-1 row-start-1 whitespace-nowrap"
+          className="invisible col-start-1 row-start-1 hidden whitespace-nowrap lg:inline"
           aria-hidden="true"
         >
           {LONGEST_PHRASE}
@@ -90,7 +90,7 @@ export function HeroEyebrow() {
             animate={{ opacity: 1, y: 0 }}
             exit={shouldReduceMotion ? undefined : { opacity: 0, y: -6 }}
             transition={{ duration: 0.5, ease: "easeInOut" }}
-            className={`col-start-1 row-start-1 whitespace-nowrap ${
+            className={`col-start-1 row-start-1 whitespace-normal lg:whitespace-nowrap ${
               shouldReduceMotion ? "text-primary" : "text-gradient-animated"
             }`}
           >
