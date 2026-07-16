@@ -937,11 +937,11 @@ nav a {
   }
 }
 
-/* ---------------------------------------------------------------------
+/* --------------------------------------------------------------
    Page hero top spacing — shared across Contact, Portfolio, About,
    Blog, Services page headers. Change ONCE here to adjust the gap
    below the navbar on all 5 pages at once.
---------------------------------------------------------------------- */
+--------------------------------------------------------------- */
 .page-hero-pad {
   padding-left: 1.5rem;
   padding-right: 1.5rem;
