@@ -34,7 +34,7 @@ export function Footer() {
       <div className="mx-auto max-w-6xl px-6 py-16">
         <div className="grid grid-cols-2 gap-x-8 gap-y-12 md:grid-cols-4 md:gap-x-6">
           {/* Column 1 — Brand + socials */}
-          <div className="col-span-2 md:col-span-1">
+          <div className="col-span-2 min-w-0 md:col-span-1">
             <Link href="/" aria-label={`${siteConfig.name} — Home`}>
               <Logo />
             </Link>
@@ -58,7 +58,7 @@ export function Footer() {
           </div>
 
           {/* Column 2 — Sitemap */}
-          <div>
+          <div className="min-w-0">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-secondary-text">
               Sitemap
             </h3>
@@ -80,7 +80,7 @@ export function Footer() {
           </div>
 
           {/* Column 3 — Services */}
-          <div>
+          <div className="min-w-0">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-secondary-text">
               Services
             </h3>
@@ -102,14 +102,14 @@ export function Footer() {
           </div>
 
           {/* Column 4 — Contact */}
-          <div>
+          <div className="min-w-0">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-secondary-text">
               Contact
             </h3>
             <div className="mt-4 flex flex-col items-start gap-3">
               <a
                 href={`mailto:${siteConfig.email}`}
-                className={footerLinkClass}
+                className={`${footerLinkClass} break-words`}
                 data-text={siteConfig.email}
               >
                 {siteConfig.email}

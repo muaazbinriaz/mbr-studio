@@ -187,6 +187,12 @@ nav a {
     line-height: 1.7; /* generous line-height for readability, per design system */
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    /* Defense-in-depth against horizontal scroll: html's overflow-x:hidden
+       alone isn't always honored consistently across mobile browsers. */
+    overflow-x: hidden;
+    /* Safety net: any future long unbreakable string (URL, long word)
+       wraps instead of silently widening the page on narrow screens. */
+    overflow-wrap: break-word;
   }
 
   /* ---------------------------------------------------------------

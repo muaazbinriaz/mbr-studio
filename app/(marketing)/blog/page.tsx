@@ -96,8 +96,8 @@ export default async function BlogPage({
           ) : (
             <>
               {/* Filters */}
-              <div className="mt-10 flex flex-wrap gap-x-8 gap-y-5">
-                <div className="space-y-2.5">
+              <div className="mt-10 flex flex-col gap-6 sm:flex-row sm:flex-wrap sm:gap-x-8 sm:gap-y-5">
+                <div className="w-full space-y-2.5 sm:w-auto">
                   <span className="text-xs font-semibold uppercase tracking-wide text-secondary-text">
                     Categories
                   </span>
@@ -131,7 +131,7 @@ export default async function BlogPage({
                     })}
                   </div>
                 </div>
-                <div className="space-y-2.5">
+                <div className="w-full space-y-2.5 sm:w-auto">
                   <span className="text-xs font-semibold uppercase tracking-wide text-secondary-text">
                     Tags
                   </span>
