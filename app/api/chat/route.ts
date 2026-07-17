@@ -37,8 +37,8 @@ const PRIMARY_MODEL = "openrouter/free";
 
 const FALLBACK_MODELS = [
   "meta-llama/llama-3.3-70b-instruct:free",
-  "deepseek/deepseek-r1:free",
   "qwen/qwen-2.5-7b-instruct:free",
+  "mistralai/mistral-7b-instruct:free",
 ];
 
 const chatModel = openrouter(PRIMARY_MODEL, {
@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
     model: chatModel,
     system: SYSTEM_PROMPT,
     messages: await convertToModelMessages(messages),
-    maxOutputTokens: 600,
+    maxOutputTokens: 250,
     tools: {
       generateEstimate: tool({
         description:
