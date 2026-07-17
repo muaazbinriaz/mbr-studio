@@ -11386,66 +11386,6 @@ export function SuggestionChips({
 }
 </file>
 
-<file path="components/chatbot/useFocusTrap.ts">
-"use client";
-
-import { useEffect, type RefObject } from "react";
-
-const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
-
-export function useFocusTrap(
-  containerRef: RefObject<HTMLElement | null>,
-  isActive: boolean,
-  onClose: () => void,
-  // Optional: focus this element on activation instead of the first
-  // focusable descendant in DOM order. Existing callers (MobileNav,
-  // Navbar drawer, NavDropdown) omit this and keep the old behavior.
-  initialFocusRef?: RefObject<HTMLElement | null>,
-) {
-  useEffect(() => {
-    if (!isActive || !containerRef.current) return;
-
-    const container = containerRef.current;
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-
-    const focusables = () =>
-      Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
-
-    (initialFocusRef?.current ?? focusables()[0])?.focus();
-
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        onClose();
-        return;
-      }
-
-      if (e.key !== "Tab") return;
-
-      const items = focusables();
-      if (items.length === 0) return;
-
-      const firstEl = items[0];
-      const lastEl = items[items.length - 1];
-
-      if (e.shiftKey && document.activeElement === firstEl) {
-        e.preventDefault();
-        lastEl.focus();
-      } else if (!e.shiftKey && document.activeElement === lastEl) {
-        e.preventDefault();
-        firstEl.focus();
-      }
-    }
-
-    container.addEventListener("keydown", handleKeyDown);
-    return () => {
-      container.removeEventListener("keydown", handleKeyDown);
-      previouslyFocused?.focus();
-    };
-  }, [isActive, containerRef, onClose, initialFocusRef]);
-}
-</file>
-
 <file path="components/nav/custom-nav-icons.tsx">
 "use client";
 
@@ -12382,102 +12322,6 @@ export function BlogCTA() {
 }
 </file>
 
-<file path="components/sections/blog/NewsletterSignup.tsx">
-"use client";
-
-import { useRef, useState, useTransition } from "react";
-import { Mail, Check } from "lucide-react";
-import { subscribeToNewsletter } from "@/app/(marketing)/blog/actions";
-
-/**
- * Newsletter capture backed by Supabase (`newsletter_subscribers` table).
- * No paid email platform — this list is stored for later use once the
- * AI SaaS product launches. No emails are sent from this flow.
- */
-export function NewsletterSignup() {
-  const formRef = useRef<HTMLFormElement>(null);
-  const [isPending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState(false);
-
-  const handleSubmit = (formData: FormData) => {
-    setError(null);
-    startTransition(async () => {
-      const result = await subscribeToNewsletter(formData);
-      if (result?.error) {
-        setError(result.error);
-      } else {
-        setSubmitted(true);
-        formRef.current?.reset();
-      }
-    });
-  };
-
-  return (
-    <section
-      aria-labelledby="newsletter-heading"
-      className="rounded-3xl border border-border bg-card p-8 text-center md:p-10"
-    >
-      <div
-        aria-hidden="true"
-        className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10"
-      >
-        <Mail className="h-5 w-5 text-primary" aria-hidden="true" />
-      </div>
-      <h2
-        id="newsletter-heading"
-        className="font-heading text-xl font-bold text-text md:text-2xl"
-      >
-        Get new articles in your inbox
-      </h2>
-      <p className="mx-auto mt-2 max-w-md text-sm text-secondary-text">
-        Join our newsletter and receive practical tips about websites, AI
-        automation, and business growth — no spam, unsubscribe anytime.
-      </p>
-
-      {submitted ? (
-        <p className="mt-6 inline-flex items-center gap-2 rounded-lg bg-success/10 px-4 py-2.5 text-sm font-medium text-success">
-          <Check className="h-4 w-4" aria-hidden="true" />
-          You&apos;re on the list — thanks for subscribing.
-        </p>
-      ) : (
-        <form
-          ref={formRef}
-          action={handleSubmit}
-          className="mx-auto mt-6 flex max-w-md flex-col gap-3 sm:flex-row"
-        >
-          <label htmlFor="newsletter-email" className="sr-only">
-            Email address
-          </label>
-          <input
-            id="newsletter-email"
-            name="email"
-            type="email"
-            required
-            placeholder="you@business.com"
-            disabled={isPending}
-            className="h-11 flex-1 rounded-lg border border-border bg-background px-4 text-sm leading-none text-text placeholder:text-secondary-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
-          />
-          <button
-            type="submit"
-            disabled={isPending}
-            className="h-11 shrink-0 rounded-lg bg-gradient-to-b from-primary to-primary/90 px-5 text-sm font-medium text-primary-foreground transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/20 disabled:opacity-60"
-          >
-            {isPending ? "Subscribing…" : "Subscribe"}
-          </button>
-        </form>
-      )}
-
-      {error && (
-        <p role="alert" className="mt-3 font-body text-sm text-error">
-          {error}
-        </p>
-      )}
-    </section>
-  );
-}
-</file>
-
 <file path="components/sections/HeroAmbient.tsx">
 // components/sections/HeroAmbient.tsx
 "use client";
@@ -12764,107 +12608,6 @@ export function HeroVisual() {
 //     </motion.div>
 //   );
 // }
-</file>
-
-<file path="components/sections/MarqueeStrip.tsx">
-// components/sections/MarqueeStrip.tsx
-"use client";
-
-import { useReducedMotion } from "framer-motion";
-
-/**
- * Full-bleed scrolling ticker placed between Hero and ProblemStatement.
- *
- * v3 fix: emoji used to sit *inside* the `.text-gradient-animated` span,
- * which uses `background-clip: text` + `color: transparent` — that
- * strips emoji of their native multi-color glyph in several browsers,
- * making every emoji render as one flat tint instead of its real colors.
- * Fixed by pulling the emoji into its own plain (non-gradient) span per
- * item, so each one keeps its own native color, while only the
- * surrounding words get the animated gradient treatment.
- *
- * Copy refreshed to be distinct from the Hero pill's phrases (no more
- * repeating "AI agent in action" in both places).
- */
-
-const MARQUEE_ITEMS: { emoji: string; text: string }[] = [
-  { emoji: "🚀", text: "From idea to launch in weeks, not months" },
-  { emoji: "🌐", text: "Websites, SaaS products & landing pages that convert" },
-  {
-    emoji: "🤖",
-    text: "AI chat agents & WhatsApp automation, when you need them",
-  },
-  { emoji: "🔐", text: "Client-owned code & accounts, always" },
-  { emoji: "⚡", text: "Built by one senior engineer — no bloated agency" },
-];
-
-const SEPARATOR = "✦";
-
-function MarqueeLine({ keyPrefix }: { keyPrefix: string }) {
-  return (
-    <span className="mx-3 flex items-center whitespace-nowrap">
-      {MARQUEE_ITEMS.map((item, i) => (
-        <span
-          key={`${keyPrefix}-${i}`}
-          className="mx-3 flex items-center gap-2 whitespace-nowrap"
-        >
-          {/* Emoji stays outside the gradient span so it keeps its own
-              native color instead of being flattened by background-clip. */}
-          <span className="text-base sm:text-lg" aria-hidden="true">
-            {item.emoji}
-          </span>
-          <span className="text-gradient-animated text-sm font-bold tracking-wide sm:text-base">
-            {item.text}
-          </span>
-          <span className="mx-1 text-xs text-accent/60 sm:text-sm">
-            {SEPARATOR}
-          </span>
-        </span>
-      ))}
-    </span>
-  );
-}
-
-export function MarqueeStrip() {
-  const shouldReduceMotion = useReducedMotion();
-
-  if (shouldReduceMotion) {
-    return (
-      <div className="relative border-y border-primary/25 bg-card/60 py-3 text-center">
-        <span className="inline-flex items-center gap-2">
-          <span className="text-base" aria-hidden="true">
-            {MARQUEE_ITEMS[0].emoji}
-          </span>
-          <span className="text-gradient-animated text-sm font-bold sm:text-base">
-            {MARQUEE_ITEMS[0].text}
-          </span>
-        </span>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className="relative w-full overflow-hidden bg-card/60 py-3.5 backdrop-blur-sm"
-      role="presentation"
-      aria-hidden="true"
-    >
-      {/* Static gradient top/bottom borders — frame never moves */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/70 to-transparent" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-accent/70 to-transparent" />
-
-      {/* Fade edges so text doesn't hard-cut at the viewport edge */}
-      <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-background to-transparent sm:w-32" />
-      <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-background to-transparent sm:w-32" />
-
-      {/* Only this element moves */}
-      <div className="marquee-track flex w-max whitespace-nowrap">
-        <MarqueeLine keyPrefix="a" />
-        <MarqueeLine keyPrefix="b" />
-      </div>
-    </div>
-  );
-}
 </file>
 
 <file path="components/sections/ProblemStatement.tsx">
@@ -16270,6 +16013,68 @@ export function OpeningOptions({
 }
 </file>
 
+<file path="components/chatbot/useFocusTrap.ts">
+"use client";
+
+import { useEffect, type RefObject } from "react";
+
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
+
+export function useFocusTrap(
+  containerRef: RefObject<HTMLElement | null>,
+  isActive: boolean,
+  onClose: () => void,
+  // Optional: focus this element on activation instead of the first
+  // focusable descendant in DOM order. Existing callers (MobileNav,
+  // Navbar drawer, NavDropdown) omit this and keep the old behavior.
+  initialFocusRef?: RefObject<HTMLElement | null>,
+) {
+  useEffect(() => {
+    if (!isActive || !containerRef.current) return;
+
+    const container = containerRef.current;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+
+    const focusables = () =>
+      Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+
+    (initialFocusRef?.current ?? focusables()[0])?.focus({
+      preventScroll: true,
+    });
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+
+      if (e.key !== "Tab") return;
+
+      const items = focusables();
+      if (items.length === 0) return;
+
+      const firstEl = items[0];
+      const lastEl = items[items.length - 1];
+
+      if (e.shiftKey && document.activeElement === firstEl) {
+        e.preventDefault();
+        lastEl.focus({ preventScroll: true });
+      } else if (!e.shiftKey && document.activeElement === lastEl) {
+        e.preventDefault();
+        firstEl.focus({ preventScroll: true });
+      }
+    }
+
+    container.addEventListener("keydown", handleKeyDown);
+    return () => {
+      container.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus({ preventScroll: true });
+    };
+  }, [isActive, containerRef, onClose, initialFocusRef]);
+}
+</file>
+
 <file path="components/platform/AgentSidebarShell.tsx">
 "use client";
 
@@ -17176,6 +16981,102 @@ export function WidgetPreview({
 }
 </file>
 
+<file path="components/sections/blog/NewsletterSignup.tsx">
+"use client";
+
+import { useRef, useState, useTransition } from "react";
+import { Mail, Check } from "lucide-react";
+import { subscribeToNewsletter } from "@/app/(marketing)/blog/actions";
+
+/**
+ * Newsletter capture backed by Supabase (`newsletter_subscribers` table).
+ * No paid email platform — this list is stored for later use once the
+ * AI SaaS product launches. No emails are sent from this flow.
+ */
+export function NewsletterSignup() {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+
+  const handleSubmit = (formData: FormData) => {
+    setError(null);
+    startTransition(async () => {
+      const result = await subscribeToNewsletter(formData);
+      if (result?.error) {
+        setError(result.error);
+      } else {
+        setSubmitted(true);
+        formRef.current?.reset();
+      }
+    });
+  };
+
+  return (
+    <section
+      aria-labelledby="newsletter-heading"
+      className="rounded-3xl border border-border bg-card p-8 text-center md:p-10"
+    >
+      <div
+        aria-hidden="true"
+        className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10"
+      >
+        <Mail className="h-5 w-5 text-primary" aria-hidden="true" />
+      </div>
+      <h2
+        id="newsletter-heading"
+        className="font-heading text-xl font-bold text-text md:text-2xl"
+      >
+        Get new articles in your inbox
+      </h2>
+      <p className="mx-auto mt-2 max-w-md text-sm text-secondary-text">
+        Join our newsletter and receive practical tips about websites, AI
+        automation, and business growth — no spam, unsubscribe anytime.
+      </p>
+
+      {submitted ? (
+        <p className="mt-6 inline-flex items-center gap-2 rounded-lg bg-success/10 px-4 py-2.5 text-sm font-medium text-success">
+          <Check className="h-4 w-4" aria-hidden="true" />
+          You&apos;re on the list — thanks for subscribing.
+        </p>
+      ) : (
+        <form
+          ref={formRef}
+          action={handleSubmit}
+          className="mx-auto mt-6 flex max-w-md flex-col gap-3 sm:flex-row"
+        >
+          <label htmlFor="newsletter-email" className="sr-only">
+            Email address
+          </label>
+          <input
+            id="newsletter-email"
+            name="email"
+            type="email"
+            required
+            placeholder="you@business.com"
+            disabled={isPending}
+            className="h-11 flex-1 rounded-lg border border-border bg-background py-2 px-4 text-sm leading-none text-text placeholder:text-secondary-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+          />
+          <button
+            type="submit"
+            disabled={isPending}
+            className="h-11 shrink-0 rounded-lg bg-gradient-to-b from-primary to-primary/90 px-5 text-sm font-medium text-primary-foreground transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/20 disabled:opacity-60"
+          >
+            {isPending ? "Subscribing…" : "Subscribe"}
+          </button>
+        </form>
+      )}
+
+      {error && (
+        <p role="alert" className="mt-3 font-body text-sm text-error">
+          {error}
+        </p>
+      )}
+    </section>
+  );
+}
+</file>
+
 <file path="components/sections/FeaturedProjects.tsx">
 // components/sections/FeaturedProjects.tsx (Server Component — no "use client")
 "use client";
@@ -17291,6 +17192,107 @@ export function HeroSubAndCta() {
         </Button>
       </motion.div>
     </>
+  );
+}
+</file>
+
+<file path="components/sections/MarqueeStrip.tsx">
+// components/sections/MarqueeStrip.tsx
+"use client";
+
+import { useReducedMotion } from "framer-motion";
+
+/**
+ * Full-bleed scrolling ticker placed between Hero and ProblemStatement.
+ *
+ * v3 fix: emoji used to sit *inside* the `.text-gradient-animated` span,
+ * which uses `background-clip: text` + `color: transparent` — that
+ * strips emoji of their native multi-color glyph in several browsers,
+ * making every emoji render as one flat tint instead of its real colors.
+ * Fixed by pulling the emoji into its own plain (non-gradient) span per
+ * item, so each one keeps its own native color, while only the
+ * surrounding words get the animated gradient treatment.
+ *
+ * Copy refreshed to be distinct from the Hero pill's phrases (no more
+ * repeating "AI agent in action" in both places).
+ */
+
+const MARQUEE_ITEMS: { emoji: string; text: string }[] = [
+  { emoji: "🚀", text: "From idea to launch in weeks, not months" },
+  { emoji: "🌐", text: "Websites, SaaS products & landing pages that convert" },
+  {
+    emoji: "🤖",
+    text: "AI chat agents & WhatsApp automation, when you need them",
+  },
+  { emoji: "🔐", text: "Client-owned code & accounts, always" },
+  { emoji: "⚡", text: "Built by one senior engineer — no bloated agency" },
+];
+
+const SEPARATOR = "✦";
+
+function MarqueeLine({ keyPrefix }: { keyPrefix: string }) {
+  return (
+    <span className="mx-3 flex items-center whitespace-nowrap">
+      {MARQUEE_ITEMS.map((item, i) => (
+        <span
+          key={`${keyPrefix}-${i}`}
+          className="mx-3 flex items-center gap-2 whitespace-nowrap"
+        >
+          {/* Emoji stays outside the gradient span so it keeps its own
+              native color instead of being flattened by background-clip. */}
+          <span className="text-base sm:text-lg" aria-hidden="true">
+            {item.emoji}
+          </span>
+          <span className="text-gradient-animated text-sm font-bold tracking-wide sm:text-base">
+            {item.text}
+          </span>
+          <span className="mx-1 text-xs text-accent/60 sm:text-sm">
+            {SEPARATOR}
+          </span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+export function MarqueeStrip() {
+  const shouldReduceMotion = useReducedMotion();
+
+  if (shouldReduceMotion) {
+    return (
+      <div className="relative border-y border-primary/25 bg-card/60 py-3 text-center">
+        <span className="inline-flex items-center gap-2">
+          <span className="text-base" aria-hidden="true">
+            {MARQUEE_ITEMS[0].emoji}
+          </span>
+          <span className="text-gradient-animated text-sm font-bold sm:text-base">
+            {MARQUEE_ITEMS[0].text}
+          </span>
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="relative mx-auto w-full max-w-6xl overflow-hidden bg-card/60 py-3.5 backdrop-blur-sm"
+      role="presentation"
+      aria-hidden="true"
+    >
+      {/* Static gradient top/bottom borders — frame never moves */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/70 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-accent/70 to-transparent" />
+
+      {/* Fade edges so text doesn't hard-cut at the viewport edge */}
+      <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-background to-transparent sm:w-32" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-background to-transparent sm:w-32" />
+
+      {/* Only this element moves */}
+      <div className="marquee-track flex w-max whitespace-nowrap">
+        <MarqueeLine keyPrefix="a" />
+        <MarqueeLine keyPrefix="b" />
+      </div>
+    </div>
   );
 }
 </file>
@@ -24640,163 +24642,6 @@ export async function POST(request: Request) {
 }
 </file>
 
-<file path="components/layout/Footer.tsx">
-import Link from "next/link";
-
-import { services } from "@/data/services";
-import { siteConfig } from "@/config/site";
-import { Logo } from "@/components/brand/Logo";
-
-const sitemapLinks = [
-  { label: "Home", href: "/" },
-  { label: "About", href: "/about" },
-  { label: "Services", href: "/services" },
-  // { label: "AI Agent", href: "/ai-agent" },
-  { label: "Portfolio", href: "/portfolio" },
-  { label: "Case Studies", href: "/case-studies" },
-  { label: "Blog", href: "/blog" },
-  { label: "Contact", href: "/contact" },
-] as const;
-
-const socialLinks = [
-  { label: "X", href: siteConfig.links.twitter },
-  { label: "LinkedIn", href: siteConfig.links.linkedin },
-  { label: "GitHub", href: siteConfig.links.github },
-] as const;
-
-const legalLinks = [
-  { label: "Privacy", href: "/privacy" },
-  { label: "Terms", href: "/terms" },
-] as const;
-
-const footerLinkClass = "footer-link text-sm text-secondary-text";
-
-export function Footer() {
-  return (
-    <footer className="border-t border-border">
-      <div className="mx-auto max-w-6xl px-6 py-16">
-        <div className="grid grid-cols-2 gap-x-8 gap-y-12 md:grid-cols-4 md:gap-x-6">
-          {/* Column 1 — Brand + socials */}
-          <div className="col-span-2 md:col-span-1">
-            <Link href="/" aria-label={`${siteConfig.name} — Home`}>
-              <Logo />
-            </Link>
-            <p className="mt-3 max-w-[26ch] text-sm text-secondary-text">
-              {siteConfig.tagline}
-            </p>
-            <nav aria-label="Social" className="mt-6 flex gap-5">
-              {socialLinks.map((social) => (
-                <a
-                  key={social.label}
-                  href={social.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={footerLinkClass}
-                  data-text={social.label}
-                >
-                  {social.label}
-                </a>
-              ))}
-            </nav>
-          </div>
-
-          {/* Column 2 — Sitemap */}
-          <div>
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-secondary-text">
-              Sitemap
-            </h3>
-            <nav
-              aria-label="Sitemap"
-              className="mt-4 flex flex-col items-start gap-3"
-            >
-              {sitemapLinks.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={footerLinkClass}
-                  data-text={link.label}
-                >
-                  {link.label}
-                </Link>
-              ))}
-            </nav>
-          </div>
-
-          {/* Column 3 — Services */}
-          <div>
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-secondary-text">
-              Services
-            </h3>
-            <nav
-              aria-label="Services"
-              className="mt-4 flex flex-col items-start gap-3"
-            >
-              {services.map((service) => (
-                <Link
-                  key={service.slug}
-                  href={`/services#${service.slug}`}
-                  className={footerLinkClass}
-                  data-text={service.title}
-                >
-                  {service.title}
-                </Link>
-              ))}
-            </nav>
-          </div>
-
-          {/* Column 4 — Contact */}
-          <div>
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-secondary-text">
-              Contact
-            </h3>
-            <div className="mt-4 flex flex-col items-start gap-3">
-              <a
-                href={`mailto:${siteConfig.email}`}
-                className={footerLinkClass}
-                data-text={siteConfig.email}
-              >
-                {siteConfig.email}
-              </a>
-
-              <a
-                href={siteConfig.consultationUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={footerLinkClass}
-                data-text="Book a Consultation"
-              >
-                Book a Consultation
-              </a>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom bar — copyright + legal */}
-      <div className="border-t border-border">
-        <div className="mx-auto flex max-w-6xl flex-col-reverse items-center gap-4 px-6 py-6 text-xs text-secondary-text sm:flex-row sm:justify-between">
-          <p>
-            © {new Date().getFullYear()} {siteConfig.name}. All rights reserved.
-          </p>
-          <nav aria-label="Legal" className="flex gap-6">
-            {legalLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="footer-link"
-                data-text={link.label}
-              >
-                {link.label}
-              </Link>
-            ))}
-          </nav>
-        </div>
-      </div>
-    </footer>
-  );
-}
-</file>
-
 <file path="components/platform/MobileNav.tsx">
 "use client";
 
@@ -25213,53 +25058,6 @@ function FAQItemRow({
         </div>
       </div>
     </div>
-  );
-}
-</file>
-
-<file path="components/sections/Hero.tsx">
-// components/sections/Hero.tsx (Server Component — no "use client")
-
-import { HeroAmbient } from "./HeroAmbient";
-import { HeroEyebrow } from "./HeroEyebrow";
-import { HeroSubAndCta } from "./HeroSubAndCta";
-import { HeroVisual } from "./HeroVisual";
-
-/**
- * PERFORMANCE PASS (Prompt 21): Hero itself is now a Server Component.
- * Only the pieces that actually animate (ambient orbs, eyebrow fade-in,
- * subheading+CTA fade-in, and now the hero visual) are client islands, in
- * their own files. The h1 headline — the largest, most important element
- * on the page — ships zero client JS. React hydrates each island
- * independently rather than the whole Hero as one client bundle.
- *
- * STEP 1 REDESIGN: layout goes from single-column to a two-column
- * split on `lg` — copy on the left, HeroVisual (chat preview) on the
- * right — instead of copy sitting alone in empty space. Below `lg`,
- * HeroVisual hides itself and this collapses back to single-column.
- */
-export function Hero() {
-  return (
-    <section className="relative overflow-hidden bg-background">
-      <HeroAmbient />
-
-      <div className="relative z-10 mx-auto flex min-h-[88vh] max-w-6xl flex-col justify-center gap-12 px-6 py-32 md:px-10 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex max-w-4xl flex-col lg:flex-1">
-          <HeroEyebrow />
-
-          <h1 className="max-w-4xl font-heading text-2xl font-bold leading-[1.05] tracking-tight text-text sm:text-3xl md:text-4xl lg:text-5xl">
-            Custom software,{" "}
-            <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              engineered to grow your business.
-            </span>
-          </h1>
-
-          <HeroSubAndCta />
-        </div>
-
-        <HeroVisual />
-      </div>
-    </section>
   );
 }
 </file>
@@ -27248,6 +27046,53 @@ export function BlogCard({
         </div>
       </Link>
     </FadeIn>
+  );
+}
+</file>
+
+<file path="components/sections/Hero.tsx">
+// components/sections/Hero.tsx (Server Component — no "use client")
+
+import { HeroAmbient } from "./HeroAmbient";
+import { HeroEyebrow } from "./HeroEyebrow";
+import { HeroSubAndCta } from "./HeroSubAndCta";
+import { HeroVisual } from "./HeroVisual";
+
+/**
+ * PERFORMANCE PASS (Prompt 21): Hero itself is now a Server Component.
+ * Only the pieces that actually animate (ambient orbs, eyebrow fade-in,
+ * subheading+CTA fade-in, and now the hero visual) are client islands, in
+ * their own files. The h1 headline — the largest, most important element
+ * on the page — ships zero client JS. React hydrates each island
+ * independently rather than the whole Hero as one client bundle.
+ *
+ * STEP 1 REDESIGN: layout goes from single-column to a two-column
+ * split on `lg` — copy on the left, HeroVisual (chat preview) on the
+ * right — instead of copy sitting alone in empty space. Below `lg`,
+ * HeroVisual hides itself and this collapses back to single-column.
+ */
+export function Hero() {
+  return (
+    <section className="relative overflow-hidden bg-background">
+      <HeroAmbient />
+
+      <div className="relative z-10 mx-auto flex min-h-[88vh] max-w-6xl flex-col justify-center gap-12 px-6 py-32 md:px-10 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex max-w-4xl flex-col lg:min-w-0 lg:flex-1">
+          <HeroEyebrow />
+
+          <h1 className="max-w-4xl font-heading text-2xl font-bold leading-[1.05] tracking-tight text-text sm:text-3xl md:text-4xl lg:text-5xl">
+            Custom software,{" "}
+            <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+              engineered to grow your business.
+            </span>
+          </h1>
+
+          <HeroSubAndCta />
+        </div>
+
+        <HeroVisual />
+      </div>
+    </section>
   );
 }
 </file>
@@ -30372,199 +30217,6 @@ export default function AiAgentPage() {
 }
 </file>
 
-<file path="app/(marketing)/blog/page.tsx">
-// app/(marketing)/blog/page.tsx
-import type { Metadata } from "next";
-import Link from "next/link";
-import { blogPosts } from "@/data/blog";
-import { BlogCard } from "@/components/sections/BlogCard";
-import { FeaturedArticle } from "@/components/sections/blog/FeaturedArticle";
-import { getCategoryStyle } from "@/lib/blog";
-
-export const metadata: Metadata = {
-  title: "Blog",
-  description:
-    "Insights on websites, AI automation, and digital growth for small businesses.",
-  alternates: {
-    canonical: "/blog",
-  },
-};
-
-export default async function BlogPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ category?: string; tag?: string }>;
-}) {
-  const { category, tag } = await searchParams;
-
-  // Only ever consider published posts — unpublished ones currently hold
-  // literal placeholder content and must never reach a visitor.
-  const publishedPosts = blogPosts.filter((post) => post.published);
-
-  // Derived from published posts only, so a filter chip never points at
-  // a category/tag that would immediately show zero results.
-  const allCategories = Array.from(
-    new Set(publishedPosts.map((p) => p.category)),
-  );
-  const allTags = Array.from(new Set(publishedPosts.flatMap((p) => p.tags)));
-
-  let filtered = publishedPosts;
-  if (category) {
-    filtered = filtered.filter((p) => p.category === category);
-  }
-  if (tag) {
-    filtered = filtered.filter((p) => p.tags.includes(tag));
-  }
-
-  // The single newest post gets the big editorial hero treatment; the
-  // grid below shows everything else. Only on the unfiltered default
-  // view — once someone filters, everything goes in the regular grid so
-  // filtered results don't feel arbitrarily reordered.
-  const isDefaultView = !category && !tag;
-  const sortedByDate = [...filtered].sort(
-    (a, b) =>
-      new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
-  );
-  const featuredPost = isDefaultView ? sortedByDate[0] : undefined;
-  const restPosts = isDefaultView ? sortedByDate.slice(1) : filtered;
-
-  return (
-    <>
-      {/* ---------------------------------------------------------------
-          Hero
-      --------------------------------------------------------------------- */}
-      <section className="relative overflow-hidden border-b border-border bg-background">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-primary/15 blur-[110px]"
-        />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -right-24 top-0 h-72 w-72 rounded-full bg-accent/15 blur-[110px]"
-        />
-        <div className="relative mx-auto max-w-6xl page-hero-pad">
-          <p className="mb-3 inline-flex items-center gap-2 font-body text-sm font-medium tracking-wide text-accent">
-            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-            The MBR Studio Blog
-          </p>
-          <h1 className="max-w-3xl font-heading text-h1-primary font-bold leading-[1.05] tracking-tight text-text">
-            Practical insight for building{" "}
-            <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              a business online.
-            </span>
-          </h1>
-          <p className="mt-5 max-w-2xl font-body text-lg text-secondary-text">
-            Straight-talking advice on websites, AI automation, and growth —
-            written from real client work, not recycled listicles.
-          </p>
-
-          {publishedPosts.length === 0 ? (
-            <div className="mx-auto mt-16 max-w-lg rounded-2xl border border-border bg-card px-8 py-16 text-center">
-              <p className="font-heading text-lg font-medium text-text">
-                New articles are on their way.
-              </p>
-              <p className="mt-2 font-body text-sm text-secondary-text">
-                We&apos;re preparing in-depth write-ups on websites, automation,
-                and growth — check back soon.
-              </p>
-            </div>
-          ) : (
-            <>
-              {/* Filters */}
-              <div className="mt-10 flex flex-wrap gap-x-8 gap-y-5">
-                <div className="space-y-2.5">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-secondary-text">
-                    Categories
-                  </span>
-                  <div className="flex flex-wrap gap-2">
-                    <Link
-                      href="/blog"
-                      className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all duration-200 ${
-                        !category
-                          ? "bg-primary text-primary-foreground shadow-sm"
-                          : "border border-border text-secondary-text hover:border-primary/40 hover:text-text"
-                      }`}
-                    >
-                      All
-                    </Link>
-                    {allCategories.map((cat) => {
-                      const style = getCategoryStyle(cat);
-                      const active = category === cat;
-                      return (
-                        <Link
-                          key={cat}
-                          href={`/blog?category=${encodeURIComponent(cat)}`}
-                          className={`rounded-full px-3.5 py-1.5 text-xs font-medium ring-1 ring-inset transition-all duration-200 ${
-                            active
-                              ? `${style.bg} ${style.text} ${style.ring}`
-                              : "border border-border text-secondary-text ring-transparent hover:border-primary/40 hover:text-text"
-                          }`}
-                        >
-                          {cat}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div className="space-y-2.5">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-secondary-text">
-                    Tags
-                  </span>
-                  <div className="flex flex-wrap gap-2">
-                    {allTags.map((t) => (
-                      <Link
-                        key={t}
-                        href={`/blog?tag=${encodeURIComponent(t)}`}
-                        className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all duration-200 ${
-                          tag === t
-                            ? "bg-accent text-accent-foreground shadow-sm"
-                            : "border border-border text-secondary-text hover:border-accent/40 hover:text-text"
-                        }`}
-                      >
-                        #{t}
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </section>
-
-      {publishedPosts.length > 0 && (
-        <section className="bg-background">
-          <div className="mx-auto max-w-6xl px-6 py-16 md:px-10 md:py-20">
-            {/* Featured — the newest post gets a large, editorial-style
-                treatment instead of blending into the grid. */}
-            {featuredPost && (
-              <div className="mb-14">
-                <FeaturedArticle post={featuredPost} />
-              </div>
-            )}
-
-            {/* Rest of the grid */}
-            {restPosts.length > 0 && (
-              <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-                {restPosts.map((post, i) => (
-                  <BlogCard key={post.slug} post={post} index={i} />
-                ))}
-              </div>
-            )}
-
-            {filtered.length === 0 && (
-              <p className="col-span-full py-16 text-center text-secondary-text">
-                No posts found for this filter.
-              </p>
-            )}
-          </div>
-        </section>
-      )}
-    </>
-  );
-}
-</file>
-
 <file path="app/(platform-client)/dashboard/agent/guardrails/GuardrailsClient.tsx">
 "use client";
 
@@ -31367,883 +31019,159 @@ export default async function OnboardingPage({
 }
 </file>
 
-<file path="components/chatbot/ChatWindow.tsx">
-"use client";
-
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import {
-  X,
-  Send,
-  Sparkles,
-  AlertTriangle,
-  MessageCircle,
-  RotateCcw,
-} from "lucide-react";
-import type { UIMessage } from "ai";
-import { LogoMark } from "@/components/brand/Logo";
-import { useChatPanel } from "@/components/chatbot/useChat";
-import { useAIChat } from "@/hooks/useChat";
-import { useMediaQuery } from "@/hooks/useMediaQuery";
-import { useFocusTrap } from "@/components/chatbot/useFocusTrap";
-import { MessageBubble } from "./MessageBubble";
-import { TypingIndicator } from "./TypingIndicator";
-import { OpeningOptions } from "./OpeningOptions";
-import { SuggestionChips } from "./SuggestionChips";
-import { OPENING_OPTIONS } from "./chatbot";
-import { buildWhatsAppLink } from "@/config/contact";
-import { cn } from "@/lib/utils";
-
-const CHAT_SESSION_STORAGE_KEY = "mbr-chat-session";
-
-type StoredChatSession = {
-  conversationKey: string;
-  messages: UIMessage[];
-};
-
-// Reads the persisted transcript for this tab's session. Returns null
-// on anything unexpected (SSR, nothing stored, corrupt JSON, storage
-// access blocked in private browsing) so callers never need extra
-// guarding — null just means "start fresh".
-function readStoredChatSession(): StoredChatSession | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.sessionStorage.getItem(CHAT_SESSION_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (
-      !parsed ||
-      typeof parsed.conversationKey !== "string" ||
-      !Array.isArray(parsed.messages)
-    ) {
-      return null;
-    }
-    return parsed as StoredChatSession;
-  } catch {
-    return null;
-  }
-}
-
-// Spring used for the panel opening on desktop — mirrors the "pop up from
-// the launcher" feel used by Intercom/Crisp. Closing reuses a quicker tween
-// (see panelVariants.hidden.transition below) since exits should feel snappy,
-// not bouncy.
-const OPEN_SPRING = {
-  type: "spring",
-  stiffness: 320,
-  damping: 28,
-  mass: 0.9,
-} as const;
-const CLOSE_TWEEN = { duration: 0.16, ease: "easeIn" } as const;
-
-// Desktop/tablet (sm+, ≥640px): floating card pop — unchanged.
-const desktopPanelVariants = {
-  hidden: { opacity: 0, y: 28, scale: 0.96, transition: CLOSE_TWEEN },
-  visible: { opacity: 1, y: 0, scale: 1, transition: OPEN_SPRING },
-};
-
-// Mobile (<640px): full-screen bottom sheet — reuses the exact slide
-// pattern already established by Navbar.tsx's mobile drawer and
-// MobileNav.tsx, instead of a "card pop" on a full-screen surface.
-const SHEET_TRANSITION = {
-  type: "spring",
-  damping: 28,
-  stiffness: 320,
-} as const;
-const mobilePanelVariants = {
-  hidden: { y: "100%", transition: SHEET_TRANSITION },
-  visible: { y: 0, transition: SHEET_TRANSITION },
-};
-
-const iconVariants = {
-  initial: { opacity: 0, rotate: -90, scale: 0.5 },
-  animate: { opacity: 1, rotate: 0, scale: 1 },
-  exit: { opacity: 0, rotate: 90, scale: 0.5 },
-};
-
-export function ChatWindow() {
-  const { isOpen, close, toggle, launcherSuppressed } = useChatPanel();
-  const [conversationKey, setConversationKey] = useState(
-    () => readStoredChatSession()?.conversationKey ?? crypto.randomUUID(),
-  );
-  const {
-    messages,
-    sendMessage,
-    status,
-    error,
-    regenerate,
-    stop,
-    setMessages,
-  } = useAIChat(conversationKey);
-  const [confirmReset, setConfirmReset] = useState(false);
-  const [hasRestoredSession, setHasRestoredSession] = useState(false);
-
-  // Restore the visible transcript from sessionStorage on mount, once.
-  // There's no server endpoint to re-fetch this conversation from
-  // (see comment above readStoredChatSession) — this IS the source of
-  // truth for surviving a reload.
-  useEffect(() => {
-    const stored = readStoredChatSession();
-    if (
-      stored &&
-      stored.conversationKey === conversationKey &&
-      stored.messages.length > 0
-    ) {
-      setMessages(stored.messages);
-    }
-    setHasRestoredSession(true);
-    // Intentionally only ever runs once, on mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Persist on every change — gated on hasRestoredSession so this
-  // doesn't fire first (with an empty `messages`) and clobber the
-  // history the effect above is about to restore.
-  useEffect(() => {
-    if (!hasRestoredSession || typeof window === "undefined") return;
-    try {
-      window.sessionStorage.setItem(
-        CHAT_SESSION_STORAGE_KEY,
-        JSON.stringify({ conversationKey, messages }),
-      );
-    } catch {
-      // Best-effort — private browsing / storage-quota errors should
-      // never break the chat itself.
-    }
-  }, [hasRestoredSession, conversationKey, messages]);
-  const shouldReduceMotion = useReducedMotion();
-  // Matches the `sm:` breakpoint (640px) already used throughout this
-  // component's className logic, so the JS-driven variant switch and
-  // the CSS layout switch (full-screen vs floating card) change at
-  // exactly the same point.
-  const isMobileViewport = useMediaQuery("(max-width: 639px)");
-  const panelVariants = isMobileViewport
-    ? mobilePanelVariants
-    : desktopPanelVariants;
-
-  const panelRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [draft, setDraft] = useState("");
-
-  // Tracks whether an assistant reply has arrived while the panel was
-  // closed, so the launcher can show an unread cue instead of the bot
-  // silently answering into a closed panel.
-  const seenCountRef = useRef(0);
-  const [hasUnread, setHasUnread] = useState(false);
-
-  // BUGFIX: the mobile launcher used to reappear the instant `isOpen`
-  // flipped to false, while the full-screen panel was still mid-exit
-  // (CLOSE_TWEEN, ~160ms) — both rendered at the same z-50 for that
-  // window, producing the reported double-icon flash. This tracks
-  // whether the panel's own exit animation has actually finished, so
-  // the launcher stays hidden on mobile until it has.
-  const [panelExited, setPanelExited] = useState(true);
-  useEffect(() => {
-    if (isOpen) setPanelExited(false);
-  }, [isOpen]);
-
-  useFocusTrap(panelRef, isOpen, close, inputRef);
-
-  // Belt-and-suspenders autofocus: useFocusTrap above already focuses
-  // inputRef on open, but on mobile the panel is still mid-slide-in
-  // (translateY animation) at that exact moment, which can eat the
-  // focus call in some browsers. Re-focusing on the next frame — after
-  // the panel has committed to the DOM at its open position — makes
-  // autofocus land reliably on every screen size.
-  useEffect(() => {
-    if (!isOpen) return;
-    const id = requestAnimationFrame(() => inputRef.current?.focus());
-    return () => cancelAnimationFrame(id);
-  }, [isOpen]);
-
-  // BUGFIX: this used to call smooth-scroll on every streamed token
-  // (a new `messages` reference arrives per chunk), which (a) forced
-  // the transcript to the bottom even if the user had scrolled up to
-  // reread something, and (b) restarted the smooth-scroll easing on
-  // every token, producing a stutter instead of one continuous scroll.
-  // Now: only auto-follow token-by-token growth if the user is already
-  // near the bottom, and always snap to bottom on an actual new
-  // message (new user send or new assistant turn starting).
-  const prevMessageCountRef = useRef(0);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-
-    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-    const isNewMessage = messages.length !== prevMessageCountRef.current;
-    prevMessageCountRef.current = messages.length;
-
-    if (!isNewMessage && !isNearBottom) return;
-
-    el.scrollTo({
-      top: el.scrollHeight,
-      behavior: isNewMessage ? "smooth" : "auto",
-    });
-  }, [messages, status]);
-
-  useEffect(() => {
-    if (isOpen) {
-      seenCountRef.current = messages.length;
-      setHasUnread(false);
-    } else if (messages.length > seenCountRef.current) {
-      setHasUnread(true);
-    }
-  }, [messages.length, isOpen]);
-
-  const lastMessage = messages[messages.length - 1];
-  const lastMessageHasVisibleContent =
-    lastMessage?.role === "assistant" &&
-    lastMessage.parts.some(
-      (p) => p.type === "text" && (p as { text?: string }).text?.trim(),
-    );
-
-  const isWaiting =
-    status === "submitted" ||
-    (status === "streaming" && !lastMessageHasVisibleContent);
-  const isBusy = status === "submitted" || status === "streaming";
-  const hasStarted = messages.length > 0;
-
-  const handleSend = (e: FormEvent) => {
-    e.preventDefault();
-    const text = draft.trim();
-    if (!text || isBusy) return;
-    sendMessage({ text });
-    setDraft("");
-  };
-
-  const handleOptionSelect = (label: string) => {
-    if (isBusy) return;
-    sendMessage({ text: label });
-  };
-
-  const startNewConversation = () => {
-    stop();
-    const newKey = crypto.randomUUID();
-    setConversationKey(newKey);
-    setDraft("");
-    setConfirmReset(false);
-    try {
-      window.sessionStorage.setItem(
-        CHAT_SESSION_STORAGE_KEY,
-        JSON.stringify({ conversationKey: newKey, messages: [] }),
-      );
-    } catch {
-      // Best-effort — the persist effect will also overwrite this on
-      // the next render either way.
-    }
-  };
-
-  const handleNewConversationClick = () => {
-    if (!hasStarted) {
-      startNewConversation();
-      return;
-    }
-    setConfirmReset(true);
-  };
-
-  return (
-    <>
-      <AnimatePresence onExitComplete={() => setPanelExited(true)}>
-        {isOpen && (
-          <motion.div
-            key="panel"
-            id="mbr-chat-panel"
-            ref={panelRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label="MBR Studio AI Assistant"
-            variants={shouldReduceMotion ? undefined : panelVariants}
-            initial={shouldReduceMotion ? undefined : "hidden"}
-            animate={shouldReduceMotion ? undefined : "visible"}
-            exit={shouldReduceMotion ? undefined : "hidden"}
-            className="fixed inset-0 z-50 flex flex-col overflow-hidden rounded-none border-border bg-card pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-2xl shadow-black/40 sm:inset-auto sm:bottom-28 sm:right-6 sm:h-[min(680px,calc(100vh-120px))] sm:w-[min(420px,calc(100vw-32px))] sm:rounded-2xl sm:border sm:pt-0 sm:pb-0"
-          >
-            {/* Mobile-only drag handle — visual affordance that this is a
-                bottom sheet. Not wired to a swipe gesture; the X below and
-                the launcher button (top-of-thumb / bottom-right) both close
-                it, which is enough reachable-by-thumb coverage without
-                pulling in a gesture library. */}
-            <div className="flex justify-center pt-2 pb-1 sm:hidden">
-              <div className="h-1 w-10 rounded-full bg-border" />
-            </div>
-
-            <div className="flex items-center justify-between border-b border-border bg-background px-4 py-3.5">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center">
-                  <LogoMark className="h-8 w-8" />
-                </div>
-                <div>
-                  <p className="font-heading text-sm font-semibold text-foreground">
-                    MBR Studio Assistant
-                  </p>
-                  <p className="font-body text-xs text-muted-foreground">
-                    Usually replies instantly
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={handleNewConversationClick}
-                  aria-label="Start new conversation"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-200 hover:bg-card hover:text-foreground"
-                >
-                  <RotateCcw className="h-4 w-4" strokeWidth={1.75} />
-                </button>
-                <button
-                  type="button"
-                  onClick={close}
-                  aria-label="Close chat"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-200 hover:bg-card hover:text-foreground"
-                >
-                  <X className="h-4 w-4" strokeWidth={1.75} />
-                </button>
-              </div>
-            </div>
-
-            {confirmReset && (
-              <div
-                role="alertdialog"
-                aria-label="Confirm new conversation"
-                className="flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-2.5"
-              >
-                <p className="font-body text-xs text-muted-foreground">
-                  Start a new conversation? Your current chat will be cleared.
-                </p>
-                <div className="flex flex-none gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setConfirmReset(false)}
-                    className="rounded-lg px-2.5 py-1.5 font-body text-xs font-medium text-muted-foreground transition-colors hover:bg-background"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={startNewConversation}
-                    className="rounded-lg bg-primary px-2.5 py-1.5 font-body text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
-                  >
-                    Start new
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div
-              ref={scrollRef}
-              aria-live="polite"
-              aria-atomic="false"
-              className="flex-1 overflow-y-auto px-4 py-4"
-            >
-              <div className="flex flex-col gap-2.5">
-                {!hasStarted && (
-                  <div className="flex items-end gap-2">
-                    <div className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-accent/15 text-accent">
-                      <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
-                    </div>
-                    <div className="max-w-[78%] rounded-2xl rounded-bl-md border border-border bg-card px-4 py-2.5 font-body text-sm leading-relaxed text-foreground">
-                      Hi, I&apos;m the MBR Studio assistant. I can help point
-                      you to a quote, a consultation, or examples of our work —
-                      what would you like to do?
-                    </div>
-                  </div>
-                )}
-
-                {messages.map((message, i) => {
-                  const prevRole = messages[i - 1]?.role;
-                  const showAvatar = prevRole !== message.role;
-                  return (
-                    <MessageBubble
-                      key={message.id}
-                      message={message}
-                      showAvatar={showAvatar}
-                    />
-                  );
-                })}
-
-                {isWaiting && (
-                  <div className="flex items-end gap-2">
-                    <div className="w-7 flex-none">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-accent/15 text-accent">
-                        <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
-                      </div>
-                    </div>
-                    <TypingIndicator />
-                  </div>
-                )}
-
-                {error && (
-                  <div
-                    role="alert"
-                    className="ml-9 flex flex-col gap-2 rounded-2xl border border-error/30 bg-error/10 px-4 py-3 font-body text-sm text-error"
-                  >
-                    <div className="flex items-start gap-2">
-                      <AlertTriangle
-                        className="mt-0.5 h-4 w-4 flex-none"
-                        strokeWidth={1.75}
-                      />
-                      <span>
-                        Something went wrong reaching the assistant. You can try
-                        again, or reach the team directly.
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => regenerate()}
-                        className="rounded-lg border border-error/40 px-3 py-1.5 text-xs font-medium text-error transition-colors hover:bg-error/10"
-                      >
-                        Try again
-                      </button>
-
-                      <a
-                        href={buildWhatsAppLink()}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="rounded-lg border border-error/40 px-3 py-1.5 text-xs font-medium text-error transition-colors hover:bg-error/10"
-                      >
-                        Message us on WhatsApp
-                      </a>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {!hasStarted && !isBusy && (
-              <OpeningOptions
-                options={OPENING_OPTIONS}
-                onSelect={(option) => handleOptionSelect(option.label)}
-              />
-            )}
-
-            {/* Persistent quick actions once the conversation has
-                started — reuses the real OPENING_OPTIONS data (no
-                fabricated per-turn suggestions; nothing in the API
-                currently produces those) so users can jump to a
-                quote/consultation/portfolio without retyping. */}
-            {hasStarted && !isBusy && (
-              <SuggestionChips
-                options={OPENING_OPTIONS}
-                onSelect={(option) => handleOptionSelect(option.label)}
-              />
-            )}
-
-            <form
-              onSubmit={handleSend}
-              className="flex items-center gap-2 border-t border-border p-3"
-            >
-              <input
-                ref={inputRef}
-                type="text"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder="Type a message..."
-                aria-label="Message"
-                disabled={isBusy}
-                className="flex-1 rounded-lg border border-border bg-background px-3.5 py-2.5 font-body text-sm text-foreground placeholder:text-muted-foreground transition-colors duration-200 focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-60"
-              />
-              <button
-                type="submit"
-                disabled={!draft.trim() || isBusy}
-                aria-label="Send message"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-opacity duration-200 disabled:cursor-not-allowed disabled:opacity-40 hover:opacity-90"
-              >
-                <Send className="h-4 w-4" strokeWidth={1.75} />
-              </button>
-            </form>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {!launcherSuppressed && (
-        <motion.button
-          type="button"
-          onClick={toggle}
-          aria-label={isOpen ? "Close chat" : "Open chat with MBR Studio"}
-          aria-expanded={isOpen}
-          aria-controls="mbr-chat-panel"
-          whileHover={shouldReduceMotion ? undefined : { scale: 1.06 }}
-          whileTap={shouldReduceMotion ? undefined : { scale: 0.94 }}
-          animate={
-            !shouldReduceMotion && !isOpen
-              ? { scale: [1, 1.05, 1] }
-              : { scale: 1 }
-          }
-          transition={
-            !shouldReduceMotion && !isOpen
-              ? { duration: 2.4, repeat: Infinity, ease: "easeInOut" }
-              : { duration: 0.15 }
-          }
-          className={cn(
-            // BUGFIX: on mobile the chat panel renders full-screen
-            // (`fixed inset-0`, see panel className above) at the same
-            // z-index (z-50) as this button. Since this button always
-            // rendered afterward in the DOM, it visually floated on top
-            // of the panel's own bottom-right corner — directly over the
-            // message input's Send button — showing a second, redundant,
-            // misplaced X once the panel was open. Hidden below `sm` while
-            // open; the panel's own header X is the only close affordance
-            // there. Kept visible on `sm`+ where the panel is a bottom-right
-            // floating card that doesn't cover this screen area, so the
-            // button coexisting below it (Intercom-style) still works.
-            "fixed z-50 h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl shadow-black/30 sm:flex sm:bottom-8 sm:right-8",
-            isOpen || !panelExited ? "hidden" : "flex bottom-2 right-2",
-          )}
-        >
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.span
-              key={isOpen ? "close" : "chat"}
-              variants={shouldReduceMotion ? undefined : iconVariants}
-              initial={shouldReduceMotion ? undefined : "initial"}
-              animate={shouldReduceMotion ? undefined : "animate"}
-              exit={shouldReduceMotion ? undefined : "exit"}
-              transition={{ duration: 0.18, ease: "easeOut" }}
-              className="flex"
-            >
-              {isOpen ? (
-                <X className="h-6 w-6" strokeWidth={1.75} />
-              ) : (
-                <MessageCircle className="h-6 w-6" strokeWidth={1.75} />
-              )}
-            </motion.span>
-          </AnimatePresence>
-
-          {hasUnread && !isOpen && (
-            <motion.span
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-background bg-error"
-              aria-hidden="true"
-            />
-          )}
-        </motion.button>
-      )}
-    </>
-  );
-}
-</file>
-
-<file path="components/layout/Navbar.tsx">
-"use client";
-
+<file path="components/layout/Footer.tsx">
 import Link from "next/link";
-import { Sun, Moon, Menu, X, SunMoon } from "lucide-react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useTheme } from "@/components/theme/ThemeProvider";
 
-import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-
-import { Button } from "@/components/ui/button";
+import { services } from "@/data/services";
+import { siteConfig } from "@/config/site";
 import { Logo } from "@/components/brand/Logo";
-import { navLinks, primaryCta, siteConfig } from "@/config/site";
-import { blogPosts } from "@/data/blog";
-import { useFocusTrap } from "@/components/chatbot/useFocusTrap";
-import { useChatPanel } from "@/components/chatbot/useChat";
-import { NavIcon } from "@/components/nav/nav-icon-motion";
 
-import { cn } from "@/lib/utils";
+const sitemapLinks = [
+  { label: "Home", href: "/" },
+  { label: "About", href: "/about" },
+  { label: "Services", href: "/services" },
+  // { label: "AI Agent", href: "/ai-agent" },
+  { label: "Portfolio", href: "/portfolio" },
+  { label: "Case Studies", href: "/case-studies" },
+  { label: "Blog", href: "/blog" },
+  { label: "Contact", href: "/contact" },
+] as const;
 
-const SCROLL_THRESHOLD = 24;
+const socialLinks = [
+  { label: "X", href: siteConfig.links.twitter },
+  { label: "LinkedIn", href: siteConfig.links.linkedin },
+  { label: "GitHub", href: siteConfig.links.github },
+] as const;
 
-function MarketingNavLink({
-  link,
-  isActive,
-  onNavigate,
-}: {
-  link: (typeof navLinks)[number];
-  isActive: boolean;
-  onNavigate?: () => void;
-}) {
-  const [hovered, setHovered] = useState(false);
+const legalLinks = [
+  { label: "Privacy", href: "/privacy" },
+  { label: "Terms", href: "/terms" },
+] as const;
 
+const footerLinkClass = "footer-link text-sm text-secondary-text";
+
+export function Footer() {
   return (
-    <Link
-      href={link.href}
-      onClick={onNavigate}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      aria-current={isActive ? "page" : undefined}
-      className={cn(
-        "group relative flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-200 after:absolute after:bottom-0 after:left-1/2 after:h-0.5 after:w-[55%] after:-translate-x-1/2 after:rounded-t-sm after:bg-gradient-to-r after:from-transparent after:via-primary after:to-transparent after:transition-transform after:duration-300 after:ease-out",
-        isActive
-          ? "bg-primary/15 text-primary font-semibold after:scale-x-100"
-          : "text-secondary-text after:scale-x-0 hover:bg-foreground/5 hover:font-semibold hover:text-foreground hover:after:scale-x-100",
-      )}
-    >
-      <NavIcon icon={link.icon} hovered={hovered} className="h-4 w-4" />
-      {link.label}
-    </Link>
-  );
-}
-
-export function Navbar() {
-  const { theme, toggleTheme } = useTheme();
-  const [open, setOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-  const pathname = usePathname();
-
-  // Hydration-safe theme icon: SSR always assumes "dark" (no `window` to
-  // check server-side), but the client's first hydration pass reads the
-  // real theme the blocking script already applied to <html> — those can
-  // differ, which used to throw a hydration mismatch on this exact
-  // button. Rendering a neutral placeholder until mount means the first
-  // client render matches the server render exactly; the real icon swaps
-  // in right after via a normal (non-hydration) client update.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-
-  // Safe check: ensure blogPosts is an array before calling .some()
-  const hasPublishedPosts =
-    Array.isArray(blogPosts) && blogPosts.some((p) => p.published);
-  const visibleNavLinks = navLinks.filter(
-    (link) => link.href !== "/blog" || hasPublishedPosts,
-  );
-
-  const shouldReduceMotion = useReducedMotion();
-  const { setLauncherSuppressed } = useChatPanel();
-
-  const drawerRef = useRef<HTMLDivElement>(null);
-  const menuButtonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > SCROLL_THRESHOLD);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  useEffect(() => {
-    setOpen(false);
-  }, [pathname]);
-
-  // Same focus-trap primitive MobileNav.tsx uses, instead of a
-  // hand-rolled keydown/Tab-cycling effect duplicated here.
-  useFocusTrap(drawerRef, open, () => setOpen(false));
-
-  useEffect(() => {
-    if (!open) return;
-    const scrollbarWidth =
-      window.innerWidth - document.documentElement.clientWidth;
-    document.body.style.overflow = "hidden";
-    document.body.style.paddingRight = `${scrollbarWidth}px`;
-    return () => {
-      document.body.style.overflow = "";
-      document.body.style.paddingRight = "";
-    };
-  }, [open]);
-
-  // BUGFIX: the floating chat launcher (ChatWindow.tsx) is a fixed,
-  // z-50 element rendered independently of this drawer, so it used to
-  // float on top of the open mobile nav sheet. Suppress it for as long
-  // as this drawer is open.
-  useEffect(() => {
-    setLauncherSuppressed(open);
-    return () => setLauncherSuppressed(false);
-  }, [open, setLauncherSuppressed]);
-
-  return (
-    <>
-      <header
-        className={cn(
-          "sticky top-0 z-40 border-b transition-[background-color,backdrop-filter,border-color] duration-200 ease-out",
-          scrolled
-            ? "border-border bg-background/85 backdrop-blur-md"
-            : "border-transparent bg-transparent backdrop-blur-none",
-        )}
-      >
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
-          <Link href="/" aria-label={`${siteConfig.name} — Home`}>
-            <Logo />
-          </Link>
-
-          <nav
-            aria-label="Primary"
-            className="hidden items-center gap-1 lg:flex"
-          >
-            {visibleNavLinks.map((link) => {
-              const isActive =
-                (link.href as string) === "/"
-                  ? pathname === "/"
-                  : pathname.startsWith(link.href);
-              return (
-                <MarketingNavLink
-                  key={link.href}
-                  link={link}
-                  isActive={isActive}
-                />
-              );
-            })}
-          </nav>
-
-          {/* Desktop CTA + Theme Toggle */}
-          <div className="hidden items-center gap-2 lg:flex">
-            <button
-              type="button"
-              onClick={toggleTheme}
-              aria-label={
-                mounted
-                  ? theme === "dark"
-                    ? "Switch to light theme"
-                    : "Switch to dark theme"
-                  : "Toggle theme"
-              }
-              className="rounded-lg p-2 text-secondary-text transition-colors hover:bg-card hover:text-foreground"
-            >
-              {!mounted ? (
-                <SunMoon className="h-4 w-4" aria-hidden="true" />
-              ) : theme === "dark" ? (
-                <Sun className="h-4 w-4" />
-              ) : (
-                <Moon className="h-4 w-4" />
-              )}
-            </button>
-            <Button asChild size="sm">
-              <Link
-                href={primaryCta.href}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {primaryCta.label}
-              </Link>
-            </Button>
+    <footer className="border-t border-border">
+      <div className="mx-auto max-w-6xl px-6 py-16">
+        <div className="grid grid-cols-2 gap-x-8 gap-y-12 md:grid-cols-4 md:gap-x-6">
+          {/* Column 1 — Brand + socials */}
+          <div className="col-span-2 min-w-0 md:col-span-1">
+            <Link href="/" aria-label={`${siteConfig.name} — Home`}>
+              <Logo />
+            </Link>
+            <p className="mt-3 max-w-[26ch] text-sm text-secondary-text">
+              {siteConfig.tagline}
+            </p>
+            <nav aria-label="Social" className="mt-6 flex gap-5">
+              {socialLinks.map((social) => (
+                <a
+                  key={social.label}
+                  href={social.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={footerLinkClass}
+                  data-text={social.label}
+                >
+                  {social.label}
+                </a>
+              ))}
+            </nav>
           </div>
 
-          {/* Mobile menu button */}
-          <button
-            ref={menuButtonRef}
-            type="button"
-            className="-mr-1 rounded-md p-3 text-foreground lg:hidden"
-            aria-label="Open menu"
-            aria-expanded={open}
-            aria-controls="mobile-nav-drawer"
-            onClick={() => setOpen(true)}
-          >
-            <Menu className="size-6" aria-hidden="true" />
-          </button>
-        </div>
-      </header>
-
-      {/* Mobile nav — bottom sheet, same pattern as platform MobileNav.tsx */}
-      <AnimatePresence>
-        {open && (
-          <>
-            <motion.div
-              aria-hidden="true"
-              onClick={() => setOpen(false)}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: shouldReduceMotion ? 0 : 0.2 }}
-              className="fixed inset-0 z-40 bg-black/60 lg:hidden"
-            />
-            <motion.div
-              id="mobile-nav-drawer"
-              ref={drawerRef}
-              role="dialog"
-              aria-modal="true"
-              aria-label="Mobile navigation"
-              initial={shouldReduceMotion ? false : { y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={
-                shouldReduceMotion
-                  ? { duration: 0 }
-                  : { type: "spring", damping: 28, stiffness: 320 }
-              }
-              className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-border bg-card px-4 pb-6 pt-3 lg:hidden"
+          {/* Column 2 — Sitemap */}
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-secondary-text">
+              Sitemap
+            </h3>
+            <nav
+              aria-label="Sitemap"
+              className="mt-4 flex flex-col items-start gap-3"
             >
-              <div
-                className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-border"
-                aria-hidden="true"
-              />
-              <div className="mb-2 flex items-center justify-between">
-                <span className="font-heading text-sm font-semibold text-foreground">
-                  Menu
-                </span>
-                <button
-                  type="button"
-                  className="rounded-lg p-3 text-foreground hover:bg-background"
-                  aria-label="Close menu"
-                  onClick={() => setOpen(false)}
+              {sitemapLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={footerLinkClass}
+                  data-text={link.label}
                 >
-                  <X
-                    className="h-5 w-5"
-                    strokeWidth={1.75}
-                    aria-hidden="true"
-                  />
-                </button>
-              </div>
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
+          </div>
 
-              <nav aria-label="Mobile" className="flex flex-col gap-1">
-                {visibleNavLinks.map((link) => {
-                  const isActive =
-                    (link.href as string) === "/"
-                      ? pathname === "/"
-                      : pathname.startsWith(link.href);
-                  return (
-                    <Link
-                      key={link.href}
-                      href={link.href}
-                      onClick={() => setOpen(false)}
-                      aria-current={isActive ? "page" : undefined}
-                      className={cn(
-                        "group flex items-center gap-3 rounded-lg px-3 py-3 font-body text-base font-medium transition-colors duration-150",
-                        isActive
-                          ? "bg-primary/10 text-primary"
-                          : "text-foreground hover:bg-background",
-                      )}
-                    >
-                      <link.icon
-                        className="h-4 w-4 flex-none transition-transform duration-500 ease-out group-hover:-translate-y-0.5 group-active:-translate-y-0.5"
-                        strokeWidth={1.75}
-                        aria-hidden="true"
-                      />
-                      {link.label}
-                    </Link>
-                  );
-                })}
-              </nav>
-
-              <div className="mt-3 border-t border-border pt-3">
-                <button
-                  type="button"
-                  onClick={toggleTheme}
-                  aria-label={
-                    theme === "dark"
-                      ? "Switch to light theme"
-                      : "Switch to dark theme"
-                  }
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-3 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground"
+          {/* Column 3 — Services */}
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-secondary-text">
+              Services
+            </h3>
+            <nav
+              aria-label="Services"
+              className="mt-4 flex flex-col items-start gap-3"
+            >
+              {services.map((service) => (
+                <Link
+                  key={service.slug}
+                  href={`/services#${service.slug}`}
+                  className={footerLinkClass}
+                  data-text={service.title}
                 >
-                  {theme === "dark" ? (
-                    <Sun className="h-4 w-4 flex-none" strokeWidth={1.75} />
-                  ) : (
-                    <Moon className="h-4 w-4 flex-none" strokeWidth={1.75} />
-                  )}
-                  {theme === "dark" ? "Light mode" : "Dark mode"}
-                </button>
+                  {service.title}
+                </Link>
+              ))}
+            </nav>
+          </div>
 
-                <div className="mt-2 flex flex-col gap-2">
-                  <Button asChild size="lg" className="w-full">
-                    <Link
-                      href={primaryCta.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => setOpen(false)}
-                    >
-                      {primaryCta.label}
-                    </Link>
-                  </Button>
-                </div>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    </>
+          {/* Column 4 — Contact */}
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-secondary-text">
+              Contact
+            </h3>
+            <div className="mt-4 flex flex-col items-start gap-3">
+              <a
+                href={`mailto:${siteConfig.email}`}
+                className={`${footerLinkClass} break-words`}
+                data-text={siteConfig.email}
+              >
+                {siteConfig.email}
+              </a>
+
+              <a
+                href={siteConfig.consultationUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={footerLinkClass}
+                data-text="Book a Consultation"
+              >
+                Book a Consultation
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom bar — copyright + legal */}
+      <div className="border-t border-border">
+        <div className="mx-auto flex max-w-6xl flex-col-reverse items-center gap-4 px-6 py-6 text-xs text-secondary-text sm:flex-row sm:justify-between sm:pr-[max(88px,calc((100vw_-_1152px)/2_+_88px))]">
+          <p>
+            © {new Date().getFullYear()} {siteConfig.name}. All rights reserved.
+          </p>
+          <nav aria-label="Legal" className="flex gap-6">
+            {legalLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="footer-link"
+                data-text={link.label}
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
+      </div>
+    </footer>
   );
 }
 </file>
@@ -32966,6 +31894,199 @@ export const blogPosts: BlogPost[] = [
 }
 </file>
 
+<file path="app/(marketing)/blog/page.tsx">
+// app/(marketing)/blog/page.tsx
+import type { Metadata } from "next";
+import Link from "next/link";
+import { blogPosts } from "@/data/blog";
+import { BlogCard } from "@/components/sections/BlogCard";
+import { FeaturedArticle } from "@/components/sections/blog/FeaturedArticle";
+import { getCategoryStyle } from "@/lib/blog";
+
+export const metadata: Metadata = {
+  title: "Blog",
+  description:
+    "Insights on websites, AI automation, and digital growth for small businesses.",
+  alternates: {
+    canonical: "/blog",
+  },
+};
+
+export default async function BlogPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ category?: string; tag?: string }>;
+}) {
+  const { category, tag } = await searchParams;
+
+  // Only ever consider published posts — unpublished ones currently hold
+  // literal placeholder content and must never reach a visitor.
+  const publishedPosts = blogPosts.filter((post) => post.published);
+
+  // Derived from published posts only, so a filter chip never points at
+  // a category/tag that would immediately show zero results.
+  const allCategories = Array.from(
+    new Set(publishedPosts.map((p) => p.category)),
+  );
+  const allTags = Array.from(new Set(publishedPosts.flatMap((p) => p.tags)));
+
+  let filtered = publishedPosts;
+  if (category) {
+    filtered = filtered.filter((p) => p.category === category);
+  }
+  if (tag) {
+    filtered = filtered.filter((p) => p.tags.includes(tag));
+  }
+
+  // The single newest post gets the big editorial hero treatment; the
+  // grid below shows everything else. Only on the unfiltered default
+  // view — once someone filters, everything goes in the regular grid so
+  // filtered results don't feel arbitrarily reordered.
+  const isDefaultView = !category && !tag;
+  const sortedByDate = [...filtered].sort(
+    (a, b) =>
+      new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
+  );
+  const featuredPost = isDefaultView ? sortedByDate[0] : undefined;
+  const restPosts = isDefaultView ? sortedByDate.slice(1) : filtered;
+
+  return (
+    <>
+      {/* ---------------------------------------------------------------
+          Hero
+      --------------------------------------------------------------------- */}
+      <section className="relative overflow-hidden border-b border-border bg-background">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-primary/15 blur-[110px]"
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-24 top-0 h-72 w-72 rounded-full bg-accent/15 blur-[110px]"
+        />
+        <div className="relative mx-auto max-w-6xl page-hero-pad">
+          <p className="mb-3 inline-flex items-center gap-2 font-body text-sm font-medium tracking-wide text-accent">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+            The MBR Studio Blog
+          </p>
+          <h1 className="max-w-3xl font-heading text-h1-primary font-bold leading-[1.05] tracking-tight text-text">
+            Practical insight for building{" "}
+            <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+              a business online.
+            </span>
+          </h1>
+          <p className="mt-5 max-w-2xl font-body text-lg text-secondary-text">
+            Straight-talking advice on websites, AI automation, and growth —
+            written from real client work, not recycled listicles.
+          </p>
+
+          {publishedPosts.length === 0 ? (
+            <div className="mx-auto mt-16 max-w-lg rounded-2xl border border-border bg-card px-8 py-16 text-center">
+              <p className="font-heading text-lg font-medium text-text">
+                New articles are on their way.
+              </p>
+              <p className="mt-2 font-body text-sm text-secondary-text">
+                We&apos;re preparing in-depth write-ups on websites, automation,
+                and growth — check back soon.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Filters */}
+              <div className="mt-10 flex flex-col gap-6 sm:flex-row sm:flex-wrap sm:gap-x-8 sm:gap-y-5">
+                <div className="w-full space-y-2.5 sm:w-auto">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-secondary-text">
+                    Categories
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      href="/blog"
+                      className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all duration-200 ${
+                        !category
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "border border-border text-secondary-text hover:border-primary/40 hover:text-text"
+                      }`}
+                    >
+                      All
+                    </Link>
+                    {allCategories.map((cat) => {
+                      const style = getCategoryStyle(cat);
+                      const active = category === cat;
+                      return (
+                        <Link
+                          key={cat}
+                          href={`/blog?category=${encodeURIComponent(cat)}`}
+                          className={`rounded-full px-3.5 py-1.5 text-xs font-medium ring-1 ring-inset transition-all duration-200 ${
+                            active
+                              ? `${style.bg} ${style.text} ${style.ring}`
+                              : "border border-border text-secondary-text ring-transparent hover:border-primary/40 hover:text-text"
+                          }`}
+                        >
+                          {cat}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="w-full space-y-2.5 sm:w-auto">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-secondary-text">
+                    Tags
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {allTags.map((t) => (
+                      <Link
+                        key={t}
+                        href={`/blog?tag=${encodeURIComponent(t)}`}
+                        className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all duration-200 ${
+                          tag === t
+                            ? "bg-accent text-accent-foreground shadow-sm"
+                            : "border border-border text-secondary-text hover:border-accent/40 hover:text-text"
+                        }`}
+                      >
+                        #{t}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+
+      {publishedPosts.length > 0 && (
+        <section className="bg-background">
+          <div className="mx-auto max-w-6xl px-6 py-16 md:px-10 md:py-20">
+            {/* Featured — the newest post gets a large, editorial-style
+                treatment instead of blending into the grid. */}
+            {featuredPost && (
+              <div className="mb-14">
+                <FeaturedArticle post={featuredPost} />
+              </div>
+            )}
+
+            {/* Rest of the grid */}
+            {restPosts.length > 0 && (
+              <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
+                {restPosts.map((post, i) => (
+                  <BlogCard key={post.slug} post={post} index={i} />
+                ))}
+              </div>
+            )}
+
+            {filtered.length === 0 && (
+              <p className="col-span-full py-16 text-center text-secondary-text">
+                No posts found for this filter.
+              </p>
+            )}
+          </div>
+        </section>
+      )}
+    </>
+  );
+}
+</file>
+
 <file path="app/(platform-client)/layout.tsx">
 import type { Metadata } from "next";
 import { headers } from "next/headers";
@@ -33049,6 +32170,348 @@ export default async function ClientDashboardLayout({
     >
       {children}
     </PlatformShell>
+  );
+}
+</file>
+
+<file path="components/layout/Navbar.tsx">
+"use client";
+
+import Link from "next/link";
+import { Sun, Moon, Menu, X, SunMoon } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { useTheme } from "@/components/theme/ThemeProvider";
+
+import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/brand/Logo";
+import { navLinks, primaryCta, siteConfig } from "@/config/site";
+import { blogPosts } from "@/data/blog";
+import { useFocusTrap } from "@/components/chatbot/useFocusTrap";
+import { useChatPanel } from "@/components/chatbot/useChat";
+import { NavIcon } from "@/components/nav/nav-icon-motion";
+
+import { cn } from "@/lib/utils";
+
+const SCROLL_THRESHOLD = 24;
+
+function MarketingNavLink({
+  link,
+  isActive,
+  onNavigate,
+}: {
+  link: (typeof navLinks)[number];
+  isActive: boolean;
+  onNavigate?: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <Link
+      href={link.href}
+      onClick={onNavigate}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      aria-current={isActive ? "page" : undefined}
+      className={cn(
+        "group relative flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-200 after:absolute after:bottom-0 after:left-1/2 after:h-0.5 after:w-[55%] after:-translate-x-1/2 after:rounded-t-sm after:bg-gradient-to-r after:from-transparent after:via-primary after:to-transparent after:transition-transform after:duration-300 after:ease-out",
+        isActive
+          ? "bg-primary/15 text-primary font-semibold after:scale-x-100"
+          : "text-secondary-text after:scale-x-0 hover:bg-foreground/5 hover:font-semibold hover:text-foreground hover:after:scale-x-100",
+      )}
+    >
+      <NavIcon icon={link.icon} hovered={hovered} className="h-4 w-4" />
+      {link.label}
+    </Link>
+  );
+}
+
+export function Navbar() {
+  const { theme, toggleTheme } = useTheme();
+  const [open, setOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [hidden, setHidden] = useState(false);
+  const lastScrollY = useRef(0);
+  const pathname = usePathname();
+
+  // Hydration-safe theme icon: SSR always assumes "dark" (no `window` to
+  // check server-side), but the client's first hydration pass reads the
+  // real theme the blocking script already applied to <html> — those can
+  // differ, which used to throw a hydration mismatch on this exact
+  // button. Rendering a neutral placeholder until mount means the first
+  // client render matches the server render exactly; the real icon swaps
+  // in right after via a normal (non-hydration) client update.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // Safe check: ensure blogPosts is an array before calling .some()
+  const hasPublishedPosts =
+    Array.isArray(blogPosts) && blogPosts.some((p) => p.published);
+  const visibleNavLinks = navLinks.filter(
+    (link) => link.href !== "/blog" || hasPublishedPosts,
+  );
+
+  const shouldReduceMotion = useReducedMotion();
+  const { setLauncherSuppressed } = useChatPanel();
+
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const onScroll = () => {
+      const currentY = window.scrollY;
+      setScrolled(currentY > SCROLL_THRESHOLD);
+
+      if (currentY < SCROLL_THRESHOLD) {
+        setHidden(false);
+      } else if (currentY > lastScrollY.current) {
+        setHidden(true); // scrolling down → hide
+      } else if (currentY < lastScrollY.current) {
+        setHidden(false); // scrolling up → show
+      }
+      lastScrollY.current = currentY;
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (open) setHidden(false);
+  }, [open]);
+
+  // Same focus-trap primitive MobileNav.tsx uses, instead of a
+  // hand-rolled keydown/Tab-cycling effect duplicated here.
+  useFocusTrap(drawerRef, open, () => setOpen(false));
+
+  useEffect(() => {
+    if (!open) return;
+    const scrollbarWidth =
+      window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = "hidden";
+    document.body.style.paddingRight = `${scrollbarWidth}px`;
+    return () => {
+      document.body.style.overflow = "";
+      document.body.style.paddingRight = "";
+    };
+  }, [open]);
+
+  // BUGFIX: the floating chat launcher (ChatWindow.tsx) is a fixed,
+  // z-50 element rendered independently of this drawer, so it used to
+  // float on top of the open mobile nav sheet. Suppress it for as long
+  // as this drawer is open.
+  useEffect(() => {
+    setLauncherSuppressed(open);
+    return () => setLauncherSuppressed(false);
+  }, [open, setLauncherSuppressed]);
+
+  return (
+    <>
+      <header
+        className={cn(
+          "sticky top-0 z-40 border-b transition-[transform,background-color,backdrop-filter,border-color] duration-300 ease-out",
+          hidden ? "-translate-y-full" : "translate-y-0",
+          scrolled
+            ? "border-border bg-background/85 backdrop-blur-md"
+            : "border-transparent bg-transparent backdrop-blur-none",
+        )}
+      >
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+          <Link href="/" aria-label={`${siteConfig.name} — Home`}>
+            <Logo />
+          </Link>
+
+          <nav
+            aria-label="Primary"
+            className="hidden items-center gap-1 lg:flex"
+          >
+            {visibleNavLinks.map((link) => {
+              const isActive =
+                (link.href as string) === "/"
+                  ? pathname === "/"
+                  : pathname.startsWith(link.href);
+              return (
+                <MarketingNavLink
+                  key={link.href}
+                  link={link}
+                  isActive={isActive}
+                />
+              );
+            })}
+          </nav>
+
+          {/* Desktop CTA + Theme Toggle */}
+          <div className="hidden items-center gap-2 lg:flex">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label={
+                mounted
+                  ? theme === "dark"
+                    ? "Switch to light theme"
+                    : "Switch to dark theme"
+                  : "Toggle theme"
+              }
+              className="rounded-lg p-2 text-secondary-text transition-colors hover:bg-card hover:text-foreground"
+            >
+              {!mounted ? (
+                <SunMoon className="h-4 w-4" aria-hidden="true" />
+              ) : theme === "dark" ? (
+                <Sun className="h-4 w-4" />
+              ) : (
+                <Moon className="h-4 w-4" />
+              )}
+            </button>
+            <Button asChild size="sm">
+              <Link
+                href={primaryCta.href}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {primaryCta.label}
+              </Link>
+            </Button>
+          </div>
+
+          {/* Mobile menu button */}
+          <button
+            ref={menuButtonRef}
+            type="button"
+            className="-mr-1 rounded-md p-3 text-foreground lg:hidden"
+            aria-label="Open menu"
+            aria-expanded={open}
+            aria-controls="mobile-nav-drawer"
+            onClick={() => setOpen(true)}
+          >
+            <Menu className="size-6" aria-hidden="true" />
+          </button>
+        </div>
+      </header>
+
+      {/* Mobile nav — bottom sheet, same pattern as platform MobileNav.tsx */}
+      <AnimatePresence>
+        {open && (
+          <>
+            <motion.div
+              aria-hidden="true"
+              onClick={() => setOpen(false)}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: shouldReduceMotion ? 0 : 0.2 }}
+              className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+            />
+            <motion.div
+              id="mobile-nav-drawer"
+              ref={drawerRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Mobile navigation"
+              initial={shouldReduceMotion ? false : { y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={
+                shouldReduceMotion
+                  ? { duration: 0 }
+                  : { type: "spring", damping: 28, stiffness: 320 }
+              }
+              className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-border bg-card px-4 pb-6 pt-3 lg:hidden"
+            >
+              <div
+                className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-border"
+                aria-hidden="true"
+              />
+              <div className="mb-2 flex items-center justify-between">
+                <span className="font-heading text-sm font-semibold text-foreground">
+                  Menu
+                </span>
+                <button
+                  type="button"
+                  className="rounded-lg p-3 text-foreground hover:bg-background"
+                  aria-label="Close menu"
+                  onClick={() => setOpen(false)}
+                >
+                  <X
+                    className="h-5 w-5"
+                    strokeWidth={1.75}
+                    aria-hidden="true"
+                  />
+                </button>
+              </div>
+
+              <nav aria-label="Mobile" className="flex flex-col gap-1">
+                {visibleNavLinks.map((link) => {
+                  const isActive =
+                    (link.href as string) === "/"
+                      ? pathname === "/"
+                      : pathname.startsWith(link.href);
+                  return (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      onClick={() => setOpen(false)}
+                      aria-current={isActive ? "page" : undefined}
+                      className={cn(
+                        "group flex items-center gap-3 rounded-lg px-3 py-3 font-body text-base font-medium transition-colors duration-150",
+                        isActive
+                          ? "bg-primary/10 text-primary"
+                          : "text-foreground hover:bg-background",
+                      )}
+                    >
+                      <link.icon
+                        className="h-4 w-4 flex-none transition-transform duration-500 ease-out group-hover:-translate-y-0.5 group-active:-translate-y-0.5"
+                        strokeWidth={1.75}
+                        aria-hidden="true"
+                      />
+                      {link.label}
+                    </Link>
+                  );
+                })}
+              </nav>
+
+              <div className="mt-3 border-t border-border pt-3">
+                <button
+                  type="button"
+                  onClick={toggleTheme}
+                  aria-label={
+                    theme === "dark"
+                      ? "Switch to light theme"
+                      : "Switch to dark theme"
+                  }
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-3 font-body text-sm font-medium text-secondary-text transition-colors duration-150 hover:bg-background hover:text-foreground"
+                >
+                  {theme === "dark" ? (
+                    <Sun className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                  ) : (
+                    <Moon className="h-4 w-4 flex-none" strokeWidth={1.75} />
+                  )}
+                  {theme === "dark" ? "Light mode" : "Dark mode"}
+                </button>
+
+                <div className="mt-2 flex flex-col gap-2">
+                  <Button asChild size="lg" className="w-full">
+                    <Link
+                      href={primaryCta.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setOpen(false)}
+                    >
+                      {primaryCta.label}
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 </file>
@@ -34893,6 +34356,620 @@ function QaAddPanel() {
 }
 </file>
 
+<file path="components/chatbot/ChatWindow.tsx">
+"use client";
+
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import {
+  X,
+  Send,
+  Sparkles,
+  AlertTriangle,
+  MessageCircle,
+  RotateCcw,
+} from "lucide-react";
+import type { UIMessage } from "ai";
+import { LogoMark } from "@/components/brand/Logo";
+import { useChatPanel } from "@/components/chatbot/useChat";
+import { useAIChat } from "@/hooks/useChat";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useFocusTrap } from "@/components/chatbot/useFocusTrap";
+import { MessageBubble } from "./MessageBubble";
+import { TypingIndicator } from "./TypingIndicator";
+import { OpeningOptions } from "./OpeningOptions";
+import { SuggestionChips } from "./SuggestionChips";
+import { OPENING_OPTIONS } from "./chatbot";
+import { buildWhatsAppLink } from "@/config/contact";
+import { cn } from "@/lib/utils";
+
+const CHAT_SESSION_STORAGE_KEY = "mbr-chat-session";
+
+type StoredChatSession = {
+  conversationKey: string;
+  messages: UIMessage[];
+};
+
+// Reads the persisted transcript for this tab's session. Returns null
+// on anything unexpected (SSR, nothing stored, corrupt JSON, storage
+// access blocked in private browsing) so callers never need extra
+// guarding — null just means "start fresh".
+function readStoredChatSession(): StoredChatSession | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(CHAT_SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (
+      !parsed ||
+      typeof parsed.conversationKey !== "string" ||
+      !Array.isArray(parsed.messages)
+    ) {
+      return null;
+    }
+    return parsed as StoredChatSession;
+  } catch {
+    return null;
+  }
+}
+
+// Spring used for the panel opening on desktop — mirrors the "pop up from
+// the launcher" feel used by Intercom/Crisp. Closing reuses a quicker tween
+// (see panelVariants.hidden.transition below) since exits should feel snappy,
+// not bouncy.
+const OPEN_SPRING = {
+  type: "spring",
+  stiffness: 320,
+  damping: 28,
+  mass: 0.9,
+} as const;
+const CLOSE_TWEEN = { duration: 0.16, ease: "easeIn" } as const;
+
+// Desktop/tablet (sm+, ≥640px): floating card pop — unchanged.
+const desktopPanelVariants = {
+  hidden: { opacity: 0, y: 28, scale: 0.96, transition: CLOSE_TWEEN },
+  visible: { opacity: 1, y: 0, scale: 1, transition: OPEN_SPRING },
+};
+
+// Mobile (<640px): full-screen bottom sheet — reuses the exact slide
+// pattern already established by Navbar.tsx's mobile drawer and
+// MobileNav.tsx, instead of a "card pop" on a full-screen surface.
+const SHEET_TRANSITION = {
+  type: "spring",
+  damping: 28,
+  stiffness: 320,
+} as const;
+const mobilePanelVariants = {
+  hidden: { y: "100%", transition: SHEET_TRANSITION },
+  visible: { y: 0, transition: SHEET_TRANSITION },
+};
+
+const iconVariants = {
+  initial: { opacity: 0, rotate: -90, scale: 0.5 },
+  animate: { opacity: 1, rotate: 0, scale: 1 },
+  exit: { opacity: 0, rotate: 90, scale: 0.5 },
+};
+
+export function ChatWindow() {
+  const { isOpen, close, toggle, launcherSuppressed } = useChatPanel();
+  const [conversationKey, setConversationKey] = useState(
+    () => readStoredChatSession()?.conversationKey ?? crypto.randomUUID(),
+  );
+  const {
+    messages,
+    sendMessage,
+    status,
+    error,
+    regenerate,
+    stop,
+    setMessages,
+  } = useAIChat(conversationKey);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [hasRestoredSession, setHasRestoredSession] = useState(false);
+
+  // Restore the visible transcript from sessionStorage on mount, once.
+  // There's no server endpoint to re-fetch this conversation from
+  // (see comment above readStoredChatSession) — this IS the source of
+  // truth for surviving a reload.
+  useEffect(() => {
+    const stored = readStoredChatSession();
+    if (
+      stored &&
+      stored.conversationKey === conversationKey &&
+      stored.messages.length > 0
+    ) {
+      setMessages(stored.messages);
+    }
+    setHasRestoredSession(true);
+    // Intentionally only ever runs once, on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist on every change — gated on hasRestoredSession so this
+  // doesn't fire first (with an empty `messages`) and clobber the
+  // history the effect above is about to restore.
+  useEffect(() => {
+    if (!hasRestoredSession || typeof window === "undefined") return;
+    try {
+      window.sessionStorage.setItem(
+        CHAT_SESSION_STORAGE_KEY,
+        JSON.stringify({ conversationKey, messages }),
+      );
+    } catch {
+      // Best-effort — private browsing / storage-quota errors should
+      // never break the chat itself.
+    }
+  }, [hasRestoredSession, conversationKey, messages]);
+  const shouldReduceMotion = useReducedMotion();
+  // Matches the `sm:` breakpoint (640px) already used throughout this
+  // component's className logic, so the JS-driven variant switch and
+  // the CSS layout switch (full-screen vs floating card) change at
+  // exactly the same point.
+  const isMobileViewport = useMediaQuery("(max-width: 639px)");
+  const panelVariants = isMobileViewport
+    ? mobilePanelVariants
+    : desktopPanelVariants;
+
+  const panelRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [draft, setDraft] = useState("");
+
+  // Tracks whether an assistant reply has arrived while the panel was
+  // closed, so the launcher can show an unread cue instead of the bot
+  // silently answering into a closed panel.
+  const seenCountRef = useRef(0);
+  const [hasUnread, setHasUnread] = useState(false);
+
+  // BUGFIX: the mobile launcher used to reappear the instant `isOpen`
+  // flipped to false, while the full-screen panel was still mid-exit
+  // (CLOSE_TWEEN, ~160ms) — both rendered at the same z-50 for that
+  // window, producing the reported double-icon flash. This tracks
+  // whether the panel's own exit animation has actually finished, so
+  // the launcher stays hidden on mobile until it has.
+  const [panelExited, setPanelExited] = useState(true);
+  useEffect(() => {
+    if (isOpen) setPanelExited(false);
+  }, [isOpen]);
+
+  useFocusTrap(panelRef, isOpen, close, inputRef);
+
+  // Belt-and-suspenders autofocus: useFocusTrap above already focuses
+  // inputRef on open, but on mobile the panel is still mid-slide-in
+  // (translateY animation) at that exact moment, which can eat the
+  // focus call in some browsers. Re-focusing on the next frame — after
+  // the panel has committed to the DOM at its open position — makes
+  // autofocus land reliably on every screen size.
+  useEffect(() => {
+    if (!isOpen) return;
+    const id = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [isOpen]);
+
+  // BUGFIX: this used to call smooth-scroll on every streamed token
+  // (a new `messages` reference arrives per chunk), which (a) forced
+  // the transcript to the bottom even if the user had scrolled up to
+  // reread something, and (b) restarted the smooth-scroll easing on
+  // every token, producing a stutter instead of one continuous scroll.
+  // Now: only auto-follow token-by-token growth if the user is already
+  // near the bottom, and always snap to bottom on an actual new
+  // message (new user send or new assistant turn starting).
+  const prevMessageCountRef = useRef(0);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    const isNewMessage = messages.length !== prevMessageCountRef.current;
+    prevMessageCountRef.current = messages.length;
+
+    if (!isNewMessage && !isNearBottom) return;
+
+    el.scrollTo({
+      top: el.scrollHeight,
+      behavior: isNewMessage ? "smooth" : "auto",
+    });
+  }, [messages, status]);
+
+  useEffect(() => {
+    if (isOpen) {
+      seenCountRef.current = messages.length;
+      setHasUnread(false);
+    } else if (messages.length > seenCountRef.current) {
+      setHasUnread(true);
+    }
+  }, [messages.length, isOpen]);
+
+  const lastMessage = messages[messages.length - 1];
+  const lastMessageHasVisibleContent =
+    lastMessage?.role === "assistant" &&
+    lastMessage.parts.some(
+      (p) => p.type === "text" && (p as { text?: string }).text?.trim(),
+    );
+
+  const isWaiting =
+    status === "submitted" ||
+    (status === "streaming" && !lastMessageHasVisibleContent);
+  const isBusy = status === "submitted" || status === "streaming";
+  const hasStarted = messages.length > 0;
+
+  const handleSend = (e: FormEvent) => {
+    e.preventDefault();
+    const text = draft.trim();
+    if (!text || isBusy) return;
+    sendMessage({ text });
+    setDraft("");
+  };
+
+  const handleOptionSelect = (label: string) => {
+    if (isBusy) return;
+    sendMessage({ text: label });
+  };
+
+  const startNewConversation = () => {
+    stop();
+    const newKey = crypto.randomUUID();
+    setConversationKey(newKey);
+    setDraft("");
+    setConfirmReset(false);
+    try {
+      window.sessionStorage.setItem(
+        CHAT_SESSION_STORAGE_KEY,
+        JSON.stringify({ conversationKey: newKey, messages: [] }),
+      );
+    } catch {
+      // Best-effort — the persist effect will also overwrite this on
+      // the next render either way.
+    }
+  };
+
+  const handleNewConversationClick = () => {
+    if (!hasStarted) {
+      startNewConversation();
+      return;
+    }
+    setConfirmReset(true);
+  };
+
+  return (
+    <>
+      <AnimatePresence onExitComplete={() => setPanelExited(true)}>
+        {isOpen && (
+          <motion.div
+            key="panel"
+            id="mbr-chat-panel"
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="MBR Studio AI Assistant"
+            variants={shouldReduceMotion ? undefined : panelVariants}
+            initial={shouldReduceMotion ? undefined : "hidden"}
+            animate={shouldReduceMotion ? undefined : "visible"}
+            exit={shouldReduceMotion ? undefined : "hidden"}
+            className="fixed inset-0 z-50 flex flex-col overflow-hidden rounded-none border-border bg-card pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-2xl shadow-black/40 sm:inset-auto sm:bottom-28 sm:right-6 sm:h-[min(680px,calc(100vh-120px))] sm:w-[min(420px,calc(100vw-32px))] sm:rounded-2xl sm:border sm:pt-0 sm:pb-0"
+          >
+            {/* Mobile-only drag handle — visual affordance that this is a
+                bottom sheet. Not wired to a swipe gesture; the X below and
+                the launcher button (top-of-thumb / bottom-right) both close
+                it, which is enough reachable-by-thumb coverage without
+                pulling in a gesture library. */}
+            <div className="flex justify-center pt-2 pb-1 sm:hidden">
+              <div className="h-1 w-10 rounded-full bg-border" />
+            </div>
+
+            <div className="flex items-center justify-between border-b border-border bg-background px-4 py-3.5">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center">
+                  <LogoMark className="h-8 w-8" />
+                </div>
+                <div>
+                  <p className="font-heading text-sm font-semibold text-foreground">
+                    MBR Studio Assistant
+                  </p>
+                  <p className="font-body text-xs text-muted-foreground">
+                    Usually replies instantly
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={handleNewConversationClick}
+                  aria-label="Start new conversation"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-200 hover:bg-card hover:text-foreground"
+                >
+                  <RotateCcw className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+                <button
+                  type="button"
+                  onClick={close}
+                  aria-label="Close chat"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-200 hover:bg-card hover:text-foreground"
+                >
+                  <X className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+              </div>
+            </div>
+
+            {confirmReset && (
+              <div
+                role="alertdialog"
+                aria-label="Confirm new conversation"
+                className="flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-2.5"
+              >
+                <p className="font-body text-xs text-muted-foreground">
+                  Start a new conversation? Your current chat will be cleared.
+                </p>
+                <div className="flex flex-none gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmReset(false)}
+                    className="rounded-lg px-2.5 py-1.5 font-body text-xs font-medium text-muted-foreground transition-colors hover:bg-background"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={startNewConversation}
+                    className="rounded-lg bg-primary px-2.5 py-1.5 font-body text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
+                  >
+                    Start new
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div
+              ref={scrollRef}
+              aria-live="polite"
+              aria-atomic="false"
+              className="flex-1 overflow-y-auto px-4 py-4"
+            >
+              <div className="flex flex-col gap-2.5">
+                {!hasStarted && (
+                  <div className="flex items-end gap-2">
+                    <div className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-accent/15 text-accent">
+                      <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
+                    </div>
+                    <div className="max-w-[78%] rounded-2xl rounded-bl-md border border-border bg-card px-4 py-2.5 font-body text-sm leading-relaxed text-foreground">
+                      Hi, I&apos;m the MBR Studio assistant. I can help point
+                      you to a quote, a consultation, or examples of our work —
+                      what would you like to do?
+                    </div>
+                  </div>
+                )}
+
+                {messages.map((message, i) => {
+                  const prevRole = messages[i - 1]?.role;
+                  const showAvatar = prevRole !== message.role;
+                  return (
+                    <MessageBubble
+                      key={message.id}
+                      message={message}
+                      showAvatar={showAvatar}
+                    />
+                  );
+                })}
+
+                {isWaiting && (
+                  <div className="flex items-end gap-2">
+                    <div className="w-7 flex-none">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-accent/15 text-accent">
+                        <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
+                      </div>
+                    </div>
+                    <TypingIndicator />
+                  </div>
+                )}
+
+                {error && (
+                  <div
+                    role="alert"
+                    className="ml-9 flex flex-col gap-2 rounded-2xl border border-error/30 bg-error/10 px-4 py-3 font-body text-sm text-error"
+                  >
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle
+                        className="mt-0.5 h-4 w-4 flex-none"
+                        strokeWidth={1.75}
+                      />
+                      <span>
+                        Something went wrong reaching the assistant. You can try
+                        again, or reach the team directly.
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => regenerate()}
+                        className="rounded-lg border border-error/40 px-3 py-1.5 text-xs font-medium text-error transition-colors hover:bg-error/10"
+                      >
+                        Try again
+                      </button>
+
+                      <a
+                        href={buildWhatsAppLink()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-lg border border-error/40 px-3 py-1.5 text-xs font-medium text-error transition-colors hover:bg-error/10"
+                      >
+                        Message us on WhatsApp
+                      </a>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {!hasStarted && !isBusy && (
+              <OpeningOptions
+                options={OPENING_OPTIONS}
+                onSelect={(option) => handleOptionSelect(option.label)}
+              />
+            )}
+
+            {/* Persistent quick actions once the conversation has
+                started — reuses the real OPENING_OPTIONS data (no
+                fabricated per-turn suggestions; nothing in the API
+                currently produces those) so users can jump to a
+                quote/consultation/portfolio without retyping. */}
+            {hasStarted && !isBusy && (
+              <SuggestionChips
+                options={OPENING_OPTIONS}
+                onSelect={(option) => handleOptionSelect(option.label)}
+              />
+            )}
+
+            <form
+              onSubmit={handleSend}
+              className="flex items-center gap-2 border-t border-border p-3"
+            >
+              <input
+                ref={inputRef}
+                type="text"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder="Type a message..."
+                aria-label="Message"
+                disabled={isBusy}
+                className="flex-1 rounded-lg border border-border bg-background px-3.5 py-2.5 font-body text-sm text-foreground placeholder:text-muted-foreground transition-colors duration-200 focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-60"
+              />
+              <button
+                type="submit"
+                disabled={!draft.trim() || isBusy}
+                aria-label="Send message"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-opacity duration-200 disabled:cursor-not-allowed disabled:opacity-40 hover:opacity-90"
+              >
+                <Send className="h-4 w-4" strokeWidth={1.75} />
+              </button>
+            </form>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {!launcherSuppressed && (
+        <motion.button
+          type="button"
+          onClick={toggle}
+          aria-label={isOpen ? "Close chat" : "Open chat with MBR Studio"}
+          aria-expanded={isOpen}
+          aria-controls="mbr-chat-panel"
+          whileHover={shouldReduceMotion ? undefined : { scale: 1.06 }}
+          whileTap={shouldReduceMotion ? undefined : { scale: 0.94 }}
+          animate={
+            !shouldReduceMotion && !isOpen
+              ? { scale: [1, 1.05, 1] }
+              : { scale: 1 }
+          }
+          transition={
+            !shouldReduceMotion && !isOpen
+              ? { duration: 2.4, repeat: Infinity, ease: "easeInOut" }
+              : { duration: 0.15 }
+          }
+          className={cn(
+            // BUGFIX: on mobile the chat panel renders full-screen
+            // (`fixed inset-0`, see panel className above) at the same
+            // z-index (z-50) as this button. Since this button always
+            // rendered afterward in the DOM, it visually floated on top
+            // of the panel's own bottom-right corner — directly over the
+            // message input's Send button — showing a second, redundant,
+            // misplaced X once the panel was open. Hidden below `sm` while
+            // open; the panel's own header X is the only close affordance
+            // there. Kept visible on `sm`+ where the panel is a bottom-right
+            // floating card that doesn't cover this screen area, so the
+            // button coexisting below it (Intercom-style) still works.
+            "fixed z-50 h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl shadow-black/30 sm:h-14 sm:w-14 sm:flex sm:bottom-4 sm:right-[max(12px,calc((100vw_-_1152px)/2_+_12px))]",
+            isOpen || !panelExited ? "hidden" : "flex bottom-1.5 right-1.5",
+          )}
+        >
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span
+              key={isOpen ? "close" : "chat"}
+              variants={shouldReduceMotion ? undefined : iconVariants}
+              initial={shouldReduceMotion ? undefined : "initial"}
+              animate={shouldReduceMotion ? undefined : "animate"}
+              exit={shouldReduceMotion ? undefined : "exit"}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              className="flex"
+            >
+              {isOpen ? (
+                <X className="h-6 w-6" strokeWidth={1.75} />
+              ) : (
+                <MessageCircle className="h-6 w-6" strokeWidth={1.75} />
+              )}
+            </motion.span>
+          </AnimatePresence>
+
+          {hasUnread && !isOpen && (
+            <motion.span
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-background bg-error"
+              aria-hidden="true"
+            />
+          )}
+        </motion.button>
+      )}
+    </>
+  );
+}
+</file>
+
+<file path="config/site.ts">
+import { buildWhatsAppLink } from "@/config/contact";
+import { Layers, Bot, Briefcase, Users, Newspaper, Mail } from "lucide-react";
+
+export const siteConfig = {
+  name: "MBR Studio",
+  title: "MBR Studio — Digital products, built to grow your business.",
+  founder: "Muaaz Bin Riaz",
+  tagline:
+    "Websites, SaaS & AI automation — built directly by the engineer who ships them.",
+  description:
+    "MBR Studio is a boutique software studio building websites, SaaS products, and AI-powered automation for growing businesses.",
+  url: "https://mbrstudio.co",
+  ogImage: "/opengraph-image",
+  email: "mbrstudio.dev@gmail.com",
+  // Added fields for the chat route
+  consultationUrl: "https://cal.com/mbrstudio/consultation",
+
+  contactEmail: "mbrstudio.dev@gmail.com",
+  links: {
+    twitter: "https://twitter.com/mbrstudio",
+    linkedin: "https://www.linkedin.com/in/muaaz-bin-riaz-92b395298/",
+    github: "https://github.com/muaazbinriaz",
+  },
+} as const;
+
+export const navLinks = [
+  { label: "Services", href: "/services", icon: Layers },
+  // { label: "AI Agent", href: "/ai-agent", icon: Bot }, // paused — re-enable when product is client-ready
+  { label: "Portfolio", href: "/portfolio", icon: Briefcase },
+  { label: "About", href: "/about", icon: Users },
+  { label: "Blog", href: "/blog", icon: Newspaper },
+  { label: "Contact", href: "/contact", icon: Mail },
+] as const;
+
+export const primaryCta = {
+  label: "Book a Consultation",
+  href: siteConfig.consultationUrl,
+} as const;
+
+/**
+ * Delegates to config/contact.ts's buildWhatsAppLink() — that file is
+ * the single source of truth for the WhatsApp number (WHATSAPP_DIGITS /
+ * WHATSAPP_DISPLAY). This used to hardcode a second literal number here,
+ * which risked the contact page and the AI chatbot handoff pointing at
+ * two different numbers if only one was ever updated.
+ *
+ * Passes an empty message override so the chatbot's handoff link keeps
+ * its previous behavior (no pre-filled WhatsApp message) rather than
+ * picking up buildWhatsAppLink()'s default qualification message.
+ */
+export function getWhatsappLink(): string {
+  return buildWhatsAppLink("");
+}
+</file>
+
 <file path="app/globals.css">
 @import "tailwindcss";
 @import "tw-animate-css";
@@ -35069,7 +35146,7 @@ nav a {
   }
 
   html {
-    overflow-x: hidden;
+    overflow-x: clip;
   }
 
   body {
@@ -35083,6 +35160,15 @@ nav a {
     line-height: 1.7; /* generous line-height for readability, per design system */
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    /* Defense-in-depth against horizontal scroll: overflow-x:clip (not
+       "hidden") — "hidden" establishes a new scroll container on the root
+       element, which is a known WebKit/mobile-Safari bug that silently
+       breaks `position: sticky` (exactly the Navbar header). `clip` still
+       stops horizontal overflow but doesn't touch sticky positioning. */
+    overflow-x: clip;
+    /* Safety net: any future long unbreakable string (URL, long word)
+       wraps instead of silently widening the page on narrow screens. */
+    overflow-wrap: break-word;
   }
 
   /* ---------------------------------------------------------------
@@ -35824,11 +35910,11 @@ nav a {
   }
 }
 
-/* ---------------------------------------------------------------------
+/* --------------------------------------------------------------
    Page hero top spacing — shared across Contact, Portfolio, About,
    Blog, Services page headers. Change ONCE here to adjust the gap
    below the navbar on all 5 pages at once.
---------------------------------------------------------------------- */
+--------------------------------------------------------------- */
 .page-hero-pad {
   padding-left: 1.5rem;
   padding-right: 1.5rem;
@@ -35843,62 +35929,6 @@ nav a {
     padding-top: 4rem;
     padding-bottom: 8rem;
   }
-}
-</file>
-
-<file path="config/site.ts">
-import { buildWhatsAppLink } from "@/config/contact";
-import { Layers, Bot, Briefcase, Users, Newspaper, Mail } from "lucide-react";
-
-export const siteConfig = {
-  name: "MBR Studio",
-  title: "MBR Studio — Digital products, built to grow your business.",
-  founder: "Muaaz Bin Riaz",
-  tagline:
-    "Websites, SaaS & AI automation — built directly by the engineer who ships them.",
-  description:
-    "MBR Studio is a boutique software studio building websites, SaaS products, and AI-powered automation for growing businesses.",
-  url: "https://mbrstudio.co",
-  ogImage: "/opengraph-image",
-  email: "mbrstudio.dev@gmail.com",
-  // Added fields for the chat route
-  consultationUrl: "https://cal.com/mbrstudio/consultation",
-
-  contactEmail: "mbrstudio.dev@gmail.com",
-  links: {
-    twitter: "https://twitter.com/mbrstudio",
-    linkedin: "https://www.linkedin.com/in/muaaz-bin-riaz-92b395298/",
-    github: "https://github.com/muaazbinriaz",
-  },
-} as const;
-
-export const navLinks = [
-  { label: "Services", href: "/services", icon: Layers },
-  // { label: "AI Agent", href: "/ai-agent", icon: Bot }, // paused — re-enable when product is client-ready
-  { label: "Portfolio", href: "/portfolio", icon: Briefcase },
-  { label: "About", href: "/about", icon: Users },
-  { label: "Blog", href: "/blog", icon: Newspaper },
-  { label: "Contact", href: "/contact", icon: Mail },
-] as const;
-
-export const primaryCta = {
-  label: "Book a Consultation",
-  href: siteConfig.consultationUrl,
-} as const;
-
-/**
- * Delegates to config/contact.ts's buildWhatsAppLink() — that file is
- * the single source of truth for the WhatsApp number (WHATSAPP_DIGITS /
- * WHATSAPP_DISPLAY). This used to hardcode a second literal number here,
- * which risked the contact page and the AI chatbot handoff pointing at
- * two different numbers if only one was ever updated.
- *
- * Passes an empty message override so the chatbot's handoff link keeps
- * its previous behavior (no pre-filled WhatsApp message) rather than
- * picking up buildWhatsAppLink()'s default qualification message.
- */
-export function getWhatsappLink(): string {
-  return buildWhatsAppLink("");
 }
 </file>
 
